@@ -14,11 +14,26 @@ export default function AddBuyerView({
   buyers, 
   onAddBuyer, 
   onUpdateBuyer, 
+  forceFormOpen,
+  onClearForceFormOpen,
   isLoading,
   error
 }) {
   // viewMode: 'list' (default) or 'form'
   const [viewMode, setViewMode] = useState('list');
+
+  React.useEffect(() => {
+    if (forceFormOpen) {
+      setEditingId(null);
+      setFormData({
+        name: '',
+        email: '',
+        phone: ''
+      });
+      setViewMode('form');
+      onClearForceFormOpen();
+    }
+  }, [forceFormOpen]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -96,6 +111,14 @@ export default function AddBuyerView({
     );
   });
 
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  React.useEffect(() => {
+    setVisibleCount(20);
+  }, [searchQuery]);
+
+  const displayedBuyers = filteredBuyers.slice(0, visibleCount);
+
   return (
     <div className="flex-1 p-4 sm:p-8 lg:p-10 bg-[#f1f5f9] max-w-5xl mx-auto w-full text-slate-900">
       
@@ -153,7 +176,7 @@ export default function AddBuyerView({
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {filteredBuyers.map((buyer) => (
+                {displayedBuyers.map((buyer) => (
                   <div 
                     key={buyer.id} 
                     className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-slate-50/20 transition-colors"
@@ -179,6 +202,16 @@ export default function AddBuyerView({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {filteredBuyers.length > visibleCount && (
+              <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
+                <button
+                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
+                >
+                  Load More Buyers
+                </button>
               </div>
             )}
           </div>

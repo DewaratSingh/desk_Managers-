@@ -345,10 +345,9 @@ export default function AddQuotationView({
 
                     <button
                       onClick={() => handleEditClick(q)}
-                      className="self-start md:self-auto px-4 py-2 text-xs font-extrabold text-slate-600 bg-white border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                      className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
-                      <Edit2 size={13} />
-                      Update Record
+                      <Edit2 size={14} /> Update Record
                     </button>
                   </div>
                 ))}

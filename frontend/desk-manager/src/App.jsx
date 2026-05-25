@@ -9,7 +9,8 @@ import RFQView from './components/RFQView';
 import RFQDetailView from './components/RFQDetailView';
 import AddQuotationView from './components/AddQuotationView';
 import LoginView from './components/LoginView';
-import ToastContainer from './components/Toast';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -32,7 +33,7 @@ export default function App() {
   // General States
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [toasts, setToasts] = useState([]);
+  const [forceFormOpen, setForceFormOpen] = useState(null); // 'customer', 'buyer', 'item' or null
 
   // ============================================================================
   // AUTH LIFECYCLE
@@ -129,12 +130,15 @@ export default function App() {
   }, [token]);
 
   const triggerToast = (message, type = 'success') => {
-    const id = Date.now() + Math.random().toString(36).substr(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-  };
-
-  const handleRemoveToast = (id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    toast[type](message, {
+      position: "top-right",
+      autoClose: 3000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+      theme: "colored",
+    });
   };
 
   const fetchAllData = async (tkn) => {
@@ -516,6 +520,8 @@ export default function App() {
             onAddCustomer={handleAddCustomer}
             onUpdateCustomer={handleUpdateCustomer}
             onDeleteCustomer={handleDeleteCustomer}
+            forceFormOpen={forceFormOpen === 'customer'}
+            onClearForceFormOpen={() => setForceFormOpen(null)}
             isLoading={isLoading}
             error={error}
           />
@@ -527,6 +533,8 @@ export default function App() {
             onAddBuyer={handleAddBuyer}
             onUpdateBuyer={handleUpdateBuyer}
             onDeleteBuyer={handleDeleteBuyer}
+            forceFormOpen={forceFormOpen === 'buyer'}
+            onClearForceFormOpen={() => setForceFormOpen(null)}
             isLoading={isLoading}
             error={error}
           />
@@ -538,6 +546,8 @@ export default function App() {
             onAddItem={handleAddItem}
             onUpdateItem={handleUpdateItem}
             onDeleteItem={handleDeleteItem}
+            forceFormOpen={forceFormOpen === 'item'}
+            onClearForceFormOpen={() => setForceFormOpen(null)}
             isLoading={isLoading}
             error={error}
           />
@@ -551,6 +561,10 @@ export default function App() {
             items={items}
             onAddRFQ={handleAddRFQ}
             onUpdateRFQ={handleUpdateRFQ}
+            onNavigateAndOpenForm={(tab, type) => {
+              setActiveTab(tab);
+              setForceFormOpen(type);
+            }}
             isLoading={isLoading}
             error={error}
           />
@@ -604,7 +618,7 @@ export default function App() {
           isLoading={authLoading}
           error={authError}
         />
-        <ToastContainer toasts={toasts} onClose={handleRemoveToast} />
+        <ToastContainer />
       </>
     );
   }
@@ -625,8 +639,6 @@ export default function App() {
               <main className="flex-1 flex flex-col h-screen overflow-y-auto relative">
                 {renderActiveView()}
               </main>
-
-              <ToastContainer toasts={toasts} onClose={handleRemoveToast} />
             </div>
           } />
           <Route path="/rfq/:rfq_no" element={
@@ -638,6 +650,7 @@ export default function App() {
             />
           } />
         </Routes>
+        <ToastContainer />
       </BrowserRouter>
     );
 }

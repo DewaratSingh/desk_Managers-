@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FolderLock, Lock, User, AlertCircle } from 'lucide-react';
-
+import logoImg from '../assets/image.png';
 export default function LoginView({ onLogin, isLoading, error }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -30,14 +30,12 @@ export default function LoginView({ onLogin, isLoading, error }) {
           
           {/* Header Icon & Title */}
           <div className="flex flex-col items-center mb-8 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4 border border-blue-100/50 text-blue-600 shadow-sm shadow-blue-100">
-              <FolderLock size={32} className="animate-pulse" />
-            </div>
-            <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 mb-1">
-              DeskManager
+            <img src={logoImg} alt="Shreeji Industries Logo" className="w-28 h-28 object-contain mb-5" />
+            <h2 className="text-3xl font-black tracking-tight text-slate-900 mb-1">
+              Shreeji Industries
             </h2>
-            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">
-              Secure Operator Login
+            <p className="text-xs font-black text-blue-600 uppercase tracking-widest">
+              DeskManager
             </p>
           </div>
 

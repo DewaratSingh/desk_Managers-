@@ -26,6 +26,7 @@ const fmtDate = (d) => {
 export default function RFQView({
   rfqs, buyers, customers, items: catalogItems,
   onAddRFQ, onUpdateRFQ,
+  onNavigateAndOpenForm,
   isLoading, error
 }) {
   const [viewMode, setViewMode] = useState('list');
@@ -102,10 +103,12 @@ export default function RFQView({
     setItemSearch(val);
     if (!val.trim()) { setItemSuggestions([]); setShowItemDropdown(false); return; }
     const q = val.toLowerCase();
-    const filtered = (catalogItems || []).filter(i =>
-      i.item_code.toLowerCase().startsWith(q) ||
-      (i.description && i.description.toLowerCase().startsWith(q))
-    );
+    const filtered = (catalogItems || []).filter(i => {
+      const matchesSearch = i.item_code.toLowerCase().startsWith(q) ||
+        (i.description && i.description.toLowerCase().startsWith(q));
+      const alreadyAdded = selectedItems.some(si => si.item_code === i.item_code);
+      return matchesSearch && !alreadyAdded;
+    });
     setItemSuggestions(filtered);
     setShowItemDropdown(true);
   };
@@ -215,6 +218,14 @@ export default function RFQView({
     );
   });
 
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [searchQuery]);
+
+  const displayedRFQs = filteredRFQs.slice(0, visibleCount);
+
   const inputCls = "w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium";
   const labelCls = "block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider";
 
@@ -254,16 +265,33 @@ export default function RFQView({
               <div className="p-16 text-center text-slate-400 text-lg font-semibold">No RFQ records found. Click "+ New RFQ" to create one.</div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {filteredRFQs.map((rfq) => (
+                {displayedRFQs.map((rfq) => (
                     <div key={rfq.rfq_no} className="p-4 flex items-center gap-4 bg-white hover:bg-slate-50 transition-colors rounded-xl border border-slate-200">
                       <span className="font-mono font-extrabold text-sm text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">{rfq.rfq_no}</span>
                       <span className="text-sm text-slate-600">{fmtDate(rfq.rfq_date)}</span>
                       <span className="text-sm text-slate-600">{fmtDate(rfq.commercial_bid_due_date)}</span>
                       <span className="text-sm text-slate-600">{Array.isArray(rfq.items) ? rfq.items.length : 0} items</span>
                       <span className="text-sm text-slate-600">{rfq.customer_id || '—'}</span>
-                      <Link to={`/rfq/${rfq.rfq_no}`} className="ml-auto px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">View</Link>
+                      <div className="ml-auto flex items-center gap-2.5 shrink-0">
+                        <button onClick={() => openEditForm(rfq)} className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer">
+                          <Edit2 size={14} /> Update Record
+                        </button>
+                        <Link to={`/rfq/${rfq.rfq_no}`} className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 justify-center">
+                          View Details
+                        </Link>
+                      </div>
                     </div>
                 ))}
+              </div>
+            )}
+            {filteredRFQs.length > visibleCount && (
+              <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
+                <button
+                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
+                >
+                  Load More RFQs
+                </button>
               </div>
             )}
           </div>
@@ -336,8 +364,20 @@ export default function RFQView({
                     </div>
                   )}
                   {buyerNotFound && (
-                    <div className="mt-2 flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                      <AlertCircle size={13} /> No buyer found for "{buyerInput}". Please <span className="underline">add the buyer first</span> in the Buyer section.
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No buyer found for "{buyerInput}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onNavigateAndOpenForm) onNavigateAndOpenForm('add-buyer', 'buyer');
+                        }}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded font-extrabold text-[10px] transition-colors cursor-pointer shrink-0 uppercase tracking-wider"
+                      >
+                        Add Buyer
+                      </button>
                     </div>
                   )}
                   {formData.buyer_id && (
@@ -362,8 +402,20 @@ export default function RFQView({
                     </div>
                   )}
                   {customerNotFound && (
-                    <div className="mt-2 flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                      <AlertCircle size={13} /> No customer found for "{customerInput}". Please <span className="underline">add the customer first</span> in the Customer section.
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No customer found for "{customerInput}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onNavigateAndOpenForm) onNavigateAndOpenForm('add-customer', 'customer');
+                        }}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded font-extrabold text-[10px] transition-colors cursor-pointer shrink-0 uppercase tracking-wider"
+                      >
+                        Add Customer
+                      </button>
                     </div>
                   )}
                   {formData.customer_id && customers.find(c => c.id === formData.customer_id) && (
@@ -390,18 +442,15 @@ export default function RFQView({
                     />
 
                     {/* Item dropdown */}
-                    {showItemDropdown && itemSuggestions.length > 0 && (
+                    {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
                       <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
-                        {itemSuggestions.map(item => {
-                          const alreadyAdded = selectedItems.some(i => i.item_code === item.item_code);
+                        {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => {
                           return (
                             <button
                               key={item.item_code}
                               type="button"
                               onClick={() => addItem(item)}
-                              disabled={alreadyAdded}
-                              className={`w-full text-left px-4 py-3 border-b border-slate-100 last:border-0 transition-colors cursor-pointer
-                                ${alreadyAdded ? 'bg-slate-50 opacity-50 cursor-not-allowed' : 'hover:bg-blue-50'}`}
+                              className="w-full text-left px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div>
@@ -409,7 +458,6 @@ export default function RFQView({
                                   {item.drawing_number && <span className="text-xs text-slate-400 ml-2">DRW: {item.drawing_number}</span>}
                                   <div className="text-xs text-slate-500 mt-0.5">{item.description}</div>
                                 </div>
-                                {alreadyAdded && <span className="text-xs text-green-600 font-bold shrink-0">✓ Added</span>}
                               </div>
                             </button>
                           );
@@ -419,8 +467,20 @@ export default function RFQView({
 
                     {/* No item found */}
                     {itemSearch.trim().length > 0 && itemSuggestions.length === 0 && (
-                      <div className="mt-2 flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                        <AlertCircle size={13} /> No item found for "{itemSearch}". Please <span className="underline">add the item first</span> in the Item section.
+                      <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle size={13} className="shrink-0" />
+                          <span>No item found for "{itemSearch}".</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onNavigateAndOpenForm) onNavigateAndOpenForm('add-item', 'item');
+                          }}
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded font-extrabold text-[10px] transition-colors cursor-pointer shrink-0 uppercase tracking-wider"
+                        >
+                          Add Item
+                        </button>
                       </div>
                     )}
                   </div>

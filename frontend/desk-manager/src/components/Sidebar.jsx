@@ -11,7 +11,7 @@ import {
   ClipboardList,
   FileText
 } from 'lucide-react';
-
+import logoImg from '../assets/image.png';
 export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -29,10 +29,15 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
       {/* Mobile Top Header */}
       <div className="lg:hidden flex items-center justify-between p-5 bg-slate-50 border-b border-slate-200 text-slate-900 sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          <FolderLock size={24} className="text-blue-600 animate-pulse" />
-          <span className="font-extrabold text-xl text-slate-900 tracking-tight">
-            DeskManager
-          </span>
+          <img src={logoImg} alt="Shreeji Industries Logo" className="w-12 h-12 object-contain shrink-0" />
+          <div className="leading-none">
+            <span className="font-extrabold text-sm text-slate-900 tracking-tight block">
+              Shreeji Industries
+            </span>
+            <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest leading-none block mt-1">
+              DeskManager
+            </span>
+          </div>
         </div>
         <button 
           onClick={() => setIsOpen(!isOpen)}
@@ -59,12 +64,15 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
         flex flex-col h-screen overflow-hidden
       `}>
         {/* Brand Area */}
-        <div className="p-8 border-b border-slate-200 flex items-center gap-4">
-          <FolderLock size={32} className="text-blue-600 shrink-0" />
-          <div>
-            <h1 className="font-extrabold text-xl text-slate-900 m-0 leading-none tracking-tight">
-              DeskManager
+        <div className="p-6 border-b border-slate-200 flex items-center gap-4">
+          <img src={logoImg} alt="Shreeji Industries Logo" className="w-16 h-16 object-contain shrink-0" />
+          <div className="overflow-hidden">
+            <h1 className="font-black text-base text-slate-900 m-0 leading-tight tracking-tight">
+              Shreeji Industries
             </h1>
+            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest leading-none mt-1.5">
+              DeskManager
+            </p>
           </div>
         </div>
 

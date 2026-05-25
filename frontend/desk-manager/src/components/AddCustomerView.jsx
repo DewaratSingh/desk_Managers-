@@ -14,11 +14,26 @@ export default function AddCustomerView({
   customers, 
   onAddCustomer, 
   onUpdateCustomer,
+  forceFormOpen,
+  onClearForceFormOpen,
   isLoading,
   error
 }) {
   // viewMode: 'list' (default) or 'form'
   const [viewMode, setViewMode] = useState('list');
+
+  React.useEffect(() => {
+    if (forceFormOpen) {
+      setEditingId(null);
+      setFormData({
+        id: '',
+        name: '',
+        address: ''
+      });
+      setViewMode('form');
+      onClearForceFormOpen();
+    }
+  }, [forceFormOpen]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -101,6 +116,14 @@ export default function AddCustomerView({
     );
   });
 
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  React.useEffect(() => {
+    setVisibleCount(20);
+  }, [searchQuery]);
+
+  const displayedCustomers = filteredCustomers.slice(0, visibleCount);
+
   return (
     <div className="flex-1 p-4 sm:p-8 lg:p-10 bg-[#f1f5f9] max-w-5xl mx-auto w-full text-slate-900">
       
@@ -155,7 +178,7 @@ export default function AddCustomerView({
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {filteredCustomers.map((customer) => (
+                {displayedCustomers.map((customer) => (
                   <div 
                     key={customer.id} 
                     className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-slate-50/20 transition-colors"
@@ -183,6 +206,16 @@ export default function AddCustomerView({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {filteredCustomers.length > visibleCount && (
+              <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
+                <button
+                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
+                >
+                  Load More Customers
+                </button>
               </div>
             )}
           </div>

@@ -22,11 +22,22 @@ export default function AddItemView({
   onAddItem,
   onUpdateItem,
   onDeleteItem,
+  forceFormOpen,
+  onClearForceFormOpen,
   isLoading,
   error
 }) {
   // viewMode: 'list' (default) | 'form'
   const [viewMode, setViewMode] = useState('list');
+
+  React.useEffect(() => {
+    if (forceFormOpen) {
+      setEditingCode(null);
+      setFormData(EMPTY_FORM);
+      setViewMode('form');
+      onClearForceFormOpen();
+    }
+  }, [forceFormOpen]);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingCode, setEditingCode] = useState(null);
@@ -98,6 +109,14 @@ export default function AddItemView({
     );
   });
 
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  React.useEffect(() => {
+    setVisibleCount(20);
+  }, [searchQuery]);
+
+  const displayedItems = filteredItems.slice(0, visibleCount);
+
   return (
     <div className="flex-1 p-4 sm:p-8 lg:p-10 bg-[#f1f5f9] max-w-5xl mx-auto w-full text-slate-900">
 
@@ -155,7 +174,7 @@ export default function AddItemView({
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {filteredItems.map((item) => {
+                {displayedItems.map((item) => {
                   const isExpanded = expandedItems.has(item.item_code);
                   const longLines = item.long_description
                     ? item.long_description.split(/\n/)
@@ -235,29 +254,23 @@ export default function AddItemView({
                       {/* Update button */}
                       <button
                         onClick={() => handleEditClick(item)}
-                        style={{
-                          flexShrink: 0,
-                          padding: '8px 18px',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          color: '#374151',
-                          background: 'white',
-                          border: '2px solid #e2e8f0',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          transition: 'border-color 0.15s, color 0.15s',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#374151'; }}
+                        className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Edit2 size={13} /> Update Record
+                        <Edit2 size={14} /> Update Record
                       </button>
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {filteredItems.length > visibleCount && (
+              <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
+                <button
+                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
+                >
+                  Load More Items
+                </button>
               </div>
             )}
           </div>
