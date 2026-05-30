@@ -6,17 +6,21 @@ const router = express.Router();
 // Get all items
 router.get('/', async (req, res) => {
   const { search } = req.query;
+  const limit = parseInt(req.query.limit) || 20;
+  const offset = parseInt(req.query.offset) || 0;
+
   try {
-    let queryText = 'SELECT * FROM items ORDER BY created_at DESC';
-    let values = [];
+    let queryText = 'SELECT * FROM items ORDER BY created_at DESC LIMIT $1 OFFSET $2';
+    let values = [limit, offset];
 
     if (search) {
       queryText = `
         SELECT * FROM items 
         WHERE item_code ILIKE $1 OR description ILIKE $1 OR drawing_number ILIKE $1 OR long_description ILIKE $1
         ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
       `;
-      values = [`%${search}%`];
+      values = [`%${search}%`, limit, offset];
     }
 
     const { rows } = await pool.query(queryText, values);

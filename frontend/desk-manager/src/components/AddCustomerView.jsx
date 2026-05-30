@@ -17,7 +17,9 @@ export default function AddCustomerView({
   forceFormOpen,
   onClearForceFormOpen,
   isLoading,
-  error
+  error,
+  fetchMoreData,
+  searchResource
 }) {
   // viewMode: 'list' (default) or 'form'
   const [viewMode, setViewMode] = useState('list');
@@ -47,6 +49,15 @@ export default function AddCustomerView({
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
+
+  React.useEffect(() => {
+    if (searchResource) {
+      const delayDebounceFn = setTimeout(() => {
+        searchResource('customers', searchQuery);
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery]);
 
   // Handle Edit Select
   const handleEditClick = (customer) => {
@@ -106,23 +117,8 @@ export default function AddCustomerView({
     }
   };
 
-  // Search filter
-  const filteredCustomers = customers.filter(customer => {
-    const q = searchQuery.toLowerCase();
-    return (
-      (customer.id && customer.id.toLowerCase().includes(q)) ||
-      (customer.name && customer.name.toLowerCase().includes(q)) ||
-      (customer.address && customer.address.toLowerCase().includes(q))
-    );
-  });
+  // We don't need client-side filter/slice anymore since the API handles it
 
-  const [visibleCount, setVisibleCount] = useState(20);
-
-  React.useEffect(() => {
-    setVisibleCount(20);
-  }, [searchQuery]);
-
-  const displayedCustomers = filteredCustomers.slice(0, visibleCount);
 
   return (
     <div className="flex-1 p-4 sm:p-8 lg:p-10 bg-[#f1f5f9] max-w-5xl mx-auto w-full text-slate-900">
@@ -168,17 +164,17 @@ export default function AddCustomerView({
             <div className="bg-slate-55 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
               <span className="text-sm font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                 <ListFilter size={16} className="text-blue-600" />
-                Customer Database Directory ({filteredCustomers.length})
+                Customer Database Directory ({customers.length})
               </span>
             </div>
 
-            {filteredCustomers.length === 0 ? (
+            {customers.length === 0 ? (
               <div className="p-16 text-center text-slate-405 text-lg font-semibold bg-white">
                 No customer records logged. Click "+ Onboard New Customer" to add one.
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {displayedCustomers.map((customer) => (
+                {customers.map((customer) => (
                   <div 
                     key={customer.id} 
                     className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-slate-50/20 transition-colors"
@@ -208,10 +204,10 @@ export default function AddCustomerView({
                 ))}
               </div>
             )}
-            {filteredCustomers.length > visibleCount && (
+            {customers.length >= 20 && customers.length % 20 === 0 && (
               <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
                 <button
-                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  onClick={() => fetchMoreData('customers', customers.length, searchQuery)}
                   className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
                 >
                   Load More Customers

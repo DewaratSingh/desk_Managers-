@@ -6,33 +6,42 @@ const router = express.Router();
 // Get all RFQs — each row includes an `items` array
 router.get('/', async (req, res) => {
   const { search } = req.query;
+  const limit = parseInt(req.query.limit) || 20;
+  const offset = parseInt(req.query.offset) || 0;
+
   try {
     let whereClause = '';
-    let values = [];
+    let values = [limit, offset];
 
     if (search) {
-      whereClause = `WHERE r.rfq_no ILIKE $1 OR r.buyer_name ILIKE $1 OR r.customer_id ILIKE $1`;
-      values = [`%${search}%`];
+      whereClause = `WHERE r.rfq_no ILIKE $3 OR b.name ILIKE $3 OR r.customer_id ILIKE $3`;
+      values = [limit, offset, `%${search}%`];
     }
 
     const queryText = `
       SELECT r.*,
+        b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
+        c.name AS customer_name, c.address AS customer_address,
         COALESCE(
           json_agg(
             json_build_object(
               'item_code', ri.item_code,
-              'description', ri.description,
-              'drawing_number', ri.drawing_number,
+              'description', i.description,
+              'drawing_number', i.drawing_number,
               'quantity', ri.quantity
             ) ORDER BY ri.id
           ) FILTER (WHERE ri.item_code IS NOT NULL),
           '[]'
         ) AS items
       FROM rfqs r
+      LEFT JOIN buyers b ON r.buyer_id = b.id
+      LEFT JOIN customers c ON r.customer_id = c.id
       LEFT JOIN rfq_items ri ON r.rfq_no = ri.rfq_no
+      LEFT JOIN items i ON ri.item_code = i.item_code
       ${whereClause}
-      GROUP BY r.rfq_no
+      GROUP BY r.rfq_no, b.name, b.email, b.phone, c.name, c.address
       ORDER BY r.created_at DESC
+      LIMIT $1 OFFSET $2
     `;
     const { rows } = await pool.query(queryText, values);
     res.json(rows);
@@ -60,13 +69,12 @@ router.post('/', async (req, res) => {
 
     const rfqResult = await client.query(`
       INSERT INTO rfqs (rfq_no, rfq_date, commercial_bid_due_date, technical_bid_due_date,
-        buyer_id, buyer_name, buyer_email, buyer_phone, customer_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        buyer_id, customer_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `, [
       rfq_no.trim(), rfq_date, commercial_bid_due_date, technical_bid_due_date,
-      buyer_id || null, buyer_name || null, buyer_email || null,
-      buyer_phone || null, customer_id || null
+      buyer_id || null, customer_id || null
     ]);
 
     // Validate and insert associated items
@@ -78,10 +86,10 @@ router.post('/', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO rfq_items (rfq_no, item_code, description, drawing_number, quantity)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO rfq_items (rfq_no, item_code, quantity)
+        VALUES ($1, $2, $3)
         ON CONFLICT (rfq_no, item_code) DO NOTHING
-      `, [rfq_no.trim(), item.item_code, item.description || null, item.drawing_number || null, qty]);
+      `, [rfq_no.trim(), item.item_code, qty]);
     }
 
     await client.query('COMMIT');
@@ -89,12 +97,17 @@ router.post('/', async (req, res) => {
     // Return RFQ with items array
     const { rows } = await pool.query(`
       SELECT r.*,
+        b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
         COALESCE(
-          json_agg(json_build_object('item_code', ri.item_code, 'description', ri.description, 'drawing_number', ri.drawing_number, 'quantity', ri.quantity) ORDER BY ri.id)
+          json_agg(json_build_object('item_code', ri.item_code, 'description', i.description, 'drawing_number', i.drawing_number, 'quantity', ri.quantity) ORDER BY ri.id)
           FILTER (WHERE ri.item_code IS NOT NULL), '[]'
         ) AS items
-      FROM rfqs r LEFT JOIN rfq_items ri ON r.rfq_no = ri.rfq_no
-      WHERE r.rfq_no = $1 GROUP BY r.rfq_no
+      FROM rfqs r
+      LEFT JOIN buyers b ON r.buyer_id = b.id
+      LEFT JOIN customers c ON r.customer_id = c.id
+      LEFT JOIN rfq_items ri ON r.rfq_no = ri.rfq_no
+      LEFT JOIN items i ON ri.item_code = i.item_code
+      WHERE r.rfq_no = $1 GROUP BY r.rfq_no, b.name, b.email, b.phone, c.name, c.address
     `, [rfq_no.trim()]);
 
     res.status(201).json(rows[0]);
@@ -130,13 +143,11 @@ router.put('/:rfq_no', async (req, res) => {
     const rfqResult = await client.query(`
       UPDATE rfqs SET
         rfq_date = $1, commercial_bid_due_date = $2, technical_bid_due_date = $3,
-        buyer_id = $4, buyer_name = $5, buyer_email = $6,
-        buyer_phone = $7, customer_id = $8
-      WHERE rfq_no = $9 RETURNING *
+        buyer_id = $4, customer_id = $5
+      WHERE rfq_no = $6 RETURNING *
     `, [
       rfq_date, commercial_bid_due_date, technical_bid_due_date,
-      buyer_id || null, buyer_name || null, buyer_email || null,
-      buyer_phone || null, customer_id || null, rfq_no
+      buyer_id || null, customer_id || null, rfq_no
     ]);
 
     if (rfqResult.rows.length === 0) {
@@ -154,9 +165,9 @@ router.put('/:rfq_no', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO rfq_items (rfq_no, item_code, description, drawing_number, quantity)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [rfq_no, item.item_code, item.description || null, item.drawing_number || null, qty]);
+        INSERT INTO rfq_items (rfq_no, item_code, quantity)
+        VALUES ($1, $2, $3)
+      `, [rfq_no, item.item_code, qty]);
     }
 
     await client.query('COMMIT');
@@ -164,12 +175,18 @@ router.put('/:rfq_no', async (req, res) => {
     // Return updated RFQ with items
     const { rows } = await pool.query(`
       SELECT r.*,
+        b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
+        c.name AS customer_name, c.address AS customer_address,
         COALESCE(
-          json_agg(json_build_object('item_code', ri.item_code, 'description', ri.description, 'drawing_number', ri.drawing_number, 'quantity', ri.quantity) ORDER BY ri.id)
+          json_agg(json_build_object('item_code', ri.item_code, 'description', i.description, 'drawing_number', i.drawing_number, 'quantity', ri.quantity) ORDER BY ri.id)
           FILTER (WHERE ri.item_code IS NOT NULL), '[]'
         ) AS items
-      FROM rfqs r LEFT JOIN rfq_items ri ON r.rfq_no = ri.rfq_no
-      WHERE r.rfq_no = $1 GROUP BY r.rfq_no
+      FROM rfqs r
+      LEFT JOIN buyers b ON r.buyer_id = b.id
+      LEFT JOIN customers c ON r.customer_id = c.id
+      LEFT JOIN rfq_items ri ON r.rfq_no = ri.rfq_no
+      LEFT JOIN items i ON ri.item_code = i.item_code
+      WHERE r.rfq_no = $1 GROUP BY r.rfq_no, b.name, b.email, b.phone, c.name, c.address
     `, [rfq_no]);
 
     res.json(rows[0]);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FolderLock, Lock, User, AlertCircle } from 'lucide-react';
-import logoImg from '../assets/image.png';
+import logoImg from '../assets/image.jpeg';
 export default function LoginView({ onLogin, isLoading, error }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -33,7 +34,9 @@ export default function AddQuotationView({
   onAddQuotation,
   onUpdateQuotation,
   isLoading,
-  error
+  error,
+  fetchMoreData,
+  searchResource
 }) {
   const [viewMode, setViewMode] = useState('list');
   const [formData, setFormData] = useState(EMPTY_FORM);
@@ -80,7 +83,7 @@ export default function AddQuotationView({
     }
   };
 
-  const handleRfqInput = (val) => {
+  const handleRfqInput = async (val) => {
     setRfqInput(val);
     setFormData((prev) => ({ ...prev, rfq_no: val }));
     setSelectedRFQ(null);
@@ -92,12 +95,12 @@ export default function AddQuotationView({
       return;
     }
 
-    // Prefix-matching starting from query
-    const filtered = rfqs.filter((r) =>
-      r.rfq_no.toLowerCase().startsWith(val.toLowerCase())
-    );
-    setRfqSuggestions(filtered);
-    setShowRfqDropdown(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/rfqs?search=${encodeURIComponent(val)}&limit=5`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
+      const data = await res.json();
+      setRfqSuggestions(data);
+      setShowRfqDropdown(true);
+    } catch(e) { console.error(e); }
   };
 
   const selectRFQ = (rfq) => {
@@ -240,13 +243,14 @@ export default function AddQuotationView({
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
 
   /* ── Filter Directory ── */
-  const filteredQuotations = quotations.filter((q) => {
-    const qry = searchQuery.toLowerCase();
-    return (
-      (q.quotation_no && q.quotation_no.toLowerCase().includes(qry)) ||
-      (q.rfq_no && q.rfq_no.toLowerCase().includes(qry))
-    );
-  });
+  useEffect(() => {
+    if (searchResource) {
+      const delayDebounceFn = setTimeout(() => {
+        searchResource('quotations', searchQuery);
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery]);
 
   const fmtDate = (d) => {
     if (!d) return '—';
@@ -308,17 +312,17 @@ export default function AddQuotationView({
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
               <span className="text-sm font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                 <ListFilter size={16} className="text-blue-600" />
-                Quotation Directory ({filteredQuotations.length})
+                Quotation Directory ({quotations.length})
               </span>
             </div>
 
-            {filteredQuotations.length === 0 ? (
+            {quotations.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-lg font-semibold">
                 No quotations found. Click "New Quotation" to create one.
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {filteredQuotations.map((q) => (
+                {quotations.map((q) => (
                   <div
                     key={q.quotation_no}
                     className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white hover:bg-slate-50/75 transition-colors"
@@ -343,14 +347,32 @@ export default function AddQuotationView({
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleEditClick(q)}
-                      className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Edit2 size={14} /> Update Record
-                    </button>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <button
+                        onClick={() => handleEditClick(q)}
+                        className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit2 size={14} /> Update Record
+                      </button>
+                      <Link
+                        to={`/quotation/${q.quotation_no}`}
+                        className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 justify-center"
+                      >
+                        View Details
+                      </Link>
+                    </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {quotations.length >= 20 && quotations.length % 20 === 0 && (
+              <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
+                <button
+                  onClick={() => fetchMoreData('quotations', quotations.length, searchQuery)}
+                  className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
+                >
+                  Load More Quotations
+                </button>
               </div>
             )}
           </div>

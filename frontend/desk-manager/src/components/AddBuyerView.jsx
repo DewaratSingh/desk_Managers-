@@ -17,7 +17,9 @@ export default function AddBuyerView({
   forceFormOpen,
   onClearForceFormOpen,
   isLoading,
-  error
+  error,
+  fetchMoreData,
+  searchResource
 }) {
   // viewMode: 'list' (default) or 'form'
   const [viewMode, setViewMode] = useState('list');
@@ -47,6 +49,15 @@ export default function AddBuyerView({
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
+
+  React.useEffect(() => {
+    if (searchResource) {
+      const delayDebounceFn = setTimeout(() => {
+        searchResource('buyers', searchQuery);
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery]);
 
   // Handle Edit Select
   const handleEditClick = (buyer) => {
@@ -101,23 +112,8 @@ export default function AddBuyerView({
     }
   };
 
-  // Filter buyers
-  const filteredBuyers = buyers.filter(buyer => {
-    const q = searchQuery.toLowerCase();
-    return (
-      (buyer.name && buyer.name.toLowerCase().includes(q)) ||
-      (buyer.email && buyer.email.toLowerCase().includes(q)) ||
-      (buyer.phone && buyer.phone.toLowerCase().includes(q))
-    );
-  });
+  // We don't need client-side filter/slice anymore since the API handles it
 
-  const [visibleCount, setVisibleCount] = useState(20);
-
-  React.useEffect(() => {
-    setVisibleCount(20);
-  }, [searchQuery]);
-
-  const displayedBuyers = filteredBuyers.slice(0, visibleCount);
 
   return (
     <div className="flex-1 p-4 sm:p-8 lg:p-10 bg-[#f1f5f9] max-w-5xl mx-auto w-full text-slate-900">
@@ -166,17 +162,17 @@ export default function AddBuyerView({
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
               <span className="text-sm font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                 <ListFilter size={16} className="text-blue-600" />
-                Buyer Database Directory ({filteredBuyers.length})
+                Buyer Database Directory ({buyers.length})
               </span>
             </div>
 
-            {filteredBuyers.length === 0 ? (
+            {buyers.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-lg font-semibold bg-white">
                 No buyer records logged. Click "+ Onboard New Buyer" to add one.
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {displayedBuyers.map((buyer) => (
+                {buyers.map((buyer) => (
                   <div 
                     key={buyer.id} 
                     className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-slate-50/20 transition-colors"
@@ -204,10 +200,10 @@ export default function AddBuyerView({
                 ))}
               </div>
             )}
-            {filteredBuyers.length > visibleCount && (
+            {buyers.length >= 20 && buyers.length % 20 === 0 && (
               <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
                 <button
-                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  onClick={() => fetchMoreData('buyers', buyers.length, searchQuery)}
                   className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
                 >
                   Load More Buyers

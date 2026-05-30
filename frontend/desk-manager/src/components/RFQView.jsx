@@ -27,7 +27,8 @@ export default function RFQView({
   rfqs, buyers, customers, items: catalogItems,
   onAddRFQ, onUpdateRFQ,
   onNavigateAndOpenForm,
-  isLoading, error
+  isLoading, error,
+  fetchMoreData, searchResource
 }) {
   const [viewMode, setViewMode] = useState('list');
   const [formData, setFormData] = useState(EMPTY_FORM);
@@ -65,13 +66,17 @@ export default function RFQView({
   }, []);
 
   // ── Buyer ──
-  const handleBuyerInput = (val) => {
+  const handleBuyerInput = async (val) => {
     setBuyerInput(val);
     setFormData(prev => ({ ...prev, buyer_name: val, buyer_id: null, buyer_email: '', buyer_phone: '' }));
     if (!val.trim()) { setBuyerSuggestions([]); setShowBuyerDropdown(false); return; }
-    const filtered = buyers.filter(b => b.name.toLowerCase().startsWith(val.toLowerCase()) || b.email.toLowerCase().startsWith(val.toLowerCase()));
-    setBuyerSuggestions(filtered);
-    setShowBuyerDropdown(true);
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/buyers?search=${encodeURIComponent(val)}&limit=5`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
+      const data = await res.json();
+      setBuyerSuggestions(data);
+      setShowBuyerDropdown(true);
+    } catch(e) { console.error(e); }
   };
   const selectBuyer = (b) => {
     setBuyerInput(b.name);
@@ -82,13 +87,17 @@ export default function RFQView({
     buyers.filter(b => b.name.toLowerCase().startsWith(buyerInput.toLowerCase())).length === 0;
 
   // ── Customer ──
-  const handleCustomerInput = (val) => {
+  const handleCustomerInput = async (val) => {
     setCustomerInput(val);
     setFormData(prev => ({ ...prev, customer_id: val }));
     if (!val.trim()) { setCustomerSuggestions([]); setShowCustomerDropdown(false); return; }
-    const filtered = customers.filter(c => c.id.toLowerCase().startsWith(val.toLowerCase()) || c.name.toLowerCase().startsWith(val.toLowerCase()));
-    setCustomerSuggestions(filtered);
-    setShowCustomerDropdown(true);
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/customers?search=${encodeURIComponent(val)}&limit=5`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
+      const data = await res.json();
+      setCustomerSuggestions(data);
+      setShowCustomerDropdown(true);
+    } catch(e) { console.error(e); }
   };
   const selectCustomer = (c) => {
     setCustomerInput(c.id);
@@ -99,18 +108,17 @@ export default function RFQView({
     customers.filter(c => c.id.toLowerCase().startsWith(customerInput.toLowerCase()) || c.name.toLowerCase().startsWith(customerInput.toLowerCase())).length === 0;
 
   // ── Items ──
-  const handleItemSearch = (val) => {
+  const handleItemSearch = async (val) => {
     setItemSearch(val);
     if (!val.trim()) { setItemSuggestions([]); setShowItemDropdown(false); return; }
-    const q = val.toLowerCase();
-    const filtered = (catalogItems || []).filter(i => {
-      const matchesSearch = i.item_code.toLowerCase().startsWith(q) ||
-        (i.description && i.description.toLowerCase().startsWith(q));
-      const alreadyAdded = selectedItems.some(si => si.item_code === i.item_code);
-      return matchesSearch && !alreadyAdded;
-    });
-    setItemSuggestions(filtered);
-    setShowItemDropdown(true);
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/items?search=${encodeURIComponent(val)}&limit=10`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
+      const data = await res.json();
+      const filtered = data.filter(i => !selectedItems.some(si => si.item_code === i.item_code));
+      setItemSuggestions(filtered);
+      setShowItemDropdown(true);
+    } catch(e) { console.error(e); }
   };
 
   const addItem = (item) => {
@@ -209,22 +217,14 @@ export default function RFQView({
   const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
 
   // ── Filter list ──
-  const filteredRFQs = rfqs.filter(r => {
-    const q = searchQuery.toLowerCase();
-    return (
-      (r.rfq_no && r.rfq_no.toLowerCase().includes(q)) ||
-      (r.buyer_name && r.buyer_name.toLowerCase().includes(q)) ||
-      (r.customer_id && r.customer_id.toLowerCase().includes(q))
-    );
-  });
-
-  const [visibleCount, setVisibleCount] = useState(20);
-
   useEffect(() => {
-    setVisibleCount(20);
+    if (searchResource) {
+      const delayDebounceFn = setTimeout(() => {
+        searchResource('rfqs', searchQuery);
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
+    }
   }, [searchQuery]);
-
-  const displayedRFQs = filteredRFQs.slice(0, visibleCount);
 
   const inputCls = "w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium";
   const labelCls = "block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider";
@@ -257,15 +257,15 @@ export default function RFQView({
           <div className="border-2 border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
               <span className="text-sm font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                <ListFilter size={16} className="text-blue-600" /> RFQ Directory ({filteredRFQs.length})
+                <ListFilter size={16} className="text-blue-600" /> RFQ Directory ({rfqs.length})
               </span>
             </div>
 
-            {filteredRFQs.length === 0 ? (
+            {rfqs.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-lg font-semibold">No RFQ records found. Click "+ New RFQ" to create one.</div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {displayedRFQs.map((rfq) => (
+                {rfqs.map((rfq) => (
                     <div key={rfq.rfq_no} className="p-4 flex items-center gap-4 bg-white hover:bg-slate-50 transition-colors rounded-xl border border-slate-200">
                       <span className="font-mono font-extrabold text-sm text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">{rfq.rfq_no}</span>
                       <span className="text-sm text-slate-600">{fmtDate(rfq.rfq_date)}</span>
@@ -284,10 +284,10 @@ export default function RFQView({
                 ))}
               </div>
             )}
-            {filteredRFQs.length > visibleCount && (
+            {rfqs.length >= 20 && rfqs.length % 20 === 0 && (
               <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
                 <button
-                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  onClick={() => fetchMoreData('rfqs', rfqs.length, searchQuery)}
                   className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
                 >
                   Load More RFQs

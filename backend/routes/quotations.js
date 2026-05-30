@@ -6,23 +6,27 @@ const router = express.Router();
 // Get all quotations
 router.get('/', async (req, res) => {
   const { search } = req.query;
+  const limit = parseInt(req.query.limit) || 20;
+  const offset = parseInt(req.query.offset) || 0;
+
   try {
     let whereClause = '';
-    let values = [];
+    let values = [limit, offset];
 
     if (search) {
-      whereClause = `WHERE q.quotation_no ILIKE $1 OR q.rfq_no ILIKE $1`;
-      values = [`%${search}%`];
+      whereClause = `WHERE q.quotation_no ILIKE $3 OR q.rfq_no ILIKE $3`;
+      values = [limit, offset, `%${search}%`];
     }
 
     const queryText = `
       SELECT q.*,
+        r.customer_id, c.name AS customer_name, c.address AS customer_address,
         COALESCE(
           json_agg(
             json_build_object(
               'item_code', qi.item_code,
-              'description', qi.description,
-              'drawing_number', qi.drawing_number,
+              'description', i.description,
+              'drawing_number', i.drawing_number,
               'quantity', qi.quantity,
               'unit_price', qi.unit_price
             ) ORDER BY qi.id
@@ -31,9 +35,13 @@ router.get('/', async (req, res) => {
         ) AS items
       FROM quotations q
       LEFT JOIN quotation_items qi ON q.quotation_no = qi.quotation_no
+      LEFT JOIN items i ON qi.item_code = i.item_code
+      LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
+      LEFT JOIN customers c ON r.customer_id = c.id
       ${whereClause}
-      GROUP BY q.quotation_no
+      GROUP BY q.quotation_no, r.customer_id, c.name, c.address
       ORDER BY q.created_at DESC
+      LIMIT $1 OFFSET $2
     `;
     const { rows } = await pool.query(queryText, values);
     res.json(rows);
@@ -130,22 +138,23 @@ router.post('/', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO quotation_items (quotation_no, item_code, description, drawing_number, quantity, unit_price)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO quotation_items (quotation_no, item_code, quantity, unit_price)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (quotation_no, item_code) DO NOTHING
-      `, [quotation_no, item.item_code, item.description || null, item.drawing_number || null, qty, price]);
+      `, [quotation_no, item.item_code, qty, price]);
     }
 
     await client.query('COMMIT');
 
     const { rows } = await pool.query(`
       SELECT q.*,
+        r.customer_id, c.name AS customer_name, c.address AS customer_address,
         COALESCE(
           json_agg(
             json_build_object(
               'item_code', qi.item_code,
-              'description', qi.description,
-              'drawing_number', qi.drawing_number,
+              'description', i.description,
+              'drawing_number', i.drawing_number,
               'quantity', qi.quantity,
               'unit_price', qi.unit_price
             ) ORDER BY qi.id
@@ -154,8 +163,11 @@ router.post('/', async (req, res) => {
         ) AS items
       FROM quotations q
       LEFT JOIN quotation_items qi ON q.quotation_no = qi.quotation_no
+      LEFT JOIN items i ON qi.item_code = i.item_code
+      LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
+      LEFT JOIN customers c ON r.customer_id = c.id
       WHERE q.quotation_no = $1
-      GROUP BY q.quotation_no
+      GROUP BY q.quotation_no, r.customer_id, c.name, c.address
     `, [quotation_no]);
 
     res.status(201).json(rows[0]);
@@ -211,21 +223,22 @@ router.put('/:quotation_no', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO quotation_items (quotation_no, item_code, description, drawing_number, quantity, unit_price)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [quotation_no, item.item_code, item.description || null, item.drawing_number || null, qty, price]);
+        INSERT INTO quotation_items (quotation_no, item_code, quantity, unit_price)
+        VALUES ($1, $2, $3, $4)
+      `, [quotation_no, item.item_code, qty, price]);
     }
 
     await client.query('COMMIT');
 
     const { rows } = await pool.query(`
       SELECT q.*,
+        r.customer_id, c.name AS customer_name, c.address AS customer_address,
         COALESCE(
           json_agg(
             json_build_object(
               'item_code', qi.item_code,
-              'description', qi.description,
-              'drawing_number', qi.drawing_number,
+              'description', i.description,
+              'drawing_number', i.drawing_number,
               'quantity', qi.quantity,
               'unit_price', qi.unit_price
             ) ORDER BY qi.id
@@ -234,8 +247,11 @@ router.put('/:quotation_no', async (req, res) => {
         ) AS items
       FROM quotations q
       LEFT JOIN quotation_items qi ON q.quotation_no = qi.quotation_no
+      LEFT JOIN items i ON qi.item_code = i.item_code
+      LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
+      LEFT JOIN customers c ON r.customer_id = c.id
       WHERE q.quotation_no = $1
-      GROUP BY q.quotation_no
+      GROUP BY q.quotation_no, r.customer_id, c.name, c.address
     `, [quotation_no]);
 
     res.json(rows[0]);

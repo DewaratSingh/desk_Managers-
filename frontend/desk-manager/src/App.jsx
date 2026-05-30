@@ -7,6 +7,7 @@ import AddBuyerView from './components/AddBuyerView';
 import AddItemView from './components/AddItemView';
 import RFQView from './components/RFQView';
 import RFQDetailView from './components/RFQDetailView';
+import QuotationDetailView from './components/QuotationDetailView';
 import AddQuotationView from './components/AddQuotationView';
 import LoginView from './components/LoginView';
 import { ToastContainer, toast } from 'react-toastify';
@@ -148,11 +149,11 @@ export default function App() {
     try {
       const headers = { 'Authorization': `Bearer ${activeToken}` };
       const [custRes, buyerRes, itemRes, rfqRes, quotationRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/customers`, { headers }),
-        fetch(`${API_BASE_URL}/buyers`, { headers }),
-        fetch(`${API_BASE_URL}/items`, { headers }),
-        fetch(`${API_BASE_URL}/rfqs`, { headers }),
-        fetch(`${API_BASE_URL}/quotations`, { headers }),
+        fetch(`${API_BASE_URL}/customers?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/buyers?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/items?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/rfqs?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/quotations?limit=20&offset=0`, { headers }),
       ]);
 
       if (
@@ -180,6 +181,48 @@ export default function App() {
       setError('Unable to connect to the API. Please verify the backend service is running on port 5000.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchMoreData = async (resource, offset, searchQuery = '') => {
+    try {
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const url = `${API_BASE_URL}/${resource}?limit=20&offset=${offset}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`;
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error('Failed to load more data');
+      const newData = await res.json();
+      
+      if (resource === 'customers') setCustomers(prev => [...prev, ...newData]);
+      else if (resource === 'buyers') setBuyers(prev => [...prev, ...newData]);
+      else if (resource === 'items') setItems(prev => [...prev, ...newData]);
+      else if (resource === 'rfqs') setRfqs(prev => [...prev, ...newData]);
+      else if (resource === 'quotations') setQuotations(prev => [...prev, ...newData]);
+      
+      return newData;
+    } catch (err) {
+      triggerToast(err.message, 'error');
+      return [];
+    }
+  };
+
+  const searchResource = async (resource, searchQuery) => {
+    try {
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const url = `${API_BASE_URL}/${resource}?limit=20&offset=0${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`;
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error('Search failed');
+      const data = await res.json();
+
+      if (resource === 'customers') setCustomers(data);
+      else if (resource === 'buyers') setBuyers(data);
+      else if (resource === 'items') setItems(data);
+      else if (resource === 'rfqs') setRfqs(data);
+      else if (resource === 'quotations') setQuotations(data);
+      
+      return data;
+    } catch (err) {
+      triggerToast(err.message, 'error');
+      return [];
     }
   };
 
@@ -524,6 +567,8 @@ export default function App() {
             onClearForceFormOpen={() => setForceFormOpen(null)}
             isLoading={isLoading}
             error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
           />
         );
       case 'add-buyer':
@@ -537,6 +582,8 @@ export default function App() {
             onClearForceFormOpen={() => setForceFormOpen(null)}
             isLoading={isLoading}
             error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
           />
         );
       case 'add-item':
@@ -550,6 +597,8 @@ export default function App() {
             onClearForceFormOpen={() => setForceFormOpen(null)}
             isLoading={isLoading}
             error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
           />
         );
       case 'rfq':
@@ -567,6 +616,8 @@ export default function App() {
             }}
             isLoading={isLoading}
             error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
           />
         );
       case 'quotation':
@@ -578,6 +629,8 @@ export default function App() {
             onUpdateQuotation={handleUpdateQuotation}
             isLoading={isLoading}
             error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
           />
         );
       default:
@@ -647,6 +700,13 @@ export default function App() {
               buyers={buyers}
               customers={customers}
               items={items}
+            />
+          } />
+          <Route path="/quotation/:quotation_no" element={
+            <QuotationDetailView
+              quotations={quotations}
+              rfqs={rfqs}
+              customers={customers}
             />
           } />
         </Routes>

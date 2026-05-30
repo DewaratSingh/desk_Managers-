@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { initializeDatabase } = require('./db');
 const { authenticateToken } = require('./middleware/auth');
 
@@ -22,9 +23,9 @@ app.use(express.json());
 // Initialize PostgreSQL connection and tables
 initializeDatabase();
 
-app.get('/', (req, res) => {
-  res.send('DeskManager API is online and connected to PostgreSQL!');
-});
+// app.get('/', (req, res) => {
+//   res.send('DeskManager API is online and connected to PostgreSQL!');
+// });
 
 // ============================================================================
 // MOUNT API ROUTERS
@@ -39,6 +40,19 @@ app.use('/api/buyers', authenticateToken, buyersRouter);
 app.use('/api/items', authenticateToken, itemsRouter);
 app.use('/api/rfqs', authenticateToken, rfqsRouter);
 app.use('/api/quotations', authenticateToken, quotationsRouter);
+
+// Serve static frontend
+const frontendDistPath = path.join(__dirname, '../frontend/desk-manager/dist');
+app.use(express.static(frontendDistPath));
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+// Handle React routing, return all requests to React app
+app.get(/^.*$/, (req, res) => {
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
 
 app.listen(port, () => {
   console.log(`Server is successfully running on port ${port}`);

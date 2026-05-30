@@ -25,7 +25,9 @@ export default function AddItemView({
   forceFormOpen,
   onClearForceFormOpen,
   isLoading,
-  error
+  error,
+  fetchMoreData,
+  searchResource
 }) {
   // viewMode: 'list' (default) | 'form'
   const [viewMode, setViewMode] = useState('list');
@@ -42,6 +44,16 @@ export default function AddItemView({
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingCode, setEditingCode] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  React.useEffect(() => {
+    if (searchResource) {
+      const delayDebounceFn = setTimeout(() => {
+        searchResource('items', searchQuery);
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery]);
+
   // Track which items have their long description expanded
   const [expandedItems, setExpandedItems] = useState(new Set());
 
@@ -98,24 +110,8 @@ export default function AddItemView({
     }
   };
 
-  /* ── Filter ── */
-  const filteredItems = items.filter((item) => {
-    const q = searchQuery.toLowerCase();
-    return (
-      (item.item_code && item.item_code.toLowerCase().includes(q)) ||
-      (item.description && item.description.toLowerCase().includes(q)) ||
-      (item.drawing_number && item.drawing_number.toLowerCase().includes(q)) ||
-      (item.long_description && item.long_description.toLowerCase().includes(q))
-    );
-  });
+  /* ── We don't need client-side filter/slice anymore since the API handles it ── */
 
-  const [visibleCount, setVisibleCount] = useState(20);
-
-  React.useEffect(() => {
-    setVisibleCount(20);
-  }, [searchQuery]);
-
-  const displayedItems = filteredItems.slice(0, visibleCount);
 
   return (
     <div className="flex-1 p-4 sm:p-8 lg:p-10 bg-[#f1f5f9] max-w-5xl mx-auto w-full text-slate-900">
@@ -164,17 +160,17 @@ export default function AddItemView({
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
               <span className="text-sm font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                 <ListFilter size={16} className="text-blue-600" />
-                Item Directory ({filteredItems.length})
+                Item Directory ({items.length})
               </span>
             </div>
 
-            {filteredItems.length === 0 ? (
+            {items.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-lg font-semibold bg-white">
                 No items in catalog. Click "+ Add New Item" to get started.
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {displayedItems.map((item) => {
+                {items.map((item) => {
                   const isExpanded = expandedItems.has(item.item_code);
                   const longLines = item.long_description
                     ? item.long_description.split(/\n/)
@@ -263,10 +259,10 @@ export default function AddItemView({
                 })}
               </div>
             )}
-            {filteredItems.length > visibleCount && (
+            {items.length >= 20 && items.length % 20 === 0 && (
               <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
                 <button
-                  onClick={() => setVisibleCount(prev => prev + 20)}
+                  onClick={() => fetchMoreData('items', items.length, searchQuery)}
                   className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
                 >
                   Load More Items

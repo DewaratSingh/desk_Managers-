@@ -6,17 +6,21 @@ const router = express.Router();
 // Get all buyers
 router.get('/', async (req, res) => {
   const { search } = req.query;
+  const limit = parseInt(req.query.limit) || 20;
+  const offset = parseInt(req.query.offset) || 0;
+
   try {
-    let queryText = 'SELECT * FROM buyers ORDER BY id DESC';
-    let values = [];
+    let queryText = 'SELECT * FROM buyers ORDER BY id DESC LIMIT $1 OFFSET $2';
+    let values = [limit, offset];
 
     if (search) {
       queryText = `
         SELECT * FROM buyers 
         WHERE name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1 
         ORDER BY id DESC
+        LIMIT $2 OFFSET $3
       `;
-      values = [`%${search}%`];
+      values = [`%${search}%`, limit, offset];
     }
 
     const { rows } = await pool.query(queryText, values);

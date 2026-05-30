@@ -11,7 +11,7 @@ import {
   ClipboardList,
   FileText
 } from 'lucide-react';
-import logoImg from '../assets/image.png';
+import logoImg from '../assets/image.jpeg';
 export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
   const [isOpen, setIsOpen] = useState(false);
 

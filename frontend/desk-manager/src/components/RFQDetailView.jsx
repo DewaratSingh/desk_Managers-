@@ -50,20 +50,22 @@ export default function RFQDetailView({ rfqs, buyers, customers, items }) {
         </div>
         {/* Buyer & Customer */}
         <div>
-          {buyer ? (
+          {rfq.buyer_name || buyer ? (
             <div className="mb-3">
               <p className="font-semibold text-slate-700">Buyer</p>
-              <p>{buyer.name}</p>
-              <p className="text-sm text-slate-500">{buyer.email} • {buyer.phone}</p>
+              <p>{rfq.buyer_name || buyer?.name}</p>
+              <p className="text-sm text-slate-500">
+                {rfq.buyer_email || buyer?.email} • {rfq.buyer_phone || buyer?.phone}
+              </p>
             </div>
           ) : (
             <p className="text-slate-500">Buyer information not available.</p>
           )}
-          {customer ? (
+          {rfq.customer_name || customer ? (
             <div>
               <p className="font-semibold text-slate-700">Customer</p>
-              <p>{customer.name} ({customer.id})</p>
-              <p className="text-sm text-slate-500">{customer.address}</p>
+              <p>{rfq.customer_name || customer?.name} ({rfq.customer_id || customer?.id})</p>
+              <p className="text-sm text-slate-500">{rfq.customer_address || customer?.address}</p>
             </div>
           ) : (
             <p className="text-slate-500">Customer information not available.</p>

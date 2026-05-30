@@ -86,9 +86,6 @@ const initializeDatabase = async () => {
         commercial_bid_due_date DATE NOT NULL,
         technical_bid_due_date DATE NOT NULL,
         buyer_id INTEGER,
-        buyer_name VARCHAR(255),
-        buyer_email VARCHAR(255),
-        buyer_phone VARCHAR(50),
         customer_id VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -100,8 +97,6 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         rfq_no VARCHAR(100) NOT NULL REFERENCES rfqs(rfq_no) ON DELETE CASCADE,
         item_code VARCHAR(100) NOT NULL,
-        description VARCHAR(500),
-        drawing_number VARCHAR(255),
         quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(rfq_no, item_code)
@@ -139,14 +134,31 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         quotation_no VARCHAR(100) NOT NULL REFERENCES quotations(quotation_no) ON DELETE CASCADE,
         item_code VARCHAR(100) NOT NULL,
-        description VARCHAR(500),
-        drawing_number VARCHAR(255),
         quantity INTEGER NOT NULL CHECK (quantity > 0),
         unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(quotation_no, item_code)
       );
     `);
+
+    // --- Schema Normalization Migrations ---
+    console.log('Running schema normalization migrations...');
+    await client.query(`
+      ALTER TABLE rfqs
+        DROP COLUMN IF EXISTS buyer_name,
+        DROP COLUMN IF EXISTS buyer_email,
+        DROP COLUMN IF EXISTS buyer_phone;
+
+      ALTER TABLE rfq_items
+        DROP COLUMN IF EXISTS description,
+        DROP COLUMN IF EXISTS drawing_number;
+
+      ALTER TABLE quotation_items
+        DROP COLUMN IF EXISTS description,
+        DROP COLUMN IF EXISTS drawing_number;
+    `);
+    console.log('Schema normalization migrations completed.');
+    // ----------------------------------------
 
     console.log('Database tables successfully verified/created.');
   } catch (error) {
