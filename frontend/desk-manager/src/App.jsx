@@ -13,7 +13,9 @@ import LoginView from './components/LoginView';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? 'http://localhost:5000/api'
+  : `${window.location.protocol}//${window.location.hostname}:5000/api`;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');

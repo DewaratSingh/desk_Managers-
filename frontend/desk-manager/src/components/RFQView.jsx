@@ -4,6 +4,10 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? 'http://localhost:5000/api'
+  : `${window.location.protocol}//${window.location.hostname}:5000/api`;
+
 const EMPTY_FORM = {
   rfq_no: '',
   rfq_date: '',
@@ -72,7 +76,7 @@ export default function RFQView({
     if (!val.trim()) { setBuyerSuggestions([]); setShowBuyerDropdown(false); return; }
     
     try {
-      const res = await fetch(`http://localhost:5000/api/buyers?search=${encodeURIComponent(val)}&limit=5`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
+      const res = await fetch(`${API_BASE_URL}/buyers?search=${encodeURIComponent(val)}&limit=5`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
       const data = await res.json();
       setBuyerSuggestions(data);
       setShowBuyerDropdown(true);
@@ -93,7 +97,7 @@ export default function RFQView({
     if (!val.trim()) { setCustomerSuggestions([]); setShowCustomerDropdown(false); return; }
     
     try {
-      const res = await fetch(`http://localhost:5000/api/customers?search=${encodeURIComponent(val)}&limit=5`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
+      const res = await fetch(`${API_BASE_URL}/customers?search=${encodeURIComponent(val)}&limit=5`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
       const data = await res.json();
       setCustomerSuggestions(data);
       setShowCustomerDropdown(true);
@@ -113,7 +117,7 @@ export default function RFQView({
     if (!val.trim()) { setItemSuggestions([]); setShowItemDropdown(false); return; }
     
     try {
-      const res = await fetch(`http://localhost:5000/api/items?search=${encodeURIComponent(val)}&limit=10`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
+      const res = await fetch(`${API_BASE_URL}/items?search=${encodeURIComponent(val)}&limit=10`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` } });
       const data = await res.json();
       const filtered = data.filter(i => !selectedItems.some(si => si.item_code === i.item_code));
       setItemSuggestions(filtered);
