@@ -264,7 +264,7 @@ export default function RFQView({
             </button>
           </div>
 
-          {error && <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl flex items-center gap-2"><AlertCircle size={16} />{error}</div>}
+          {/* {error && <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl flex items-center gap-2"><AlertCircle size={16} />{error}</div>} */}
 
           <div className="flex items-center gap-3 border-2 border-slate-200 rounded-xl px-4 py-4 bg-white shadow-sm">
             <Search size={22} className="text-slate-400 shrink-0" />
@@ -336,7 +336,7 @@ export default function RFQView({
             <p className="text-base text-slate-500 mt-1 font-medium">{editingRFQ ? 'Update the details of an existing RFQ.' : 'Fill in the RFQ details below.'}</p>
           </div>
 
-          {error && <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl flex items-center gap-2"><AlertCircle size={16} />{error}</div>}
+          {/* {error && <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl flex items-center gap-2"><AlertCircle size={16} />{error}</div>} */}
 
           <div className="bg-white border-2 border-slate-200 rounded-xl p-5 sm:p-8 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-6">

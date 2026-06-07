@@ -370,12 +370,12 @@ export default function PurchaseOrderView({
             </button>
           </div>
 
-          {error && (
+          {/* {error && (
             <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl flex items-center gap-2">
               <AlertCircle size={16} />
               {error}
             </div>
-          )}
+          )} */}
 
           {/* Search */}
           <div className="flex items-center gap-3 border-2 border-slate-200 rounded-xl px-4 py-4 bg-white shadow-sm">
