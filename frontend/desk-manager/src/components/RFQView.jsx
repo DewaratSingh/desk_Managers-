@@ -22,9 +22,22 @@ const EMPTY_FORM = {
 
 const fmtDate = (d) => {
   if (!d) return '—';
+  if (d instanceof Date) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  if (typeof d === 'string' && d.match(/^\d{4}-\d{2}-\d{2}/)) {
+    const parts = d.substring(0, 10).split('-');
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
   const dt = new Date(d);
   if (isNaN(dt)) return d;
-  return dt.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const day = String(dt.getUTCDate()).padStart(2, '0');
+  const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const year = dt.getUTCFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 export default function RFQView({
@@ -195,10 +208,10 @@ export default function RFQView({
     e.preventDefault();
     if (!formData.rfq_no.trim() || !formData.rfq_date || !formData.commercial_bid_due_date || !formData.technical_bid_due_date) return;
     
-    if (selectedItems.length === 0) {
-      alert("At least one item is required for the RFQ");
-      return;
-    }
+    // if (selectedItems.length === 0) {
+    //   alert("At least one item is required for the RFQ");
+    //   return;
+    // }
 
     for (const item of selectedItems) {
       const qty = parseInt(item.quantity);
@@ -331,7 +344,7 @@ export default function RFQView({
 
                 {/* RFQ No. */}
                 <div>
-                  <label className={labelCls}>RFQ No. *</label>
+                  <label className={labelCls}>RFQ No. <b className="text-red-500">*</b></label>
                   <input type="text" required placeholder="e.g. RFQ-2024-001" value={formData.rfq_no} onChange={set('rfq_no')} disabled={!!editingRFQ}
                     className={inputCls + (editingRFQ ? ' bg-slate-100 text-slate-500 cursor-not-allowed' : '')} />
                   {editingRFQ && <p className="text-[11px] text-slate-400 font-semibold mt-1.5 pl-1">RFQ No. cannot be changed after creation.</p>}
@@ -340,22 +353,23 @@ export default function RFQView({
                 {/* Date row */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className={labelCls}>RFQ Date *</label>
+                    <label className={labelCls}>RFQ Date <b className="text-red-500">*</b></label>
                     <input type="date" required value={formData.rfq_date} onChange={set('rfq_date')} className={inputCls} />
+                    {console.log(formData)}
                   </div>
                   <div>
-                    <label className={labelCls}>Commercial Bid Due Date *</label>
+                    <label className={labelCls}>Commercial Bid Due Date <b className="text-red-500">*</b></label>
                     <input type="date" required value={formData.commercial_bid_due_date} onChange={set('commercial_bid_due_date')} className={inputCls} />
                   </div>
                   <div>
-                    <label className={labelCls}>Technical Bid Due Date *</label>
+                    <label className={labelCls}>Technical Bid Due Date <b className="text-red-500">*</b></label>
                     <input type="date" required value={formData.technical_bid_due_date} onChange={set('technical_bid_due_date')} className={inputCls} />
                   </div>
                 </div>
 
                 {/* Buyer */}
                 <div ref={buyerRef} className="relative">
-                  <label className={labelCls}>Buyer Name</label>
+                  <label className={labelCls}>Buyer Name <b className="text-red-500">*</b></label>
                   <input type="text" placeholder="Start typing buyer name..." value={buyerInput} onChange={(e) => handleBuyerInput(e.target.value)} onFocus={() => buyerInput.trim() && setShowBuyerDropdown(true)} className={inputCls} autoComplete="off" />
                   {showBuyerDropdown && buyerSuggestions.length > 0 && (
                     <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden">
@@ -393,7 +407,7 @@ export default function RFQView({
 
                 {/* Customer */}
                 <div ref={customerRef} className="relative">
-                  <label className={labelCls}>Customer ID</label>
+                  <label className={labelCls}>Customer ID <b className="text-red-500">*</b></label>
                   <input type="text" placeholder="Start typing customer ID or name..." value={customerInput} onChange={(e) => handleCustomerInput(e.target.value)} onFocus={() => customerInput.trim() && setShowCustomerDropdown(true)} className={inputCls} autoComplete="off" />
                   {showCustomerDropdown && customerSuggestions.length > 0 && (
                     <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden">

@@ -25,9 +25,22 @@ export default function RFQDetailView({ rfqs, buyers, customers, items }) {
 
   const fmtDate = (d) => {
     if (!d) return '—';
+    if (d instanceof Date) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+    if (typeof d === 'string' && d.match(/^\d{4}-\d{2}-\d{2}/)) {
+      const parts = d.substring(0, 10).split('-');
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
     const dt = new Date(d);
     if (isNaN(dt)) return d;
-    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const day = String(dt.getUTCDate()).padStart(2, '0');
+    const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const year = dt.getUTCFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   return (

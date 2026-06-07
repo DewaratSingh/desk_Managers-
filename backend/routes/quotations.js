@@ -14,13 +14,25 @@ router.get('/', async (req, res) => {
     let values = [limit, offset];
 
     if (search) {
-      whereClause = `WHERE q.quotation_no ILIKE $3 OR q.rfq_no ILIKE $3`;
+      whereClause = `
+        WHERE q.quotation_no ILIKE $3 
+           OR q.rfq_no ILIKE $3 
+           OR r.customer_id ILIKE $3 
+           OR b.name ILIKE $3 
+           OR b.email ILIKE $3 
+           OR EXISTS (
+             SELECT 1 FROM quotation_items qi2 
+             WHERE qi2.quotation_no = q.quotation_no 
+               AND qi2.item_code ILIKE $3
+           )
+      `;
       values = [limit, offset, `%${search}%`];
     }
 
     const queryText = `
       SELECT q.*,
         r.customer_id, c.name AS customer_name, c.address AS customer_address,
+        b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
         COALESCE(
           json_agg(
             json_build_object(
@@ -32,14 +44,27 @@ router.get('/', async (req, res) => {
             ) ORDER BY qi.id
           ) FILTER (WHERE qi.item_code IS NOT NULL),
           '[]'
-        ) AS items
+        ) AS items,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'received_quotation_no', rq.received_quotation_no,
+            'quotation_date', rq.quotation_date,
+            'buyer_name', b.name
+           ) ORDER BY rq.received_quotation_no)
+           FROM quotation_received_quotations qrq
+           LEFT JOIN received_quotations rq ON qrq.received_quotation_no = rq.received_quotation_no
+           LEFT JOIN buyers b ON rq.buyer_id = b.id
+           WHERE qrq.quotation_no = q.quotation_no
+          ), '[]'
+        ) AS received_quotations
       FROM quotations q
       LEFT JOIN quotation_items qi ON q.quotation_no = qi.quotation_no
       LEFT JOIN items i ON qi.item_code = i.item_code
       LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
       LEFT JOIN customers c ON r.customer_id = c.id
+      LEFT JOIN buyers b ON r.buyer_id = b.id
       ${whereClause}
-      GROUP BY q.quotation_no, r.customer_id, c.name, c.address
+      GROUP BY q.quotation_no, r.customer_id, c.name, c.address, b.name, b.email, b.phone
       ORDER BY q.created_at DESC
       LIMIT $1 OFFSET $2
     `;
@@ -86,7 +111,7 @@ router.get('/next-no', async (req, res) => {
 // Add new quotation
 router.post('/', async (req, res) => {
   const {
-    rfq_no, quotation_date, terms_and_conditions, items = []
+    rfq_no, quotation_date, terms_and_conditions, items = [], received_quotation_nos = []
   } = req.body;
 
   if (!rfq_no || !quotation_date) {
@@ -123,6 +148,16 @@ router.post('/', async (req, res) => {
       VALUES ($1, $2, $3, $4)
     `, [quotation_no, rfq_no, quotation_date, terms_and_conditions || null]);
 
+    // Insert linked received quotations
+    if (Array.isArray(received_quotation_nos)) {
+      for (const req_no of received_quotation_nos) {
+        await client.query(`
+          INSERT INTO quotation_received_quotations (quotation_no, received_quotation_no)
+          VALUES ($1, $2)
+        `, [quotation_no, req_no]);
+      }
+    }
+
     // Insert items
     for (const item of items) {
       const price = parseFloat(item.unit_price);
@@ -149,6 +184,7 @@ router.post('/', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT q.*,
         r.customer_id, c.name AS customer_name, c.address AS customer_address,
+        b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
         COALESCE(
           json_agg(
             json_build_object(
@@ -160,14 +196,27 @@ router.post('/', async (req, res) => {
             ) ORDER BY qi.id
           ) FILTER (WHERE qi.item_code IS NOT NULL),
           '[]'
-        ) AS items
+        ) AS items,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'received_quotation_no', rq.received_quotation_no,
+            'quotation_date', rq.quotation_date,
+            'buyer_name', b.name
+           ) ORDER BY rq.received_quotation_no)
+           FROM quotation_received_quotations qrq
+           LEFT JOIN received_quotations rq ON qrq.received_quotation_no = rq.received_quotation_no
+           LEFT JOIN buyers b ON rq.buyer_id = b.id
+           WHERE qrq.quotation_no = q.quotation_no
+          ), '[]'
+        ) AS received_quotations
       FROM quotations q
       LEFT JOIN quotation_items qi ON q.quotation_no = qi.quotation_no
       LEFT JOIN items i ON qi.item_code = i.item_code
       LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
       LEFT JOIN customers c ON r.customer_id = c.id
+      LEFT JOIN buyers b ON r.buyer_id = b.id
       WHERE q.quotation_no = $1
-      GROUP BY q.quotation_no, r.customer_id, c.name, c.address
+      GROUP BY q.quotation_no, r.customer_id, c.name, c.address, b.name, b.email, b.phone
     `, [quotation_no]);
 
     res.status(201).json(rows[0]);
@@ -184,7 +233,7 @@ router.post('/', async (req, res) => {
 router.put('/:quotation_no', async (req, res) => {
   const { quotation_no } = req.params;
   const {
-    quotation_date, terms_and_conditions, items = []
+    quotation_date, terms_and_conditions, items = [], received_quotation_nos = []
   } = req.body;
 
   if (!quotation_date) {
@@ -205,6 +254,17 @@ router.put('/:quotation_no', async (req, res) => {
     if (updateResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Quotation not found' });
+    }
+
+    // Replace received quotations
+    await client.query('DELETE FROM quotation_received_quotations WHERE quotation_no = $1', [quotation_no]);
+    if (Array.isArray(received_quotation_nos)) {
+      for (const req_no of received_quotation_nos) {
+        await client.query(`
+          INSERT INTO quotation_received_quotations (quotation_no, received_quotation_no)
+          VALUES ($1, $2)
+        `, [quotation_no, req_no]);
+      }
     }
 
     // Replace items
@@ -233,6 +293,7 @@ router.put('/:quotation_no', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT q.*,
         r.customer_id, c.name AS customer_name, c.address AS customer_address,
+        b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
         COALESCE(
           json_agg(
             json_build_object(
@@ -244,14 +305,27 @@ router.put('/:quotation_no', async (req, res) => {
             ) ORDER BY qi.id
           ) FILTER (WHERE qi.item_code IS NOT NULL),
           '[]'
-        ) AS items
+        ) AS items,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'received_quotation_no', rq.received_quotation_no,
+            'quotation_date', rq.quotation_date,
+            'buyer_name', b.name
+           ) ORDER BY rq.received_quotation_no)
+           FROM quotation_received_quotations qrq
+           LEFT JOIN received_quotations rq ON qrq.received_quotation_no = rq.received_quotation_no
+           LEFT JOIN buyers b ON rq.buyer_id = b.id
+           WHERE qrq.quotation_no = q.quotation_no
+          ), '[]'
+        ) AS received_quotations
       FROM quotations q
       LEFT JOIN quotation_items qi ON q.quotation_no = qi.quotation_no
       LEFT JOIN items i ON qi.item_code = i.item_code
       LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
       LEFT JOIN customers c ON r.customer_id = c.id
+      LEFT JOIN buyers b ON r.buyer_id = b.id
       WHERE q.quotation_no = $1
-      GROUP BY q.quotation_no, r.customer_id, c.name, c.address
+      GROUP BY q.quotation_no, r.customer_id, c.name, c.address, b.name, b.email, b.phone
     `, [quotation_no]);
 
     res.json(rows[0]);

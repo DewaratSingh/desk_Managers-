@@ -1,6 +1,10 @@
 require('dotenv').config();
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const crypto = require('crypto');
+
+// Return SQL DATE fields as raw strings ('YYYY-MM-DD') instead of converting to local Date objects.
+// This prevents timezone shift discrepancies when serializing to JSON.
+types.setTypeParser(1082, val => val);
 
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
@@ -138,6 +142,67 @@ const initializeDatabase = async () => {
         unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(quotation_no, item_code)
+      );
+    `);
+
+    // Received Quotations Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS received_quotations (
+        received_quotation_no VARCHAR(100) PRIMARY KEY,
+        buyer_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL,
+        quotation_date DATE NOT NULL,
+        terms_and_conditions TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Received Quotation Items Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS received_quotation_items (
+        id SERIAL PRIMARY KEY,
+        received_quotation_no VARCHAR(100) NOT NULL REFERENCES received_quotations(received_quotation_no) ON DELETE CASCADE,
+        item_code VARCHAR(100) NOT NULL REFERENCES items(item_code) ON DELETE CASCADE,
+        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(received_quotation_no, item_code)
+      );
+    `);
+
+    // Quotation - Received Quotation Join Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS quotation_received_quotations (
+        quotation_no VARCHAR(100) NOT NULL REFERENCES quotations(quotation_no) ON DELETE CASCADE,
+        received_quotation_no VARCHAR(100) NOT NULL REFERENCES received_quotations(received_quotation_no) ON DELETE CASCADE,
+        PRIMARY KEY (quotation_no, received_quotation_no)
+      );
+    `);
+
+    // Purchase Orders Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        po_no VARCHAR(100) PRIMARY KEY,
+        quotation_no VARCHAR(100) REFERENCES quotations(quotation_no) ON DELETE SET NULL,
+        po_date DATE NOT NULL,
+        gst DECIMAL(12, 2) DEFAULT 0.00,
+        transport DECIMAL(12, 2) DEFAULT 0.00,
+        other DECIMAL(12, 2) DEFAULT 0.00,
+        basic_value DECIMAL(12, 2) DEFAULT 0.00,
+        packing_forward DECIMAL(12, 2) DEFAULT 0.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Purchase Order Items Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id SERIAL PRIMARY KEY,
+        po_no VARCHAR(100) NOT NULL REFERENCES purchase_orders(po_no) ON DELETE CASCADE,
+        item_code VARCHAR(100) NOT NULL REFERENCES items(item_code) ON DELETE CASCADE,
+        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(po_no, item_code)
       );
     `);
 

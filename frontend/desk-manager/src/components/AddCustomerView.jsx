@@ -245,7 +245,7 @@ export default function AddCustomerView({
                 {/* Customer ID (Written by User) */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Customer ID *
+                    Customer ID <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"
@@ -271,7 +271,7 @@ export default function AddCustomerView({
                 {/* Full Name */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Customer Name *
+                    Customer Name <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"
@@ -286,7 +286,7 @@ export default function AddCustomerView({
                 {/* Address */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Customer Address *
+                    Customer Address <b className="text-red-500">*</b>
                   </label>
                   <textarea
                     rows="5"

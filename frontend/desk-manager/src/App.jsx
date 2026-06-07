@@ -9,6 +9,10 @@ import RFQView from './components/RFQView';
 import RFQDetailView from './components/RFQDetailView';
 import QuotationDetailView from './components/QuotationDetailView';
 import AddQuotationView from './components/AddQuotationView';
+import ReceivedQuotationView from './components/ReceivedQuotationView';
+import ReceivedQuotationDetailView from './components/ReceivedQuotationDetailView';
+import PurchaseOrderView from './components/PurchaseOrderView';
+import PurchaseOrderDetailView from './components/PurchaseOrderDetailView';
 import LoginView from './components/LoginView';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -32,6 +36,8 @@ export default function App() {
   const [items, setItems] = useState([]);
   const [rfqs, setRfqs] = useState([]);
   const [quotations, setQuotations] = useState([]);
+  const [receivedQuotations, setReceivedQuotations] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
 
   // General States
   const [isLoading, setIsLoading] = useState(false);
@@ -83,6 +89,8 @@ export default function App() {
     setItems([]);
     setRfqs([]);
     setQuotations([]);
+    setReceivedQuotations([]);
+    setPurchaseOrders([]);
   };
 
   const handleLogin = async (username, password) => {
@@ -150,12 +158,14 @@ export default function App() {
     setError(null);
     try {
       const headers = { 'Authorization': `Bearer ${activeToken}` };
-      const [custRes, buyerRes, itemRes, rfqRes, quotationRes] = await Promise.all([
+      const [custRes, buyerRes, itemRes, rfqRes, quotationRes, receivedQuotationRes, poRes] = await Promise.all([
         fetch(`${API_BASE_URL}/customers?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/buyers?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/items?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/rfqs?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/quotations?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/received-quotations?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/purchase-orders?limit=20&offset=0`, { headers }),
       ]);
 
       if (
@@ -163,13 +173,15 @@ export default function App() {
         buyerRes.status === 401 ||
         itemRes.status === 401 ||
         rfqRes.status === 401 ||
-        quotationRes.status === 401
+        quotationRes.status === 401 ||
+        receivedQuotationRes.status === 401 ||
+        poRes.status === 401
       ) {
         clearSession();
         return;
       }
 
-      if (!custRes.ok || !buyerRes.ok || !itemRes.ok || !rfqRes.ok || !quotationRes.ok) {
+      if (!custRes.ok || !buyerRes.ok || !itemRes.ok || !rfqRes.ok || !quotationRes.ok || !receivedQuotationRes.ok || !poRes.ok) {
         throw new Error('Some API requests failed');
       }
 
@@ -178,6 +190,8 @@ export default function App() {
       setItems(await itemRes.json());
       setRfqs(await rfqRes.json());
       setQuotations(await quotationRes.json());
+      setReceivedQuotations(await receivedQuotationRes.json());
+      setPurchaseOrders(await poRes.json());
     } catch (err) {
       console.error('Error fetching data:', err.message);
       setError('Unable to connect to the API. Please verify the backend service is running on port 5000.');
@@ -199,6 +213,8 @@ export default function App() {
       else if (resource === 'items') setItems(prev => [...prev, ...newData]);
       else if (resource === 'rfqs') setRfqs(prev => [...prev, ...newData]);
       else if (resource === 'quotations') setQuotations(prev => [...prev, ...newData]);
+      else if (resource === 'received-quotations') setReceivedQuotations(prev => [...prev, ...newData]);
+      else if (resource === 'purchase-orders') setPurchaseOrders(prev => [...prev, ...newData]);
       
       return newData;
     } catch (err) {
@@ -220,6 +236,8 @@ export default function App() {
       else if (resource === 'items') setItems(data);
       else if (resource === 'rfqs') setRfqs(data);
       else if (resource === 'quotations') setQuotations(data);
+      else if (resource === 'received-quotations') setReceivedQuotations(data);
+      else if (resource === 'purchase-orders') setPurchaseOrders(data);
       
       return data;
     } catch (err) {
@@ -501,6 +519,56 @@ export default function App() {
   };
 
   // ============================================================================
+  // RECEIVED QUOTATION HANDLERS
+  // ============================================================================
+
+  const handleAddReceivedQuotation = async (quotationData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/received-quotations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(quotationData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add received quotation');
+      setReceivedQuotations((prev) => [data, ...prev]);
+      triggerToast('Received quotation successfully saved!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateReceivedQuotation = async (received_quotation_no, quotationData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/received-quotations/${received_quotation_no}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(quotationData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update received quotation');
+      setReceivedQuotations((prev) => prev.map((q) => (q.received_quotation_no === received_quotation_no ? data : q)));
+      triggerToast('Received quotation updated successfully!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ============================================================================
   // QUOTATION HANDLERS
   // ============================================================================
 
@@ -545,6 +613,77 @@ export default function App() {
       setError(err.message);
       triggerToast(err.message, 'error');
       return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ============================================================================
+  // PURCHASE ORDER HANDLERS
+  // ============================================================================
+
+  const handleAddPurchaseOrder = async (poData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/purchase-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(poData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add purchase order');
+      setPurchaseOrders((prev) => [data, ...prev]);
+      triggerToast('Purchase Order successfully saved!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdatePurchaseOrder = async (po_no, poData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/purchase-orders/${po_no}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(poData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update purchase order');
+      setPurchaseOrders((prev) => prev.map((po) => (po.po_no === po_no ? data : po)));
+      triggerToast('Purchase Order updated successfully!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeletePurchaseOrder = async (po_no) => {
+    if (!window.confirm('Remove this Purchase Order permanently?')) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/purchase-orders/${po_no}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete purchase order');
+      setPurchaseOrders((prev) => prev.filter((po) => po.po_no !== po_no));
+      triggerToast('Purchase Order deleted successfully.', 'success');
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -635,6 +774,38 @@ export default function App() {
             searchResource={searchResource}
           />
         );
+      case 'received-quotation':
+        return (
+          <ReceivedQuotationView
+            buyers={buyers}
+            items={items}
+            receivedQuotations={receivedQuotations}
+            onAddReceivedQuotation={handleAddReceivedQuotation}
+            onUpdateReceivedQuotation={handleUpdateReceivedQuotation}
+            onNavigateAndOpenForm={(tab, type) => {
+              setActiveTab(tab);
+              setForceFormOpen(type);
+            }}
+            isLoading={isLoading}
+            error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
+          />
+        );
+      case 'purchase-order':
+        return (
+          <PurchaseOrderView
+            quotations={quotations}
+            purchaseOrders={purchaseOrders}
+            onAddPurchaseOrder={handleAddPurchaseOrder}
+            onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
+            onDeletePurchaseOrder={handleDeletePurchaseOrder}
+            isLoading={isLoading}
+            error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
+          />
+        );
       default:
         return <DashboardView />;
     }
@@ -709,6 +880,22 @@ export default function App() {
               quotations={quotations}
               rfqs={rfqs}
               customers={customers}
+              buyers={buyers}
+            />
+          } />
+          <Route path="/received-quotation/:received_quotation_no" element={
+            <ReceivedQuotationDetailView
+              receivedQuotations={receivedQuotations}
+              buyers={buyers}
+            />
+          } />
+          <Route path="/purchase-order/:po_no" element={
+            <PurchaseOrderDetailView
+              purchaseOrders={purchaseOrders}
+              quotations={quotations}
+              rfqs={rfqs}
+              customers={customers}
+              buyers={buyers}
             />
           } />
         </Routes>

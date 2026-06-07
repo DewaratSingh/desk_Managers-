@@ -8,7 +8,8 @@ import {
   ArrowLeft,
   ListFilter,
   AlertCircle,
-  FileText
+  FileText,
+  X
 } from 'lucide-react';
 
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
@@ -58,11 +59,21 @@ export default function AddQuotationView({
   // Dynamic preview of next quotation number
   const [nextQuotationNo, setNextQuotationNo] = useState('');
 
+  // Selected Received Quotations (Optional, Multiple)
+  const [selectedRecQtns, setSelectedRecQtns] = useState([]);
+  const [recQtnInput, setRecQtnInput] = useState('');
+  const [recQtnSuggestions, setRecQtnSuggestions] = useState([]);
+  const [showRecQtnDropdown, setShowRecQtnDropdown] = useState(false);
+  const recQtnRef = useRef(null);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
       if (rfqRef.current && !rfqRef.current.contains(e.target)) {
         setShowRfqDropdown(false);
+      }
+      if (recQtnRef.current && !recQtnRef.current.contains(e.target)) {
+        setShowRecQtnDropdown(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -142,6 +153,46 @@ export default function AddQuotationView({
     );
   };
 
+  // ── Received Quotations Lookup ──
+  const handleRecQtnInput = async (val) => {
+    setRecQtnInput(val);
+    if (!val.trim()) {
+      setRecQtnSuggestions([]);
+      setShowRecQtnDropdown(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/received-quotations?search=${encodeURIComponent(val)}&limit=5`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` }
+      });
+      const data = await res.json();
+      // Filter out already selected received quotations
+      const filtered = data.filter(rq => !selectedRecQtns.some(srq => srq.received_quotation_no === rq.received_quotation_no));
+      setRecQtnSuggestions(filtered);
+      setShowRecQtnDropdown(true);
+    } catch(e) { console.error(e); }
+  };
+
+  const addRecQtn = (rq) => {
+    if (selectedRecQtns.some(srq => srq.received_quotation_no === rq.received_quotation_no)) {
+      setRecQtnInput('');
+      setShowRecQtnDropdown(false);
+      return;
+    }
+    setSelectedRecQtns(prev => [...prev, {
+      received_quotation_no: rq.received_quotation_no,
+      quotation_date: rq.quotation_date,
+      buyer_name: rq.buyer_name
+    }]);
+    setRecQtnInput('');
+    setShowRecQtnDropdown(false);
+  };
+
+  const removeRecQtn = (received_quotation_no) => {
+    setSelectedRecQtns(prev => prev.filter(rq => rq.received_quotation_no !== received_quotation_no));
+  };
+
   /* ── Navigation Helpers ── */
   const handleOpenAddForm = () => {
     setEditingNo(null);
@@ -152,6 +203,8 @@ export default function AddQuotationView({
     setRfqInput('');
     setSelectedRFQ(null);
     setQuotationItems([]);
+    setSelectedRecQtns([]);
+    setRecQtnInput('');
     fetchNextQuotationNo();
     setViewMode('form');
   };
@@ -181,6 +234,17 @@ export default function AddQuotationView({
         : []
     );
 
+    setSelectedRecQtns(
+      Array.isArray(qtn.received_quotations)
+        ? qtn.received_quotations.map((rq) => ({
+            received_quotation_no: rq.received_quotation_no,
+            quotation_date: rq.quotation_date,
+            buyer_name: rq.buyer_name
+          }))
+        : []
+    );
+    setRecQtnInput('');
+
     setViewMode('form');
   };
 
@@ -190,6 +254,8 @@ export default function AddQuotationView({
     setRfqInput('');
     setSelectedRFQ(null);
     setQuotationItems([]);
+    setSelectedRecQtns([]);
+    setRecQtnInput('');
     setViewMode('list');
   };
 
@@ -219,7 +285,8 @@ export default function AddQuotationView({
 
     const payload = {
       ...formData,
-      items: quotationItems
+      items: quotationItems,
+      received_quotation_nos: selectedRecQtns.map(rq => rq.received_quotation_no)
     };
 
     if (editingNo) {
@@ -236,6 +303,8 @@ export default function AddQuotationView({
         setRfqInput('');
         setSelectedRFQ(null);
         setQuotationItems([]);
+        setSelectedRecQtns([]);
+        setRecQtnInput('');
         fetchNextQuotationNo();
       }
     }
@@ -256,9 +325,22 @@ export default function AddQuotationView({
 
   const fmtDate = (d) => {
     if (!d) return '—';
+    if (d instanceof Date) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+    if (typeof d === 'string' && d.match(/^\d{4}-\d{2}-\d{2}/)) {
+      const parts = d.substring(0, 10).split('-');
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
     const dt = new Date(d);
     if (isNaN(dt)) return d;
-    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const day = String(dt.getUTCDate()).padStart(2, '0');
+    const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const year = dt.getUTCFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   const calculateTotal = (itemsList) => {
@@ -403,12 +485,12 @@ export default function AddQuotationView({
             </p>
           </div>
 
-          {error && (
+          {/* {error && (
             <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl flex items-center gap-2">
               <AlertCircle size={16} />
               {error}
             </div>
-          )}
+          )} */}
 
           <div className="bg-white border-2 border-slate-200 rounded-xl p-5 sm:p-8 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -431,7 +513,7 @@ export default function AddQuotationView({
                   </div>
                   <div>
                     <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                      Quotation Date *
+                      Quotation Date <b className="text-red-500">*</b>
                     </label>
                     <input
                       type="date"
@@ -446,7 +528,7 @@ export default function AddQuotationView({
                 {/* RFQ Autocomplete Link */}
                 <div ref={rfqRef} className="relative">
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Link to RFQ No. *
+                    Link to RFQ No. <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"
@@ -501,6 +583,8 @@ export default function AddQuotationView({
                     </div>
                   </div>
                 )}
+
+                
 
                 {/* Items and Amounts */}
                 {quotationItems.length > 0 && (
@@ -573,6 +657,60 @@ export default function AddQuotationView({
                   />
                 </div>
               </div>
+
+              {/* Received Quotations Link (Optional, Multiple) */}
+                <div ref={recQtnRef} className="relative">
+                  <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
+                    Link to Received Quotation(s) <b className="text-red-500">(Optional)</b>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Search Received Quotation by ID or buyer name to link..."
+                    value={recQtnInput}
+                    onChange={(e) => handleRecQtnInput(e.target.value)}
+                    onFocus={() => recQtnInput.trim() && setShowRecQtnDropdown(true)}
+                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium"
+                    autoComplete="off"
+                  />
+                  {showRecQtnDropdown && recQtnSuggestions.length > 0 && (
+                    <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                      {recQtnSuggestions.map((rq) => (
+                        <button
+                          key={rq.received_quotation_no}
+                          type="button"
+                          onClick={() => addRecQtn(rq)}
+                          className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                        >
+                          <div className="font-bold text-sm text-slate-900">{rq.received_quotation_no}</div>
+                          <div className="text-xs text-slate-500">
+                            Buyer: {rq.buyer_name || '—'} &bull; Date: {fmtDate(rq.quotation_date)} &bull; {Array.isArray(rq.items) ? rq.items.length : 0} items
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Selected Received Quotations Chips */}
+                  {selectedRecQtns.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedRecQtns.map((rq) => (
+                        <div
+                          key={rq.received_quotation_no}
+                          className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200 text-blue-700 font-semibold rounded-lg text-xs"
+                        >
+                          <span>{rq.received_quotation_no} ({rq.buyer_name || '—'})</span>
+                          <button
+                            type="button"
+                            onClick={() => removeRecQtn(rq.received_quotation_no)}
+                            className="text-blue-400 hover:text-blue-600 cursor-pointer"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
               {/* Buttons */}
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-4">

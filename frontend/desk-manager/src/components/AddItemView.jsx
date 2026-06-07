@@ -307,7 +307,7 @@ export default function AddItemView({
                 {/* Item Code */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Item Code *
+                    Item Code <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"
@@ -328,7 +328,7 @@ export default function AddItemView({
                 {/* Description */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Description *
+                    Description <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"

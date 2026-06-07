@@ -244,7 +244,7 @@ export default function AddBuyerView({
                 {/* Buyer Name */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Buyer Name *
+                    Buyer Name <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"
@@ -259,7 +259,7 @@ export default function AddBuyerView({
                 {/* Buyer Email */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Buyer Email *
+                    Buyer Email <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="email"
@@ -274,7 +274,7 @@ export default function AddBuyerView({
                 {/* Phone Number */}
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    Phone Number *
+                    Phone Number <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"

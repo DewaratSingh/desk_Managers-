@@ -9,7 +9,9 @@ import {
   FolderLock,
   LogOut,
   ClipboardList,
-  FileText
+  FileText,
+  FileCheck,
+  Receipt
 } from 'lucide-react';
 import logoImg from '../assets/image.jpeg';
 export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
@@ -21,7 +23,9 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
     { id: 'add-buyer', label: 'Buyer', icon: Users },
     { id: 'add-item', label: 'Item', icon: Package },
     { id: 'rfq', label: 'RFQ Feeding', icon: ClipboardList },
+    { id: 'received-quotation', label: 'Received Quotation', icon: FileCheck },
     { id: 'quotation', label: 'Quotation', icon: FileText },
+    { id: 'purchase-order', label: 'Purchase Order', icon: Receipt },
   ];
 
   return (
