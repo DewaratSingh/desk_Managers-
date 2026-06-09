@@ -13,6 +13,9 @@ import ReceivedQuotationView from './components/ReceivedQuotationView';
 import ReceivedQuotationDetailView from './components/ReceivedQuotationDetailView';
 import PurchaseOrderView from './components/PurchaseOrderView';
 import PurchaseOrderDetailView from './components/PurchaseOrderDetailView';
+import ReleaseOrderView from './components/ReleaseOrderView';
+import ReleaseOrderDetailView from './components/ReleaseOrderDetailView';
+import ARCView from './components/ARCView';
 import LoginView from './components/LoginView';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -38,6 +41,7 @@ export default function App() {
   const [quotations, setQuotations] = useState([]);
   const [receivedQuotations, setReceivedQuotations] = useState([]);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [releaseOrders, setReleaseOrders] = useState([]);
 
   // General States
   const [isLoading, setIsLoading] = useState(false);
@@ -91,6 +95,7 @@ export default function App() {
     setQuotations([]);
     setReceivedQuotations([]);
     setPurchaseOrders([]);
+    setReleaseOrders([]);
   };
 
   const handleLogin = async (username, password) => {
@@ -158,7 +163,7 @@ export default function App() {
     setError(null);
     try {
       const headers = { 'Authorization': `Bearer ${activeToken}` };
-      const [custRes, buyerRes, itemRes, rfqRes, quotationRes, receivedQuotationRes, poRes] = await Promise.all([
+      const [custRes, buyerRes, itemRes, rfqRes, quotationRes, receivedQuotationRes, poRes, roRes] = await Promise.all([
         fetch(`${API_BASE_URL}/customers?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/buyers?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/items?limit=20&offset=0`, { headers }),
@@ -166,6 +171,7 @@ export default function App() {
         fetch(`${API_BASE_URL}/quotations?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/received-quotations?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/purchase-orders?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/release-orders?limit=20&offset=0`, { headers }),
       ]);
 
       if (
@@ -175,13 +181,14 @@ export default function App() {
         rfqRes.status === 401 ||
         quotationRes.status === 401 ||
         receivedQuotationRes.status === 401 ||
-        poRes.status === 401
+        poRes.status === 401 ||
+        roRes.status === 401
       ) {
         clearSession();
         return;
       }
 
-      if (!custRes.ok || !buyerRes.ok || !itemRes.ok || !rfqRes.ok || !quotationRes.ok || !receivedQuotationRes.ok || !poRes.ok) {
+      if (!custRes.ok || !buyerRes.ok || !itemRes.ok || !rfqRes.ok || !quotationRes.ok || !receivedQuotationRes.ok || !poRes.ok || !roRes.ok) {
         throw new Error('Some API requests failed');
       }
 
@@ -192,6 +199,7 @@ export default function App() {
       setQuotations(await quotationRes.json());
       setReceivedQuotations(await receivedQuotationRes.json());
       setPurchaseOrders(await poRes.json());
+      setReleaseOrders(await roRes.json());
     } catch (err) {
       console.error('Error fetching data:', err.message);
       setError('Unable to connect to the API. Please verify the backend service is running on port 5000.');
@@ -215,6 +223,7 @@ export default function App() {
       else if (resource === 'quotations') setQuotations(prev => [...prev, ...newData]);
       else if (resource === 'received-quotations') setReceivedQuotations(prev => [...prev, ...newData]);
       else if (resource === 'purchase-orders') setPurchaseOrders(prev => [...prev, ...newData]);
+      else if (resource === 'release-orders') setReleaseOrders(prev => [...prev, ...newData]);
       
       return newData;
     } catch (err) {
@@ -238,6 +247,7 @@ export default function App() {
       else if (resource === 'quotations') setQuotations(data);
       else if (resource === 'received-quotations') setReceivedQuotations(data);
       else if (resource === 'purchase-orders') setPurchaseOrders(data);
+      else if (resource === 'release-orders') setReleaseOrders(data);
       
       return data;
     } catch (err) {
@@ -499,7 +509,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/rfqs/${rfq_no}`, {
+      const res = await fetch(`${API_BASE_URL}/rfqs/${encodeURIComponent(rfq_no)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(rfqData),
@@ -549,7 +559,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/received-quotations/${received_quotation_no}`, {
+      const res = await fetch(`${API_BASE_URL}/received-quotations/${encodeURIComponent(received_quotation_no)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(quotationData),
@@ -599,7 +609,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/quotations/${quotation_no}`, {
+      const res = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotation_no)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(quotationData),
@@ -649,7 +659,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/purchase-orders/${po_no}`, {
+      const res = await fetch(`${API_BASE_URL}/purchase-orders/${encodeURIComponent(po_no)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(poData),
@@ -673,7 +683,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/purchase-orders/${po_no}`, {
+      const res = await fetch(`${API_BASE_URL}/purchase-orders/${encodeURIComponent(po_no)}`, {
         method: 'DELETE',
         headers: authHeaders(),
       });
@@ -681,6 +691,77 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Failed to delete purchase order');
       setPurchaseOrders((prev) => prev.filter((po) => po.po_no !== po_no));
       triggerToast('Purchase Order deleted successfully.', 'success');
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ============================================================================
+  // RELEASE ORDER HANDLERS
+  // ============================================================================
+
+  const handleAddReleaseOrder = async (roData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/release-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(roData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add release order');
+      setReleaseOrders((prev) => [data, ...prev]);
+      triggerToast('Release Order successfully saved!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateReleaseOrder = async (ro_no, roData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/release-orders/${encodeURIComponent(ro_no)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(roData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update release order');
+      setReleaseOrders((prev) => prev.map((ro) => (ro.ro_no === ro_no ? data : ro)));
+      triggerToast('Release Order updated successfully!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteReleaseOrder = async (ro_no) => {
+    if (!window.confirm('Remove this Release Order permanently?')) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/release-orders/${encodeURIComponent(ro_no)}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete release order');
+      setReleaseOrders((prev) => prev.filter((ro) => ro.ro_no !== ro_no));
+      triggerToast('Release Order deleted successfully.', 'success');
     } catch (err) {
       setError(err.message);
       triggerToast(err.message, 'error');
@@ -797,6 +878,7 @@ export default function App() {
           <PurchaseOrderView
             quotations={quotations}
             purchaseOrders={purchaseOrders}
+            customers={customers}
             onAddPurchaseOrder={handleAddPurchaseOrder}
             onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
             onDeletePurchaseOrder={handleDeletePurchaseOrder}
@@ -806,6 +888,23 @@ export default function App() {
             searchResource={searchResource}
           />
         );
+      case 'release-order':
+        return (
+          <ReleaseOrderView
+            releaseOrders={releaseOrders}
+            buyers={buyers}
+            customers={customers}
+            onAddReleaseOrder={handleAddReleaseOrder}
+            onUpdateReleaseOrder={handleUpdateReleaseOrder}
+            onDeleteReleaseOrder={handleDeleteReleaseOrder}
+            isLoading={isLoading}
+            error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
+          />
+        );
+      case 'arc':
+        return <ARCView items={items} />;
       default:
         return <DashboardView />;
     }
@@ -854,7 +953,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={
-            <div className="flex flex-col lg:flex-row min-h-screen w-screen bg-[#f1f5f9] text-slate-900 overflow-hidden">
+            <div className="flex flex-col lg:flex-row h-screen w-screen bg-[#f1f5f9] text-slate-900 overflow-hidden">
               <Sidebar
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
@@ -894,6 +993,13 @@ export default function App() {
               purchaseOrders={purchaseOrders}
               quotations={quotations}
               rfqs={rfqs}
+              customers={customers}
+              buyers={buyers}
+            />
+          } />
+          <Route path="/release-order/:ro_no" element={
+            <ReleaseOrderDetailView
+              releaseOrders={releaseOrders}
               customers={customers}
               buyers={buyers}
             />

@@ -183,6 +183,7 @@ const initializeDatabase = async () => {
       CREATE TABLE IF NOT EXISTS purchase_orders (
         po_no VARCHAR(100) PRIMARY KEY,
         quotation_no VARCHAR(100) REFERENCES quotations(quotation_no) ON DELETE SET NULL,
+        contract_ref VARCHAR(255),
         po_date DATE NOT NULL,
         gst DECIMAL(12, 2) DEFAULT 0.00,
         transport DECIMAL(12, 2) DEFAULT 0.00,
@@ -201,8 +202,51 @@ const initializeDatabase = async () => {
         item_code VARCHAR(100) NOT NULL REFERENCES items(item_code) ON DELETE CASCADE,
         quantity INTEGER NOT NULL CHECK (quantity > 0),
         unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
+        shipping_address TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(po_no, item_code)
+      );
+    `);
+
+    // Release Orders Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS release_orders (
+        ro_no VARCHAR(100) PRIMARY KEY,
+        contract_ref VARCHAR(255),
+        buyer_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL,
+        customer_id VARCHAR(100) REFERENCES customers(id) ON DELETE SET NULL,
+        ro_date DATE NOT NULL,
+        gst DECIMAL(12, 2) DEFAULT 0.00,
+        transport DECIMAL(12, 2) DEFAULT 0.00,
+        other DECIMAL(12, 2) DEFAULT 0.00,
+        basic_value DECIMAL(12, 2) DEFAULT 0.00,
+        packing_forward DECIMAL(12, 2) DEFAULT 0.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Release Order Items Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS release_order_items (
+        id SERIAL PRIMARY KEY,
+        ro_no VARCHAR(100) NOT NULL REFERENCES release_orders(ro_no) ON DELETE CASCADE,
+        item_code VARCHAR(100) NOT NULL REFERENCES items(item_code) ON DELETE CASCADE,
+        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
+        shipping_address TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(ro_no, item_code)
+      );
+    `);
+
+    // ARC Items Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS arc_items (
+        id SERIAL PRIMARY KEY,
+        item_code VARCHAR(100) NOT NULL REFERENCES items(item_code) ON DELETE CASCADE,
+        price DECIMAL(12, 2) NOT NULL CHECK (price >= 0),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(item_code)
       );
     `);
 
@@ -222,6 +266,89 @@ const initializeDatabase = async () => {
         DROP COLUMN IF EXISTS description,
         DROP COLUMN IF EXISTS drawing_number;
     `);
+    
+    // Add contract_ref column to purchase_orders if it doesn't exist
+    const contractRefCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'purchase_orders' AND column_name = 'contract_ref'
+    `);
+    if (contractRefCheck.rows.length === 0) {
+      console.log('Adding contract_ref column to purchase_orders table...');
+      await client.query(`
+        ALTER TABLE purchase_orders 
+        ADD COLUMN contract_ref VARCHAR(255);
+      `);
+      console.log('contract_ref column added successfully.');
+    }
+    
+    // Add shipping_address column to purchase_order_items if it doesn't exist
+    const shippingAddressCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'purchase_order_items' AND column_name = 'shipping_address'
+    `);
+    if (shippingAddressCheck.rows.length === 0) {
+      console.log('Adding shipping_address column to purchase_order_items table...');
+      await client.query(`
+        ALTER TABLE purchase_order_items 
+        ADD COLUMN shipping_address TEXT;
+      `);
+      console.log('shipping_address column added successfully.');
+    }
+
+    // Add delivery_date, gst_type, and gst_rate columns to release_order_items if they don't exist
+    const roItemsCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'release_order_items' AND column_name IN ('delivery_date', 'gst_type', 'gst_rate')
+    `);
+    const existingRoColumns = roItemsCheck.rows.map(r => r.column_name);
+    if (!existingRoColumns.includes('delivery_date')) {
+      console.log('Adding delivery_date column to release_order_items table...');
+      await client.query(`
+        ALTER TABLE release_order_items 
+        ADD COLUMN delivery_date DATE;
+      `);
+      console.log('delivery_date column added successfully.');
+    }
+    if (!existingRoColumns.includes('gst_type')) {
+      console.log('Adding gst_type column to release_order_items table...');
+      await client.query(`
+        ALTER TABLE release_order_items 
+        ADD COLUMN gst_type VARCHAR(20) DEFAULT 'CGST/UGST';
+      `);
+      console.log('gst_type column added successfully.');
+    }
+    if (!existingRoColumns.includes('gst_rate')) {
+      console.log('Adding gst_rate column to release_order_items table...');
+      await client.query(`
+        ALTER TABLE release_order_items 
+        ADD COLUMN gst_rate DECIMAL(5, 2) DEFAULT 0.00;
+      `);
+      console.log('gst_rate column added successfully.');
+    }
+
+    // Add gst_type and gst_rate columns to received_quotation_items if they don't exist
+    const reqQtnItemsCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'received_quotation_items' AND column_name IN ('gst_type', 'gst_rate')
+    `);
+    const existingReqQtnColumns = reqQtnItemsCheck.rows.map(r => r.column_name);
+    if (!existingReqQtnColumns.includes('gst_type')) {
+      console.log('Adding gst_type column to received_quotation_items table...');
+      await client.query(`
+        ALTER TABLE received_quotation_items 
+        ADD COLUMN gst_type VARCHAR(20) DEFAULT 'CGST/UGST';
+      `);
+      console.log('gst_type column added successfully.');
+    }
+    if (!existingReqQtnColumns.includes('gst_rate')) {
+      console.log('Adding gst_rate column to received_quotation_items table...');
+      await client.query(`
+        ALTER TABLE received_quotation_items 
+        ADD COLUMN gst_rate DECIMAL(5, 2) DEFAULT 0.00;
+      `);
+      console.log('gst_rate column added successfully.');
+    }
+    
     console.log('Schema normalization migrations completed.');
     // ----------------------------------------
 

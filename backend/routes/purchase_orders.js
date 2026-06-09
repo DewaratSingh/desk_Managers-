@@ -39,7 +39,8 @@ router.get('/', async (req, res) => {
               'description', i.description,
               'drawing_number', i.drawing_number,
               'quantity', poi.quantity,
-              'unit_price', poi.unit_price
+              'unit_price', poi.unit_price,
+              'shipping_address', poi.shipping_address
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'
@@ -64,43 +65,15 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get next auto-generated PO number
-router.get('/next-no', async (req, res) => {
-  try {
-    const currentYear = new Date().getFullYear();
-    const prefix = `PO-${currentYear}-`;
-    
-    const queryText = `
-      SELECT po_no FROM purchase_orders 
-      WHERE po_no LIKE $1 
-      ORDER BY po_no DESC 
-      LIMIT 1
-    `;
-    const { rows } = await pool.query(queryText, [`${prefix}%`]);
-    
-    let nextSeq = 1;
-    if (rows.length > 0) {
-      const lastNo = rows[0].po_no;
-      const parts = lastNo.split('-');
-      const lastSeq = parseInt(parts[parts.length - 1]);
-      if (!isNaN(lastSeq)) {
-        nextSeq = lastSeq + 1;
-      }
-    }
-    
-    const nextNo = `${prefix}${String(nextSeq).padStart(4, '0')}`;
-    res.json({ next_no: nextNo });
-  } catch (error) {
-    console.error('Error generating next PO number:', error);
-    res.status(500).json({ error: 'Server error generating next PO number' });
-  }
-});
-
 // Add new purchase order
 router.post('/', async (req, res) => {
   const {
-    quotation_no, po_date, gst, transport, other, basic_value, packing_forward, items = []
+    po_no, contract_ref, quotation_no, po_date, gst, transport, other, basic_value, packing_forward, items = []
   } = req.body;
+
+  if (!po_no) {
+    return res.status(400).json({ error: 'PO Number is required' });
+  }
 
   if (!po_date) {
     return res.status(400).json({ error: 'PO Date is required' });
@@ -110,32 +83,20 @@ router.post('/', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const currentYear = new Date(po_date).getFullYear();
-    const prefix = `PO-${currentYear}-`;
-    const nextNumResult = await client.query(`
-      SELECT po_no FROM purchase_orders 
-      WHERE po_no LIKE $1 
-      ORDER BY po_no DESC 
-      LIMIT 1
-    `, [`${prefix}%`]);
-
-    let nextSeq = 1;
-    if (nextNumResult.rows.length > 0) {
-      const lastNo = nextNumResult.rows[0].po_no;
-      const parts = lastNo.split('-');
-      const lastSeq = parseInt(parts[parts.length - 1]);
-      if (!isNaN(lastSeq)) {
-        nextSeq = lastSeq + 1;
-      }
+    // Check if PO Number already exists
+    const checkPo = await client.query('SELECT po_no FROM purchase_orders WHERE po_no = $1', [po_no]);
+    if (checkPo.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A Purchase Order with this number already exists' });
     }
-    const po_no = `${prefix}${String(nextSeq).padStart(4, '0')}`;
 
     // Insert purchase order
     await client.query(`
-      INSERT INTO purchase_orders (po_no, quotation_no, po_date, gst, transport, other, basic_value, packing_forward)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO purchase_orders (po_no, contract_ref, quotation_no, po_date, gst, transport, other, basic_value, packing_forward)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `, [
       po_no, 
+      contract_ref || null,
       quotation_no || null, 
       po_date, 
       parseFloat(gst) || 0.00, 
@@ -160,9 +121,9 @@ router.post('/', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO purchase_order_items (po_no, item_code, quantity, unit_price)
-        VALUES ($1, $2, $3, $4)
-      `, [po_no, item.item_code, qty, price]);
+        INSERT INTO purchase_order_items (po_no, item_code, quantity, unit_price, shipping_address)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [po_no, item.item_code, qty, price, item.shipping_address || null]);
     }
 
     await client.query('COMMIT');
@@ -180,7 +141,8 @@ router.post('/', async (req, res) => {
               'description', i.description,
               'drawing_number', i.drawing_number,
               'quantity', poi.quantity,
-              'unit_price', poi.unit_price
+              'unit_price', poi.unit_price,
+              'shipping_address', poi.shipping_address
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'
@@ -210,7 +172,7 @@ router.post('/', async (req, res) => {
 router.put('/:po_no', async (req, res) => {
   const { po_no } = req.params;
   const {
-    quotation_no, po_date, gst, transport, other, basic_value, packing_forward, items = []
+    contract_ref, quotation_no, po_date, gst, transport, other, basic_value, packing_forward, items = []
   } = req.body;
 
   if (!po_date) {
@@ -223,10 +185,11 @@ router.put('/:po_no', async (req, res) => {
 
     const updateResult = await client.query(`
       UPDATE purchase_orders 
-      SET quotation_no = $1, po_date = $2, gst = $3, transport = $4, other = $5, basic_value = $6, packing_forward = $7
-      WHERE po_no = $8
+      SET contract_ref = $1, quotation_no = $2, po_date = $3, gst = $4, transport = $5, other = $6, basic_value = $7, packing_forward = $8
+      WHERE po_no = $9
       RETURNING *
     `, [
+      contract_ref || null,
       quotation_no || null, 
       po_date, 
       parseFloat(gst) || 0.00, 
@@ -258,9 +221,9 @@ router.put('/:po_no', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO purchase_order_items (po_no, item_code, quantity, unit_price)
-        VALUES ($1, $2, $3, $4)
-      `, [po_no, item.item_code, qty, price]);
+        INSERT INTO purchase_order_items (po_no, item_code, quantity, unit_price, shipping_address)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [po_no, item.item_code, qty, price, item.shipping_address || null]);
     }
 
     await client.query('COMMIT');
@@ -277,7 +240,8 @@ router.put('/:po_no', async (req, res) => {
               'description', i.description,
               'drawing_number', i.drawing_number,
               'quantity', poi.quantity,
-              'unit_price', poi.unit_price
+              'unit_price', poi.unit_price,
+              'shipping_address', poi.shipping_address
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'

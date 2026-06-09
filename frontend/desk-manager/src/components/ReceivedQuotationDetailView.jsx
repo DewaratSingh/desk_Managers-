@@ -47,9 +47,27 @@ export default function ReceivedQuotationDetailView({ receivedQuotations, buyers
     return `${day}/${month}/${year}`;
   };
 
-  const calculateTotal = (itemsList) => {
+  const calculateBasicValue = (itemsList) => {
     if (!Array.isArray(itemsList)) return 0;
     return itemsList.reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0), 0);
+  };
+
+  const calculateGstTax = (itemsList) => {
+    if (!Array.isArray(itemsList)) return 0;
+    return itemsList.reduce((sum, i) => {
+      const basic = (i.quantity || 0) * (parseFloat(i.unit_price) || 0);
+      const rate = parseFloat(i.gst_rate) || 0;
+      return sum + basic * (rate / 100);
+    }, 0);
+  };
+
+  const calculateTotal = (itemsList) => {
+    if (!Array.isArray(itemsList)) return 0;
+    return itemsList.reduce((sum, i) => {
+      const basic = (i.quantity || 0) * (parseFloat(i.unit_price) || 0);
+      const rate = parseFloat(i.gst_rate) || 0;
+      return sum + basic + basic * (rate / 100);
+    }, 0);
   };
 
   return (
@@ -117,7 +135,15 @@ export default function ReceivedQuotationDetailView({ receivedQuotations, buyers
                     <p className="text-sm text-slate-600 mt-1 font-medium">{item.description}</p>
                   )}
                 </div>
-                <div className="shrink-0 flex gap-6">
+                <div className="shrink-0 flex flex-wrap gap-x-6 gap-y-2 justify-end">
+                  {item.gst_rate !== undefined && item.gst_rate !== null && (
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">{item.gst_type || 'CGST/UGST'}</span>
+                      <span className="text-slate-800 font-bold text-sm">
+                        {item.gst_type === 'CGST/UGST' ? `${parseFloat(item.gst_rate)}% + ${parseFloat(item.gst_rate)}%` : `${parseFloat(item.gst_rate)}%`}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex flex-col items-end">
                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Qty</span>
                     <span className="text-slate-800 font-bold text-sm">{item.quantity || 1}</span>
@@ -141,9 +167,15 @@ export default function ReceivedQuotationDetailView({ receivedQuotations, buyers
         ) : (
           <p className="text-slate-500">No items attached to this quotation.</p>
         )}
-        <div className="mt-4 pt-4 border-t border-slate-200 flex justify-end">
-          <p className="text-xl font-bold text-slate-800">
-            Total: ₹{calculateTotal(quotation.items).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+        <div className="mt-4 pt-4 border-t border-slate-200 space-y-2 text-right flex flex-col items-end">
+          <p className="text-sm font-semibold text-slate-500">
+            Subtotal: <span className="font-mono text-slate-800 font-bold ml-1">₹{calculateBasicValue(quotation.items).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </p>
+          <p className="text-sm font-semibold text-slate-500">
+            GST Tax: <span className="font-mono text-slate-800 font-bold ml-1">₹{calculateGstTax(quotation.items).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </p>
+          <p className="text-xl font-black text-blue-800 pt-2 border-t border-slate-100 w-full md:w-64">
+            Gross Total: ₹{calculateTotal(quotation.items).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </p>
         </div>
       </div>

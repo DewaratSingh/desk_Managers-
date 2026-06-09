@@ -14,6 +14,8 @@ const rfqsRouter = require('./routes/rfqs');
 const quotationsRouter = require('./routes/quotations');
 const receivedQuotationsRouter = require('./routes/received_quotations');
 const purchaseOrdersRouter = require('./routes/purchase_orders');
+const arcRouter = require('./routes/arc');
+const releaseOrdersRouter = require('./routes/release_orders');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -44,6 +46,8 @@ app.use('/api/rfqs', authenticateToken, rfqsRouter);
 app.use('/api/quotations', authenticateToken, quotationsRouter);
 app.use('/api/received-quotations', authenticateToken, receivedQuotationsRouter);
 app.use('/api/purchase-orders', authenticateToken, purchaseOrdersRouter);
+app.use('/api/arc', authenticateToken, arcRouter);
+app.use('/api/release-orders', authenticateToken, releaseOrdersRouter);
 
 // Serve static frontend
 const frontendDistPath = path.join(__dirname, '../frontend/desk-manager/dist');

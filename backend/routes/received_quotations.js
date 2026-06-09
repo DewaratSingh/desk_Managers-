@@ -29,7 +29,9 @@ router.get('/', async (req, res) => {
               'drawing_number', i.drawing_number,
               'long_description', i.long_description,
               'quantity', rqi.quantity,
-              'unit_price', rqi.unit_price
+              'unit_price', rqi.unit_price,
+              'gst_type', rqi.gst_type,
+              'gst_rate', rqi.gst_rate
             ) ORDER BY rqi.id
           ) FILTER (WHERE rqi.item_code IS NOT NULL),
           '[]'
@@ -138,10 +140,10 @@ router.post('/', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO received_quotation_items (received_quotation_no, item_code, quantity, unit_price)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO received_quotation_items (received_quotation_no, item_code, quantity, unit_price, gst_type, gst_rate)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (received_quotation_no, item_code) DO NOTHING
-      `, [received_quotation_no, item.item_code, qty, price]);
+      `, [received_quotation_no, item.item_code, qty, price, item.gst_type || 'CGST/UGST', parseFloat(item.gst_rate) || 0.00]);
     }
 
     await client.query('COMMIT');
@@ -157,7 +159,9 @@ router.post('/', async (req, res) => {
               'drawing_number', i.drawing_number,
               'long_description', i.long_description,
               'quantity', rqi.quantity,
-              'unit_price', rqi.unit_price
+              'unit_price', rqi.unit_price,
+              'gst_type', rqi.gst_type,
+              'gst_rate', rqi.gst_rate
             ) ORDER BY rqi.id
           ) FILTER (WHERE rqi.item_code IS NOT NULL),
           '[]'
@@ -223,9 +227,9 @@ router.put('/:received_quotation_no', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO received_quotation_items (received_quotation_no, item_code, quantity, unit_price)
-        VALUES ($1, $2, $3, $4)
-      `, [received_quotation_no, item.item_code, qty, price]);
+        INSERT INTO received_quotation_items (received_quotation_no, item_code, quantity, unit_price, gst_type, gst_rate)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [received_quotation_no, item.item_code, qty, price, item.gst_type || 'CGST/UGST', parseFloat(item.gst_rate) || 0.00]);
     }
 
     await client.query('COMMIT');
@@ -241,7 +245,9 @@ router.put('/:received_quotation_no', async (req, res) => {
               'drawing_number', i.drawing_number,
               'long_description', i.long_description,
               'quantity', rqi.quantity,
-              'unit_price', rqi.unit_price
+              'unit_price', rqi.unit_price,
+              'gst_type', rqi.gst_type,
+              'gst_rate', rqi.gst_rate
             ) ORDER BY rqi.id
           ) FILTER (WHERE rqi.item_code IS NOT NULL),
           '[]'

@@ -144,8 +144,10 @@ export default function ReceivedQuotationView({
       item_code: item.item_code,
       description: item.description,
       drawing_number: item.drawing_number || '',
-      quantity: '', // set to empty string so user is forced to input
-      unit_price: '' // set to empty string so user is forced to input
+      quantity: '', 
+      unit_price: '',
+      gst_type: 'CGST/UGST',
+      gst_rate: ''
     }]);
     setItemInput('');
     setShowItemDropdown(false);
@@ -196,7 +198,9 @@ export default function ReceivedQuotationView({
       description: i.description || '',
       drawing_number: i.drawing_number || '',
       quantity: i.quantity || '',
-      unit_price: i.unit_price !== undefined ? i.unit_price : ''
+      unit_price: i.unit_price !== undefined ? i.unit_price : '',
+      gst_type: i.gst_type || 'CGST/UGST',
+      gst_rate: i.gst_rate !== undefined && i.gst_rate !== null ? parseFloat(i.gst_rate).toString() : ''
     })) : []);
     setViewMode('form');
   };
@@ -242,7 +246,10 @@ export default function ReceivedQuotationView({
 
     const payload = {
       ...formData,
-      items: selectedItems
+      items: selectedItems.map(item => ({
+        ...item,
+        gst_rate: item.gst_rate !== '' ? parseFloat(item.gst_rate) : 0.00
+      }))
     };
 
     if (editingNo) {
@@ -296,9 +303,29 @@ export default function ReceivedQuotationView({
     return `${day}/${month}/${year}`;
   };
 
+  const calculateBasicValue = (itemsList) => {
+    if (!Array.isArray(itemsList)) return 0;
+    return itemsList.reduce((sum, i) => sum + (parseInt(i.quantity) || 0) * (parseFloat(i.unit_price) || 0), 0);
+  };
+
+  const calculateGstTax = (itemsList) => {
+    if (!Array.isArray(itemsList)) return 0;
+    return itemsList.reduce((sum, i) => {
+      const basic = (parseInt(i.quantity) || 0) * (parseFloat(i.unit_price) || 0);
+      const rate = parseFloat(i.gst_rate) || 0;
+      const multiplier = (i.gst_type === 'CGST/UGST') ? 2 : 1;
+      return sum + basic * (rate / 100) * multiplier;
+    }, 0);
+  };
+
   const calculateTotal = (itemsList) => {
     if (!Array.isArray(itemsList)) return 0;
-    return itemsList.reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0), 0);
+    return itemsList.reduce((sum, i) => {
+      const basic = (parseInt(i.quantity) || 0) * (parseFloat(i.unit_price) || 0);
+      const rate = parseFloat(i.gst_rate) || 0;
+      const multiplier = (i.gst_type === 'CGST/UGST') ? 2 : 1;
+      return sum + basic + basic * (rate / 100) * multiplier;
+    }, 0);
   };
 
   const inputCls = "w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium";
@@ -609,6 +636,38 @@ export default function ReceivedQuotationView({
                             </div>
 
                             <div className="flex flex-wrap items-center gap-4 shrink-0">
+                              {/* GST Type select */}
+                              <div className="flex flex-col items-start">
+                                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
+                                  GST Type
+                                </label>
+                                <select
+                                  value={item.gst_type || 'CGST/UGST'}
+                                  onChange={(e) => handleItemValueChange(item.item_code, 'gst_type', e.target.value)}
+                                  className="w-28 px-2.5 py-1.5 font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                                >
+                                  <option value="CGST/UGST">CGST/UGST</option>
+                                  <option value="IGST">IGST</option>
+                                </select>
+                              </div>
+
+                              {/* GST Rate input */}
+                              <div className="flex flex-col items-end">
+                                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
+                                  Rate (%)
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  max="100"
+                                  value={item.gst_rate || ''}
+                                  onChange={(e) => handleItemValueChange(item.item_code, 'gst_rate', e.target.value)}
+                                  className="w-20 px-2.5 py-1.5 text-right font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                                  placeholder="0"
+                                />
+                              </div>
+
                               {/* Quantity input (COMPULSORY) */}
                               <div className="flex flex-col items-end">
                                 <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
@@ -653,6 +712,41 @@ export default function ReceivedQuotationView({
                             </div>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Financial calculations */}
+                  {selectedItems.length > 0 && (
+                    <div className="mt-4 bg-slate-50/50 border border-slate-200 rounded-xl p-5 space-y-3">
+                      <div className="font-bold text-slate-700 uppercase text-xs tracking-wider border-b border-slate-200 pb-2">
+                        Financial Calculations
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="flex flex-col bg-white border border-slate-200 rounded-lg p-3">
+                          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                            Basic Value (Subtotal)
+                          </span>
+                          <span className="text-lg font-bold text-slate-800 mt-1">
+                            ₹{calculateBasicValue(selectedItems).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex flex-col bg-white border border-slate-200 rounded-lg p-3">
+                          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                            Calculated GST (Tax)
+                          </span>
+                          <span className="text-lg font-bold text-slate-800 mt-1">
+                            ₹{calculateGstTax(selectedItems).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex flex-col bg-blue-50/50 border border-blue-100 rounded-lg p-3">
+                          <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-widest">
+                            Gross Total
+                          </span>
+                          <span className="text-lg font-black text-blue-800 mt-1">
+                            ₹{(calculateBasicValue(selectedItems) + calculateGstTax(selectedItems)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}

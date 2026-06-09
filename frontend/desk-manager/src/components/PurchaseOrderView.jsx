@@ -21,6 +21,7 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
 
 const EMPTY_FORM = {
   po_no: '',
+  contract_ref: '',
   quotation_no: '',
   po_date: '',
   gst: '0.00',
@@ -33,6 +34,7 @@ const EMPTY_FORM = {
 export default function PurchaseOrderView({
   quotations,
   purchaseOrders,
+  customers = [],
   onAddPurchaseOrder,
   onUpdatePurchaseOrder,
   onDeletePurchaseOrder,
@@ -56,8 +58,9 @@ export default function PurchaseOrderView({
   const [showQtnDropdown, setShowQtnDropdown] = useState(false);
   const qtnRef = useRef(null);
 
-  // Next auto-generated PO number
-  const [nextPoNo, setNextPoNo] = useState('');
+  // New states for item shipping address autocomplete
+  const [activeShippingDropdown, setActiveShippingDropdown] = useState(null);
+  const shippingRefs = useRef({});
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -65,26 +68,18 @@ export default function PurchaseOrderView({
       if (qtnRef.current && !qtnRef.current.contains(e.target)) {
         setShowQtnDropdown(false);
       }
+      
+      // We check if click is outside the currently active shipping dropdown
+      if (activeShippingDropdown) {
+        const ref = shippingRefs.current[activeShippingDropdown];
+        if (ref && !ref.contains(e.target)) {
+          setActiveShippingDropdown(null);
+        }
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  // Fetch next PO number when entering creation form
-  const fetchNextPoNo = async () => {
-    try {
-      const savedToken = localStorage.getItem('dm_token');
-      const res = await fetch(`${API_BASE_URL}/purchase-orders/next-no`, {
-        headers: { 'Authorization': `Bearer ${savedToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setNextPoNo(data.next_no);
-      }
-    } catch (err) {
-      console.error('Error fetching next PO number:', err);
-    }
-  };
+  }, [activeShippingDropdown]);
 
   const handleQtnInput = async (val) => {
     setQtnInput(val);
@@ -125,6 +120,8 @@ export default function PurchaseOrderView({
         drawing_number: i.drawing_number || '',
         quantity: i.quantity || 1,
         unit_price: i.unit_price || '0.00',
+        shipping_address: '',
+        showShipping: false,
         checked: true
       }));
       setPoItems(initializedItems);
@@ -166,6 +163,14 @@ export default function PurchaseOrderView({
     updateBasicValue(updatedItems);
   };
 
+  const toggleShipping = (item_code) => {
+    setPoItems(poItems.map(i => i.item_code === item_code ? { ...i, showShipping: !i.showShipping } : i));
+  };
+
+  const handleShippingChange = (item_code, val) => {
+    setPoItems(poItems.map(i => i.item_code === item_code ? { ...i, shipping_address: val } : i));
+  };
+
   const updateBasicValue = (itemsList) => {
     const total = itemsList
       .filter((i) => i.checked)
@@ -187,7 +192,6 @@ export default function PurchaseOrderView({
     setQtnInput('');
     setSelectedQuotation(null);
     setPoItems([]);
-    fetchNextPoNo();
     setViewMode('form');
   };
 
@@ -195,6 +199,7 @@ export default function PurchaseOrderView({
     setEditingNo(po.po_no);
     setFormData({
       po_no: po.po_no,
+      contract_ref: po.contract_ref || '',
       quotation_no: po.quotation_no || '',
       po_date: po.po_date ? po.po_date.slice(0, 10) : '',
       gst: parseFloat(po.gst).toFixed(2),
@@ -219,6 +224,8 @@ export default function PurchaseOrderView({
           drawing_number: qItem.drawing_number || '',
           quantity: poItemMatch ? poItemMatch.quantity : qItem.quantity,
           unit_price: poItemMatch ? poItemMatch.unit_price : qItem.unit_price,
+          shipping_address: poItemMatch ? poItemMatch.shipping_address || '' : '',
+          showShipping: !!(poItemMatch && poItemMatch.shipping_address),
           checked: !!poItemMatch
         };
       });
@@ -233,6 +240,8 @@ export default function PurchaseOrderView({
               drawing_number: i.drawing_number || '',
               quantity: i.quantity || 1,
               unit_price: i.unit_price || '0.00',
+              shipping_address: i.shipping_address || '',
+              showShipping: !!i.shipping_address,
               checked: true
             }))
           : []
@@ -283,7 +292,8 @@ export default function PurchaseOrderView({
       items: selectedItems.map((i) => ({
         item_code: i.item_code,
         quantity: i.quantity,
-        unit_price: i.unit_price
+        unit_price: i.unit_price,
+        shipping_address: i.shipping_address || null
       }))
     };
 
@@ -300,7 +310,6 @@ export default function PurchaseOrderView({
         setQtnInput('');
         setSelectedQuotation(null);
         setPoItems([]);
-        fetchNextPoNo();
       }
     }
   };
@@ -449,7 +458,7 @@ export default function PurchaseOrderView({
                         <Edit2 size={14} /> Edit
                       </button>
                       <Link
-                        to={`/purchase-order/${po.po_no}`}
+                        to={`/purchase-order/${encodeURIComponent(po.po_no)}`}
                         className="px-4 py-2 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 justify-center"
                       >
                         View Details
@@ -507,13 +516,16 @@ export default function PurchaseOrderView({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    PO No.
+                    PO No. <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"
-                    disabled
-                    value={editingNo ? formData.po_no : nextPoNo || 'Generating...'}
-                    className="w-full px-4 py-3 bg-slate-100 border border-slate-300 rounded-lg text-base text-slate-500 cursor-not-allowed font-mono font-bold"
+                    required
+                    disabled={!!editingNo}
+                    value={formData.po_no}
+                    onChange={set('po_no')}
+                    placeholder="Enter PO Number"
+                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 font-mono font-bold disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
@@ -588,8 +600,8 @@ export default function PurchaseOrderView({
 
               {/* Items Table with Checkboxes */}
               {poItems.length > 0 && (
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+                <div className="border border-slate-200 rounded-xl overflow-visible">
+                  <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center rounded-t-xl">
                     <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">
                       Select items to order from Quotation
                     </span>
@@ -608,8 +620,8 @@ export default function PurchaseOrderView({
                   </div>
                   <div className="divide-y divide-slate-100">
                     {poItems.map((item) => (
+                      <React.Fragment key={item.item_code}>
                       <div
-                        key={item.item_code}
                         className={`flex flex-col sm:flex-row sm:items-center px-5 py-4 gap-4 transition-colors ${
                           item.checked ? 'bg-blue-50/20' : 'bg-white opacity-75'
                         }`}
@@ -671,6 +683,80 @@ export default function PurchaseOrderView({
                           </div>
                         </div>
                       </div>
+                      
+                      {/* Shipping Address Section per item */}
+                      {item.checked && (
+                        <div className="px-14 pb-4 bg-blue-50/20 border-t border-blue-100">
+                          {!item.showShipping ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleShipping(item.item_code)}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer"
+                            >
+                              + Add Shipping Address (Optional)
+                            </button>
+                          ) : (
+                            <div className="mt-3 bg-white p-3 rounded-lg border border-slate-200">
+                              <div className="flex justify-between items-center mb-2">
+                                <label className="text-xs font-bold text-slate-700">Shipping Address</label>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleShipping(item.item_code)}
+                                  className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <div className="relative" ref={(el) => (shippingRefs.current[item.item_code] = el)}>
+                                <textarea
+                                  rows={2}
+                                  placeholder="Start typing customer ID, name, or just type the address..."
+                                  value={item.shipping_address || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    handleShippingChange(item.item_code, val);
+                                    if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
+                                      setActiveShippingDropdown(item.item_code);
+                                    } else {
+                                      setActiveShippingDropdown(null);
+                                    }
+                                  }}
+                                  onFocus={(e) => {
+                                    const val = e.target.value;
+                                    if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
+                                      setActiveShippingDropdown(item.item_code);
+                                    }
+                                  }}
+                                  className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium"
+                                  autoComplete="off"
+                                />
+                                {activeShippingDropdown === item.item_code && customers.filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase())).length > 0 && (
+                                  <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                                    {customers
+                                      .filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase()))
+                                      .slice(0, 6)
+                                      .map(c => (
+                                        <button
+                                          key={c.id}
+                                          type="button"
+                                          onClick={() => {
+                                            handleShippingChange(item.item_code, `${c.name}\n${c.address}`);
+                                            setActiveShippingDropdown(null);
+                                          }}
+                                          className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                                        >
+                                          <div className="font-bold text-sm text-slate-900">{c.id}</div>
+                                          <div className="text-xs text-slate-500">{c.name} &bull; {c.address}</div>
+                                        </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      </React.Fragment>
                     ))}
                   </div>
                 </div>
