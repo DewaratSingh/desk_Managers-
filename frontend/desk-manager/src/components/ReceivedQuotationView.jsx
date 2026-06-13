@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -42,6 +42,30 @@ export default function ReceivedQuotationView({
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingNo, setEditingNo] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (location.state && location.state.openForm) {
+      // Open the add form
+      setEditingNo(null);
+      setFormData({
+        ...EMPTY_FORM,
+        quotation_date: new Date().toISOString().slice(0, 10)
+      });
+      setBuyerInput('');
+      setItemInput('');
+      setSelectedItems([]);
+      fetchNextQuotationNo();
+      setViewMode('form');
+
+      // Clear the redirect flag but keep other state attributes
+      const nextState = { ...location.state };
+      delete nextState.openForm;
+      navigate(location.pathname, { replace: true, state: nextState });
+    }
+  }, [location.state]);
 
   // Selected items and pricing
   const [selectedItems, setSelectedItems] = useState([]);
@@ -145,9 +169,7 @@ export default function ReceivedQuotationView({
       description: item.description,
       drawing_number: item.drawing_number || '',
       quantity: '', 
-      unit_price: '',
-      gst_type: 'CGST/UGST',
-      gst_rate: ''
+      unit_price: ''
     }]);
     setItemInput('');
     setShowItemDropdown(false);
@@ -198,14 +220,21 @@ export default function ReceivedQuotationView({
       description: i.description || '',
       drawing_number: i.drawing_number || '',
       quantity: i.quantity || '',
-      unit_price: i.unit_price !== undefined ? i.unit_price : '',
-      gst_type: i.gst_type || 'CGST/UGST',
-      gst_rate: i.gst_rate !== undefined && i.gst_rate !== null ? parseFloat(i.gst_rate).toString() : ''
+      unit_price: i.unit_price !== undefined ? i.unit_price : ''
     })) : []);
     setViewMode('form');
   };
 
   const handleBackToDirectory = () => {
+    if (location.state && location.state.restoreQuotationData) {
+      navigate('/', {
+        state: {
+          activeTab: 'quotation',
+          restoreQuotationData: location.state.restoreQuotationData
+        }
+      });
+      return;
+    }
     setEditingNo(null);
     setFormData(EMPTY_FORM);
     setBuyerInput('');
@@ -247,8 +276,7 @@ export default function ReceivedQuotationView({
     const payload = {
       ...formData,
       items: selectedItems.map(item => ({
-        ...item,
-        gst_rate: item.gst_rate !== '' ? parseFloat(item.gst_rate) : 0.00
+        ...item
       }))
     };
 
@@ -258,6 +286,10 @@ export default function ReceivedQuotationView({
     } else {
       const success = await onAddReceivedQuotation(payload);
       if (success) {
+        const savedNo = payload.received_quotation_no || nextQuotationNo;
+        const savedDate = payload.quotation_date;
+        const savedBuyer = formData.buyer_name;
+
         setFormData({
           ...EMPTY_FORM,
           quotation_date: new Date().toISOString().slice(0, 10)
@@ -266,6 +298,22 @@ export default function ReceivedQuotationView({
         setItemInput('');
         setSelectedItems([]);
         fetchNextQuotationNo();
+
+        if (location.state && location.state.restoreQuotationData) {
+          const restored = { ...location.state.restoreQuotationData };
+          const newRecQtnChip = {
+            received_quotation_no: savedNo,
+            quotation_date: savedDate,
+            buyer_name: savedBuyer
+          };
+          restored.selectedRecQtns = [...(restored.selectedRecQtns || []), newRecQtnChip];
+          navigate('/', {
+            state: {
+              activeTab: 'quotation',
+              restoreQuotationData: restored
+            }
+          });
+        }
       }
     }
   };
@@ -308,24 +356,8 @@ export default function ReceivedQuotationView({
     return itemsList.reduce((sum, i) => sum + (parseInt(i.quantity) || 0) * (parseFloat(i.unit_price) || 0), 0);
   };
 
-  const calculateGstTax = (itemsList) => {
-    if (!Array.isArray(itemsList)) return 0;
-    return itemsList.reduce((sum, i) => {
-      const basic = (parseInt(i.quantity) || 0) * (parseFloat(i.unit_price) || 0);
-      const rate = parseFloat(i.gst_rate) || 0;
-      const multiplier = (i.gst_type === 'CGST/UGST') ? 2 : 1;
-      return sum + basic * (rate / 100) * multiplier;
-    }, 0);
-  };
-
   const calculateTotal = (itemsList) => {
-    if (!Array.isArray(itemsList)) return 0;
-    return itemsList.reduce((sum, i) => {
-      const basic = (parseInt(i.quantity) || 0) * (parseFloat(i.unit_price) || 0);
-      const rate = parseFloat(i.gst_rate) || 0;
-      const multiplier = (i.gst_type === 'CGST/UGST') ? 2 : 1;
-      return sum + basic + basic * (rate / 100) * multiplier;
-    }, 0);
+    return calculateBasicValue(itemsList);
   };
 
   const inputCls = "w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium";
@@ -364,7 +396,7 @@ export default function ReceivedQuotationView({
             <Search size={22} className="text-slate-400 shrink-0" />
             <input
               type="text"
-              placeholder="Search by quotation no. or buyer name..."
+              placeholder="Search by quotation no. or seller name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-transparent focus:outline-none text-lg text-slate-900 placeholder:text-slate-400 font-semibold"
@@ -500,11 +532,11 @@ export default function ReceivedQuotationView({
 
                 {/* Buyer Lookup */}
                 <div ref={buyerRef} className="relative">
-                  <label className={labelCls}>Buyer Name <b className="text-red-500">*</b></label>
+                  <label className={labelCls}>Seller Name <b className="text-red-500">*</b></label>
                   <input
                     type="text"
                     required
-                    placeholder="Search and select buyer name..."
+                    placeholder="Search and select seller name..."
                     value={buyerInput}
                     onChange={(e) => handleBuyerInput(e.target.value)}
                     onFocus={() => buyerInput.trim() && setShowBuyerDropdown(true)}
@@ -636,48 +668,17 @@ export default function ReceivedQuotationView({
                             </div>
 
                             <div className="flex flex-wrap items-center gap-4 shrink-0">
-                              {/* GST Type select */}
-                              <div className="flex flex-col items-start">
-                                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                  GST Type
-                                </label>
-                                <select
-                                  value={item.gst_type || 'CGST/UGST'}
-                                  onChange={(e) => handleItemValueChange(item.item_code, 'gst_type', e.target.value)}
-                                  className="w-28 px-2.5 py-1.5 font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
-                                >
-                                  <option value="CGST/UGST">CGST/UGST</option>
-                                  <option value="IGST">IGST</option>
-                                </select>
-                              </div>
-
-                              {/* GST Rate input */}
-                              <div className="flex flex-col items-end">
-                                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                  Rate (%)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  max="100"
-                                  value={item.gst_rate || ''}
-                                  onChange={(e) => handleItemValueChange(item.item_code, 'gst_rate', e.target.value)}
-                                  className="w-20 px-2.5 py-1.5 text-right font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
-                                  placeholder="0"
-                                />
-                              </div>
 
                               {/* Quantity input (COMPULSORY) */}
                               <div className="flex flex-col items-end">
                                 <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                  Qty *
+                                  Qty <b className="text-red-500">*</b>
                                 </label>
                                 <input
                                   type="number"
                                   min="1"
                                   required
-                                  placeholder="compulsory"
+                                  placeholder=""
                                   value={item.quantity}
                                   onChange={(e) => handleItemValueChange(item.item_code, 'quantity', e.target.value)}
                                   className="w-24 px-2.5 py-1.5 text-center font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
@@ -687,14 +688,14 @@ export default function ReceivedQuotationView({
                               {/* Price input (COMPULSORY) */}
                               <div className="flex flex-col items-end">
                                 <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                  Price / Piece (₹) *
+                                  Price / Piece (₹) <b className="text-red-500">*</b>
                                 </label>
                                 <input
                                   type="number"
                                   step="0.01"
                                   min="0"
                                   required
-                                  placeholder="compulsory"
+                                  placeholder=""
                                   value={item.unit_price}
                                   onChange={(e) => handleItemValueChange(item.item_code, 'unit_price', e.target.value)}
                                   className="w-28 px-2.5 py-1.5 text-right font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
@@ -722,7 +723,7 @@ export default function ReceivedQuotationView({
                       <div className="font-bold text-slate-700 uppercase text-xs tracking-wider border-b border-slate-200 pb-2">
                         Financial Calculations
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="flex flex-col bg-white border border-slate-200 rounded-lg p-3">
                           <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
                             Basic Value (Subtotal)
@@ -731,20 +732,12 @@ export default function ReceivedQuotationView({
                             ₹{calculateBasicValue(selectedItems).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
-                        <div className="flex flex-col bg-white border border-slate-200 rounded-lg p-3">
-                          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                            Calculated GST (Tax)
-                          </span>
-                          <span className="text-lg font-bold text-slate-800 mt-1">
-                            ₹{calculateGstTax(selectedItems).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
                         <div className="flex flex-col bg-blue-50/50 border border-blue-100 rounded-lg p-3">
                           <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-widest">
-                            Gross Total
+                            Total Value
                           </span>
                           <span className="text-lg font-black text-blue-800 mt-1">
-                            ₹{(calculateBasicValue(selectedItems) + calculateGstTax(selectedItems)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹{calculateBasicValue(selectedItems).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                       </div>

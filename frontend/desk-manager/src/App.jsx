@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import AddCustomerView from './components/AddCustomerView';
@@ -16,6 +16,7 @@ import PurchaseOrderDetailView from './components/PurchaseOrderDetailView';
 import ReleaseOrderView from './components/ReleaseOrderView';
 import ReleaseOrderDetailView from './components/ReleaseOrderDetailView';
 import ARCView from './components/ARCView';
+import GSTCategoryView from './components/GSTCategoryView';
 import LoginView from './components/LoginView';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -26,6 +27,13 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state && location.state.activeTab) {
+      setActiveTab(location.state.activeTab);
+    }
+  }, [location.state]);
 
   // Auth state
   const [token, setToken] = useState(null);
@@ -594,6 +602,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to add quotation');
       setQuotations((prev) => [data, ...prev]);
+      fetchAllData();
       triggerToast('Quotation successfully saved!', 'success');
       return true;
     } catch (err) {
@@ -617,7 +626,35 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update quotation');
       setQuotations((prev) => prev.map((q) => (q.quotation_no === quotation_no ? data : q)));
+      fetchAllData();
       triggerToast('Quotation updated successfully!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRejectQuotation = async (quotationNo) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotationNo)}/reject`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to reject quotation');
+      
+      // Update RFQs status locally
+      setRfqs((prev) =>
+        prev.map((r) => (r.rfq_no === data.rfq_no ? { ...r, status: 'rejected' } : r))
+      );
+      fetchAllData();
+      triggerToast('Quotation successfully rejected!', 'success');
       return true;
     } catch (err) {
       setError(err.message);
@@ -644,6 +681,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to add purchase order');
       setPurchaseOrders((prev) => [data, ...prev]);
+      fetchAllData();
       triggerToast('Purchase Order successfully saved!', 'success');
       return true;
     } catch (err) {
@@ -690,6 +728,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to delete purchase order');
       setPurchaseOrders((prev) => prev.filter((po) => po.po_no !== po_no));
+      fetchAllData();
       triggerToast('Purchase Order deleted successfully.', 'success');
     } catch (err) {
       setError(err.message);
@@ -777,7 +816,14 @@ export default function App() {
   const renderActiveView = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView />;
+        return (
+          <DashboardView
+            rfqs={rfqs}
+            setActiveTab={setActiveTab}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
+          />
+        );
       case 'add-customer':
         return (
           <AddCustomerView
@@ -876,6 +922,7 @@ export default function App() {
       case 'purchase-order':
         return (
           <PurchaseOrderView
+            rfqs={rfqs}
             quotations={quotations}
             purchaseOrders={purchaseOrders}
             customers={customers}
@@ -905,6 +952,8 @@ export default function App() {
         );
       case 'arc':
         return <ARCView items={items} />;
+      case 'gst-category':
+        return <GSTCategoryView />;
       default:
         return <DashboardView />;
     }
@@ -950,8 +999,8 @@ export default function App() {
 
   // ── Authenticated workspace ──
   return (
-      <BrowserRouter>
-        <Routes>
+    <>
+      <Routes>
           <Route path="/" element={
             <div className="flex flex-col lg:flex-row h-screen w-screen bg-[#f1f5f9] text-slate-900 overflow-hidden">
               <Sidebar
@@ -980,6 +1029,7 @@ export default function App() {
               rfqs={rfqs}
               customers={customers}
               buyers={buyers}
+              onRejectQuotation={handleRejectQuotation}
             />
           } />
           <Route path="/received-quotation/:received_quotation_no" element={
@@ -1006,6 +1056,6 @@ export default function App() {
           } />
         </Routes>
         <ToastContainer />
-      </BrowserRouter>
+      </>
     );
 }

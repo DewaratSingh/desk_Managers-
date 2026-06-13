@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
     }
 
     const queryText = `
-      SELECT q.*,
+      SELECT q.*, r.status AS rfq_status,
         r.customer_id, c.name AS customer_name, c.address AS customer_address,
         b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
         COALESCE(
@@ -40,7 +40,8 @@ router.get('/', async (req, res) => {
               'description', i.description,
               'drawing_number', i.drawing_number,
               'quantity', qi.quantity,
-              'unit_price', qi.unit_price
+              'unit_price', qi.unit_price,
+              'unit', qi.unit
             ) ORDER BY qi.id
           ) FILTER (WHERE qi.item_code IS NOT NULL),
           '[]'
@@ -64,7 +65,7 @@ router.get('/', async (req, res) => {
       LEFT JOIN customers c ON r.customer_id = c.id
       LEFT JOIN buyers b ON r.buyer_id = b.id
       ${whereClause}
-      GROUP BY q.quotation_no, r.customer_id, c.name, c.address, b.name, b.email, b.phone
+      GROUP BY q.quotation_no, r.customer_id, r.status, c.name, c.address, b.name, b.email, b.phone
       ORDER BY q.created_at DESC
       LIMIT $1 OFFSET $2
     `;
@@ -111,7 +112,7 @@ router.get('/next-no', async (req, res) => {
 // Add new quotation
 router.post('/', async (req, res) => {
   const {
-    rfq_no, quotation_date, terms_and_conditions, items = [], received_quotation_nos = []
+    rfq_no, quotation_date, terms_and_conditions, gst_type, gst_rate, items = [], received_quotation_nos = []
   } = req.body;
 
   if (!rfq_no || !quotation_date) {
@@ -144,9 +145,12 @@ router.post('/', async (req, res) => {
 
     // Insert quotation
     await client.query(`
-      INSERT INTO quotations (quotation_no, rfq_no, quotation_date, terms_and_conditions)
-      VALUES ($1, $2, $3, $4)
-    `, [quotation_no, rfq_no, quotation_date, terms_and_conditions || null]);
+      INSERT INTO quotations (quotation_no, rfq_no, quotation_date, terms_and_conditions, gst_type, gst_rate)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [
+      quotation_no, rfq_no, quotation_date, terms_and_conditions || null,
+      gst_type || null, gst_rate !== undefined ? parseFloat(gst_rate) : 0.00
+    ]);
 
     // Insert linked received quotations
     if (Array.isArray(received_quotation_nos)) {
@@ -172,12 +176,18 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ error: `Quantity must be greater than 0 for item ${item.item_code}` });
       }
 
+      const itemUnit = (item.unit || 'Piece').trim();
+      await client.query('INSERT INTO units (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [itemUnit]);
       await client.query(`
-        INSERT INTO quotation_items (quotation_no, item_code, quantity, unit_price)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO quotation_items (quotation_no, item_code, quantity, unit, unit_price)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (quotation_no, item_code) DO NOTHING
-      `, [quotation_no, item.item_code, qty, price]);
+      `, [quotation_no, item.item_code, qty, itemUnit, price]);
     }
+    // Update linked RFQ status to 'quotated'
+    await client.query(`
+      UPDATE rfqs SET status = 'quotated' WHERE rfq_no = $1
+    `, [rfq_no]);
 
     await client.query('COMMIT');
 
@@ -192,7 +202,8 @@ router.post('/', async (req, res) => {
               'description', i.description,
               'drawing_number', i.drawing_number,
               'quantity', qi.quantity,
-              'unit_price', qi.unit_price
+              'unit_price', qi.unit_price,
+              'unit', qi.unit
             ) ORDER BY qi.id
           ) FILTER (WHERE qi.item_code IS NOT NULL),
           '[]'
@@ -233,7 +244,7 @@ router.post('/', async (req, res) => {
 router.put('/:quotation_no', async (req, res) => {
   const { quotation_no } = req.params;
   const {
-    quotation_date, terms_and_conditions, items = [], received_quotation_nos = []
+    quotation_date, terms_and_conditions, gst_type, gst_rate, items = [], received_quotation_nos = []
   } = req.body;
 
   if (!quotation_date) {
@@ -246,10 +257,14 @@ router.put('/:quotation_no', async (req, res) => {
 
     const updateResult = await client.query(`
       UPDATE quotations 
-      SET quotation_date = $1, terms_and_conditions = $2
-      WHERE quotation_no = $3
+      SET quotation_date = $1, terms_and_conditions = $2, gst_type = $3, gst_rate = $4
+      WHERE quotation_no = $5
       RETURNING *
-    `, [quotation_date, terms_and_conditions || null, quotation_no]);
+    `, [
+      quotation_date, terms_and_conditions || null,
+      gst_type || null, gst_rate !== undefined ? parseFloat(gst_rate) : 0.00,
+      quotation_no
+    ]);
 
     if (updateResult.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -282,10 +297,12 @@ router.put('/:quotation_no', async (req, res) => {
         return res.status(400).json({ error: `Quantity must be greater than 0 for item ${item.item_code}` });
       }
 
+      const itemUnit = (item.unit || 'Piece').trim();
+      await client.query('INSERT INTO units (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [itemUnit]);
       await client.query(`
-        INSERT INTO quotation_items (quotation_no, item_code, quantity, unit_price)
-        VALUES ($1, $2, $3, $4)
-      `, [quotation_no, item.item_code, qty, price]);
+        INSERT INTO quotation_items (quotation_no, item_code, quantity, unit, unit_price)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [quotation_no, item.item_code, qty, itemUnit, price]);
     }
 
     await client.query('COMMIT');
@@ -301,7 +318,8 @@ router.put('/:quotation_no', async (req, res) => {
               'description', i.description,
               'drawing_number', i.drawing_number,
               'quantity', qi.quantity,
-              'unit_price', qi.unit_price
+              'unit_price', qi.unit_price,
+              'unit', qi.unit
             ) ORDER BY qi.id
           ) FILTER (WHERE qi.item_code IS NOT NULL),
           '[]'
@@ -333,6 +351,35 @@ router.put('/:quotation_no', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error updating quotation:', error);
     res.status(500).json({ error: 'Server error updating quotation' });
+  } finally {
+    client.release();
+  }
+});
+
+// Reject quotation (updates linked RFQ status to 'rejected')
+router.post('/:quotation_no/reject', async (req, res) => {
+  const { quotation_no } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Find linked RFQ
+    const qtnResult = await client.query('SELECT rfq_no FROM quotations WHERE quotation_no = $1', [quotation_no]);
+    if (qtnResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const rfq_no = qtnResult.rows[0].rfq_no;
+    
+    // Update RFQ status to 'rejected'
+    await client.query("UPDATE rfqs SET status = 'rejected' WHERE rfq_no = $1", [rfq_no]);
+    
+    await client.query('COMMIT');
+    res.json({ message: 'Quotation rejected successfully', rfq_no });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error rejecting quotation:', error);
+    res.status(500).json({ error: 'Server error rejecting quotation' });
   } finally {
     client.release();
   }

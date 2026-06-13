@@ -313,7 +313,7 @@ const initializeDatabase = async () => {
       console.log('Adding gst_type column to release_order_items table...');
       await client.query(`
         ALTER TABLE release_order_items 
-        ADD COLUMN gst_type VARCHAR(20) DEFAULT 'CGST/UGST';
+        ADD COLUMN gst_type VARCHAR(20) DEFAULT 'CGST/SGST';
       `);
       console.log('gst_type column added successfully.');
     }
@@ -326,29 +326,264 @@ const initializeDatabase = async () => {
       console.log('gst_rate column added successfully.');
     }
 
-    // Add gst_type and gst_rate columns to received_quotation_items if they don't exist
-    const reqQtnItemsCheck = await client.query(`
+    // Add delivery_date column to release_orders if it doesn't exist
+    const roDeliveryDateCheck = await client.query(`
       SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'received_quotation_items' AND column_name IN ('gst_type', 'gst_rate')
+      WHERE table_name = 'release_orders' AND column_name = 'delivery_date'
     `);
-    const existingReqQtnColumns = reqQtnItemsCheck.rows.map(r => r.column_name);
-    if (!existingReqQtnColumns.includes('gst_type')) {
-      console.log('Adding gst_type column to received_quotation_items table...');
+    if (roDeliveryDateCheck.rows.length === 0) {
+      console.log('Adding delivery_date column to release_orders table...');
       await client.query(`
-        ALTER TABLE received_quotation_items 
-        ADD COLUMN gst_type VARCHAR(20) DEFAULT 'CGST/UGST';
+        ALTER TABLE release_orders 
+        ADD COLUMN delivery_date DATE;
       `);
-      console.log('gst_type column added successfully.');
+      console.log('delivery_date column added to release_orders successfully.');
     }
-    if (!existingReqQtnColumns.includes('gst_rate')) {
-      console.log('Adding gst_rate column to received_quotation_items table...');
+
+    // Add delivery_date column to purchase_orders if it doesn't exist
+    const poDeliveryDateCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'purchase_orders' AND column_name = 'delivery_date'
+    `);
+    if (poDeliveryDateCheck.rows.length === 0) {
+      console.log('Adding delivery_date column to purchase_orders table...');
       await client.query(`
-        ALTER TABLE received_quotation_items 
+        ALTER TABLE purchase_orders 
+        ADD COLUMN delivery_date DATE;
+      `);
+      console.log('delivery_date column added to purchase_orders successfully.');
+    }
+
+    // Add delivery_date, gst_type, and gst_rate columns to purchase_order_items if they don't exist
+    const poItemsCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'purchase_order_items' AND column_name IN ('delivery_date', 'gst_type', 'gst_rate')
+    `);
+    const existingPoColumns = poItemsCheck.rows.map(r => r.column_name);
+    if (!existingPoColumns.includes('delivery_date')) {
+      console.log('Adding delivery_date column to purchase_order_items table...');
+      await client.query(`
+        ALTER TABLE purchase_order_items 
+        ADD COLUMN delivery_date DATE;
+      `);
+      console.log('delivery_date column added to purchase_order_items successfully.');
+    }
+    if (!existingPoColumns.includes('gst_type')) {
+      console.log('Adding gst_type column to purchase_order_items table...');
+      await client.query(`
+        ALTER TABLE purchase_order_items 
+        ADD COLUMN gst_type VARCHAR(20) DEFAULT 'CGST/SGST';
+      `);
+      console.log('gst_type column added to purchase_order_items successfully.');
+    }
+    if (!existingPoColumns.includes('gst_rate')) {
+      console.log('Adding gst_rate column to purchase_order_items table...');
+      await client.query(`
+        ALTER TABLE purchase_order_items 
         ADD COLUMN gst_rate DECIMAL(5, 2) DEFAULT 0.00;
       `);
-      console.log('gst_rate column added successfully.');
+      console.log('gst_rate column added to purchase_order_items successfully.');
+    }
+
+    // Drop gst_type and gst_rate from received_quotation_items since they are no longer used
+    console.log('Dropping gst_type and gst_rate columns from received_quotation_items table if they exist...');
+    await client.query(`
+      ALTER TABLE received_quotation_items 
+      DROP COLUMN IF EXISTS gst_type,
+      DROP COLUMN IF EXISTS gst_rate;
+    `);
+    console.log('gst_type and gst_rate columns dropped successfully from received_quotation_items.');
+    
+    // Add status column to rfqs if it doesn't exist
+    const rfqStatusCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'rfqs' AND column_name = 'status'
+    `);
+    if (rfqStatusCheck.rows.length === 0) {
+      console.log('Adding status column to rfqs table...');
+      await client.query(`
+        ALTER TABLE rfqs 
+        ADD COLUMN status VARCHAR(50) DEFAULT 'rfq';
+      `);
+      console.log('status column added to rfqs successfully.');
+      
+      // Update existing records
+      console.log('Backfilling status values for existing RFQs...');
+      await client.query(`
+        UPDATE rfqs 
+        SET status = 'quotated' 
+        WHERE rfq_no IN (SELECT rfq_no FROM quotations);
+      `);
+      await client.query(`
+        UPDATE rfqs 
+        SET status = 'ordered' 
+        WHERE rfq_no IN (
+          SELECT q.rfq_no FROM quotations q 
+          JOIN purchase_orders po ON q.quotation_no = po.quotation_no
+        );
+      `);
+      console.log('RFQ status backfilling completed.');
     }
     
+    // Units of Measurement Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS units (
+        name VARCHAR(50) PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Seed default units if empty
+    const unitsCountResult = await client.query('SELECT COUNT(*) FROM units');
+    if (parseInt(unitsCountResult.rows[0].count) === 0) {
+      console.log('Seeding default units of measurement...');
+      const defaultUnits = ['Piece', 'Kg', 'Meter', 'Box', 'Set', 'Liter', 'Ton', 'Nos'];
+      for (const unit of defaultUnits) {
+        await client.query('INSERT INTO units (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [unit]);
+      }
+      console.log('Default units seeded.');
+    }
+
+    // Add unit column to rfq_items
+    const rfqItemsUnitCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'rfq_items' AND column_name = 'unit'
+    `);
+    if (rfqItemsUnitCheck.rows.length === 0) {
+      console.log('Adding unit column to rfq_items table...');
+      await client.query(`
+        ALTER TABLE rfq_items 
+        ADD COLUMN unit VARCHAR(50) DEFAULT 'Piece';
+      `);
+      console.log('unit column added to rfq_items.');
+    }
+
+    // Add unit column to quotation_items
+    const qtnItemsUnitCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'quotation_items' AND column_name = 'unit'
+    `);
+    if (qtnItemsUnitCheck.rows.length === 0) {
+      console.log('Adding unit column to quotation_items table...');
+      await client.query(`
+        ALTER TABLE quotation_items 
+        ADD COLUMN unit VARCHAR(50) DEFAULT 'Piece';
+      `);
+      console.log('unit column added to quotation_items.');
+    }
+
+    // GST Rates Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS gst_rates (
+        id SERIAL PRIMARY KEY,
+        type VARCHAR(100) NOT NULL UNIQUE,
+        rate DECIMAL(5, 2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Seed default GST rates (Indian Manufacturing Rates)
+    const gstCountResult = await client.query('SELECT COUNT(*) FROM gst_rates');
+    if (parseInt(gstCountResult.rows[0].count) === 0) {
+      console.log('Seeding Indian manufacturing GST rates...');
+      const defaultGstRates = [
+        { type: 'CGST + SGST 18%', rate: 18.00 },
+        { type: 'IGST 18%', rate: 18.00 },
+        { type: 'CGST + SGST 28%', rate: 28.00 },
+        { type: 'IGST 28%', rate: 28.00 },
+        { type: 'CGST + SGST 12%', rate: 12.00 },
+        { type: 'IGST 12%', rate: 12.00 },
+        { type: 'CGST + SGST 5%', rate: 5.00 },
+        { type: 'IGST 5%', rate: 5.00 },
+        { type: 'Exempted 0%', rate: 0.00 }
+      ];
+      for (const item of defaultGstRates) {
+        await client.query('INSERT INTO gst_rates (type, rate) VALUES ($1, $2) ON CONFLICT (type) DO NOTHING', [item.type, item.rate]);
+      }
+      console.log('Indian manufacturing GST rates seeded.');
+    }
+
+    // Add gst_type and gst_rate columns to quotations
+    const qtnGstTypeCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'quotations' AND column_name = 'gst_type'
+    `);
+    if (qtnGstTypeCheck.rows.length === 0) {
+      console.log('Adding gst_type column to quotations table...');
+      await client.query(`
+        ALTER TABLE quotations 
+        ADD COLUMN gst_type VARCHAR(100);
+      `);
+      console.log('gst_type column added to quotations.');
+    }
+
+    const qtnGstRateCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'quotations' AND column_name = 'gst_rate'
+    `);
+    if (qtnGstRateCheck.rows.length === 0) {
+      console.log('Adding gst_rate column to quotations table...');
+      await client.query(`
+        ALTER TABLE quotations 
+        ADD COLUMN gst_rate DECIMAL(5, 2) DEFAULT 0.00;
+      `);
+      console.log('gst_rate column added to quotations.');
+    }
+
+    // Add gst_type and gst_rate to purchase_orders
+    const poGstTypeCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'purchase_orders' AND column_name = 'gst_type'
+    `);
+    if (poGstTypeCheck.rows.length === 0) {
+      console.log('Adding gst_type column to purchase_orders table...');
+      await client.query(`
+        ALTER TABLE purchase_orders 
+        ADD COLUMN gst_type VARCHAR(100);
+      `);
+      console.log('gst_type column added to purchase_orders.');
+    }
+
+    const poGstRateCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'purchase_orders' AND column_name = 'gst_rate'
+    `);
+    if (poGstRateCheck.rows.length === 0) {
+      console.log('Adding gst_rate column to purchase_orders table...');
+      await client.query(`
+        ALTER TABLE purchase_orders 
+        ADD COLUMN gst_rate DECIMAL(5, 2) DEFAULT 0.00;
+      `);
+      console.log('gst_rate column added to purchase_orders.');
+    }
+
+    // Add gst_type and gst_rate to release_orders
+    const roGstTypeCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'release_orders' AND column_name = 'gst_type'
+    `);
+    if (roGstTypeCheck.rows.length === 0) {
+      console.log('Adding gst_type column to release_orders table...');
+      await client.query(`
+        ALTER TABLE release_orders 
+        ADD COLUMN gst_type VARCHAR(100);
+      `);
+      console.log('gst_type column added to release_orders.');
+    }
+
+    const roGstRateCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'release_orders' AND column_name = 'gst_rate'
+    `);
+    if (roGstRateCheck.rows.length === 0) {
+      console.log('Adding gst_rate column to release_orders table...');
+      await client.query(`
+        ALTER TABLE release_orders 
+        ADD COLUMN gst_rate DECIMAL(5, 2) DEFAULT 0.00;
+      `);
+      console.log('gst_rate column added to release_orders.');
+    }
+
     console.log('Schema normalization migrations completed.');
     // ----------------------------------------
 

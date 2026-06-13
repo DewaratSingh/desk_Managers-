@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -24,6 +24,7 @@ const EMPTY_FORM = {
   contract_ref: '',
   quotation_no: '',
   po_date: '',
+  delivery_date: '',
   gst: '0.00',
   transport: '0.00',
   other: '0.00',
@@ -32,6 +33,7 @@ const EMPTY_FORM = {
 };
 
 export default function PurchaseOrderView({
+  rfqs = [],
   quotations,
   purchaseOrders,
   customers = [],
@@ -47,6 +49,95 @@ export default function PurchaseOrderView({
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingNo, setEditingNo] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // GST Autocomplete
+  const [activeGstDropdown, setActiveGstDropdown] = useState(null);
+  const [gstSuggestions, setGstSuggestions] = useState([]);
+  const [gstRatesList, setGstRatesList] = useState([]);
+  const [gstInputs, setGstInputs] = useState({});
+  const gstRefs = useRef({});
+
+  useEffect(() => {
+    const fetchGstRates = async () => {
+      try {
+        const savedToken = localStorage.getItem('dm_token');
+        const headers = { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${savedToken}`
+        };
+        const res = await fetch(`${API_BASE_URL}/gst-rates?limit=100`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setGstRatesList(data);
+        }
+      } catch (err) {
+        console.error('Error fetching GST rates:', err);
+      }
+    };
+    fetchGstRates();
+  }, []);
+
+  useEffect(() => {
+    if (location.state && location.state.prefillQuotationNo) {
+      const qtnNo = location.state.prefillQuotationNo;
+      const matchedQtn = quotations.find((q) => q.quotation_no === qtnNo);
+      if (matchedQtn) {
+        setEditingNo(null);
+        setFormData({
+          ...EMPTY_FORM,
+          quotation_no: qtnNo,
+          po_date: new Date().toISOString().slice(0, 10)
+        });
+        setQtnInput(qtnNo);
+        setSelectedQuotation(matchedQtn);
+
+        // Initialize items with checked=true by default
+        if (Array.isArray(matchedQtn.items)) {
+          const qtnGstType = matchedQtn.gst_type || '';
+          const qtnGstRate = matchedQtn.gst_rate !== undefined && matchedQtn.gst_rate !== null ? parseFloat(matchedQtn.gst_rate).toString() : '0.00';
+          
+          const initializedItems = matchedQtn.items.map((i) => ({
+            item_code: i.item_code,
+            description: i.description || '',
+            drawing_number: i.drawing_number || '',
+            quantity: i.quantity || 1,
+            unit_price: i.unit_price || '0.00',
+            shipping_address: '',
+            showShipping: false,
+            delivery_date: '',
+            showDeliveryDate: false,
+            gst_type: qtnGstType,
+            gst_rate: qtnGstRate,
+            checked: true
+          }));
+          setPoItems(initializedItems);
+          
+          // calculate total
+          const total = initializedItems
+            .filter((i) => i.checked)
+            .reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0), 0);
+          const gstTotal = initializedItems
+            .filter((i) => i.checked)
+            .reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0) * (parseFloat(i.gst_rate) / 100), 0);
+          setFormData((prev) => ({ 
+            ...prev, 
+            quotation_no: qtnNo,
+            po_date: new Date().toISOString().slice(0, 10),
+            basic_value: total.toFixed(2),
+            gst: gstTotal.toFixed(2)
+          }));
+        }
+        
+        setViewMode('form');
+
+        // Clear location state immediately
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [location.state, quotations]);
 
   // Selected Quotation details and its items
   const [selectedQuotation, setSelectedQuotation] = useState(null);
@@ -68,8 +159,19 @@ export default function PurchaseOrderView({
       if (qtnRef.current && !qtnRef.current.contains(e.target)) {
         setShowQtnDropdown(false);
       }
+      if (activeGstDropdown) {
+        const ref = gstRefs.current[activeGstDropdown];
+        if (ref && !ref.contains(e.target)) {
+          // reset the search input back to the committed value (or empty)
+          const item = poItems.find(i => i.item_code === activeGstDropdown);
+          setGstInputs(prev => ({
+            ...prev,
+            [activeGstDropdown]: item ? (item.gst_type || '') : ''
+          }));
+          setActiveGstDropdown(null);
+        }
+      }
       
-      // We check if click is outside the currently active shipping dropdown
       if (activeShippingDropdown) {
         const ref = shippingRefs.current[activeShippingDropdown];
         if (ref && !ref.contains(e.target)) {
@@ -79,7 +181,7 @@ export default function PurchaseOrderView({
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [activeShippingDropdown]);
+  }, [activeShippingDropdown, activeGstDropdown, poItems]);
 
   const handleQtnInput = async (val) => {
     setQtnInput(val);
@@ -106,7 +208,46 @@ export default function PurchaseOrderView({
     }
   };
 
+  const handleItemGstInput = (item_code, val) => {
+    // Always update the visible input text
+    setGstInputs(prev => ({ ...prev, [item_code]: val }));
+
+    if (!val.trim()) {
+      // user cleared the field — clear the committed value too
+      const updated = poItems.map((i) =>
+        i.item_code === item_code ? { ...i, gst_type: '', gst_rate: '0.00' } : i
+      );
+      setPoItems(updated);
+      updateFinancialValues(updated);
+      setGstSuggestions([]);
+      setActiveGstDropdown(null);
+    } else {
+      const filtered = gstRatesList.filter(r =>
+        r.type.toLowerCase().includes(val.toLowerCase())
+      );
+      setGstSuggestions(filtered);
+      setActiveGstDropdown(item_code);
+    }
+  };
+
+  const selectItemGstCategory = (item_code, gst) => {
+    const updated = poItems.map((i) =>
+      i.item_code === item_code ? { ...i, gst_type: gst.type, gst_rate: gst.rate.toString() } : i
+    );
+    setPoItems(updated);
+    updateFinancialValues(updated);
+    // sync the visible input to the selected label
+    setGstInputs(prev => ({ ...prev, [item_code]: gst.type }));
+    setActiveGstDropdown(null);
+  };
+
   const selectQuotation = (qtn) => {
+    const qtnStatus = qtn.rfq_status || (rfqs.find(r => r.rfq_no === qtn.rfq_no)?.status) || 'rfq';
+    if (qtnStatus === 'rejected') {
+      alert('This quotation has been rejected and cannot be used to create a Purchase Order.');
+      return;
+    }
+
     setQtnInput(qtn.quotation_no);
     setFormData((prev) => ({ ...prev, quotation_no: qtn.quotation_no }));
     setSelectedQuotation(qtn);
@@ -114,6 +255,9 @@ export default function PurchaseOrderView({
 
     // Initialize items with checked=true by default
     if (Array.isArray(qtn.items)) {
+      const qtnGstType = qtn.gst_type || '';
+      const qtnGstRate = qtn.gst_rate !== undefined && qtn.gst_rate !== null ? parseFloat(qtn.gst_rate).toString() : '0.00';
+
       const initializedItems = qtn.items.map((i) => ({
         item_code: i.item_code,
         description: i.description || '',
@@ -122,10 +266,14 @@ export default function PurchaseOrderView({
         unit_price: i.unit_price || '0.00',
         shipping_address: '',
         showShipping: false,
+        delivery_date: '',
+        showDeliveryDate: false,
+        gst_type: qtnGstType,
+        gst_rate: qtnGstRate,
         checked: true
       }));
       setPoItems(initializedItems);
-      updateBasicValue(initializedItems);
+      updateFinancialValues(initializedItems);
     }
   };
 
@@ -137,7 +285,7 @@ export default function PurchaseOrderView({
       return i;
     });
     setPoItems(updatedItems);
-    updateBasicValue(updatedItems);
+    updateFinancialValues(updatedItems);
   };
 
   const handleItemQtyChange = (item_code, newQty) => {
@@ -149,7 +297,7 @@ export default function PurchaseOrderView({
       return i;
     });
     setPoItems(updatedItems);
-    updateBasicValue(updatedItems);
+    updateFinancialValues(updatedItems);
   };
 
   const handleItemPriceChange = (item_code, newPrice) => {
@@ -160,7 +308,7 @@ export default function PurchaseOrderView({
       return i;
     });
     setPoItems(updatedItems);
-    updateBasicValue(updatedItems);
+    updateFinancialValues(updatedItems);
   };
 
   const toggleShipping = (item_code) => {
@@ -171,11 +319,30 @@ export default function PurchaseOrderView({
     setPoItems(poItems.map(i => i.item_code === item_code ? { ...i, shipping_address: val } : i));
   };
 
-  const updateBasicValue = (itemsList) => {
+  const handleItemDeliveryDateChange = (item_code, val) => {
+    setPoItems(poItems.map(i => i.item_code === item_code ? { ...i, delivery_date: val } : i));
+  };
+
+  const toggleDeliveryDate = (item_code) => {
+    setPoItems(poItems.map(i => i.item_code === item_code ? { ...i, showDeliveryDate: !i.showDeliveryDate } : i));
+  };
+
+  const updateFinancialValues = (itemsList) => {
     const total = itemsList
       .filter((i) => i.checked)
       .reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0), 0);
-    setFormData((prev) => ({ ...prev, basic_value: total.toFixed(2) }));
+    const gstTotal = itemsList
+      .filter((i) => i.checked)
+      .reduce((sum, i) => {
+        const basic = (i.quantity || 0) * (parseFloat(i.unit_price) || 0);
+        const rate = parseFloat(i.gst_rate) || 0;
+        return sum + basic * (rate / 100);
+      }, 0);
+    setFormData((prev) => ({ 
+      ...prev, 
+      basic_value: total.toFixed(2),
+      gst: gstTotal.toFixed(2)
+    }));
   };
 
   const qtnNotFound =
@@ -202,6 +369,7 @@ export default function PurchaseOrderView({
       contract_ref: po.contract_ref || '',
       quotation_no: po.quotation_no || '',
       po_date: po.po_date ? po.po_date.slice(0, 10) : '',
+      delivery_date: po.delivery_date ? po.delivery_date.slice(0, 10) : '',
       gst: parseFloat(po.gst).toFixed(2),
       transport: parseFloat(po.transport).toFixed(2),
       other: parseFloat(po.other).toFixed(2),
@@ -226,6 +394,10 @@ export default function PurchaseOrderView({
           unit_price: poItemMatch ? poItemMatch.unit_price : qItem.unit_price,
           shipping_address: poItemMatch ? poItemMatch.shipping_address || '' : '',
           showShipping: !!(poItemMatch && poItemMatch.shipping_address),
+          delivery_date: poItemMatch && poItemMatch.delivery_date ? poItemMatch.delivery_date.slice(0, 10) : '',
+          showDeliveryDate: !!(poItemMatch && poItemMatch.delivery_date),
+          gst_type: poItemMatch ? poItemMatch.gst_type || '' : '',
+          gst_rate: poItemMatch && poItemMatch.gst_rate !== undefined && poItemMatch.gst_rate !== null ? parseFloat(poItemMatch.gst_rate).toString() : '0.00',
           checked: !!poItemMatch
         };
       });
@@ -242,6 +414,10 @@ export default function PurchaseOrderView({
               unit_price: i.unit_price || '0.00',
               shipping_address: i.shipping_address || '',
               showShipping: !!i.shipping_address,
+              delivery_date: i.delivery_date ? i.delivery_date.slice(0, 10) : '',
+              showDeliveryDate: !!i.delivery_date,
+              gst_type: i.gst_type || '',
+              gst_rate: i.gst_rate !== undefined && i.gst_rate !== null ? parseFloat(i.gst_rate).toString() : '0.00',
               checked: true
             }))
           : []
@@ -275,7 +451,7 @@ export default function PurchaseOrderView({
       return;
     }
 
-    // Validate quantities and prices
+    // Validate quantities, prices, and GST Category
     for (const item of selectedItems) {
       if (item.quantity <= 0) {
         alert(`Quantity for item ${item.item_code} must be greater than 0.`);
@@ -283,6 +459,10 @@ export default function PurchaseOrderView({
       }
       if (parseFloat(item.unit_price) < 0) {
         alert(`Unit price for item ${item.item_code} cannot be negative.`);
+        return;
+      }
+      if (!item.gst_type || !item.gst_type.trim()) {
+        alert(`Please select a valid GST Category for item ${item.item_code}.`);
         return;
       }
     }
@@ -293,7 +473,10 @@ export default function PurchaseOrderView({
         item_code: i.item_code,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        shipping_address: i.shipping_address || null
+        shipping_address: i.shipping_address || null,
+        delivery_date: i.delivery_date || null,
+        gst_type: i.gst_type || '',
+        gst_rate: i.gst_rate !== '' ? parseFloat(i.gst_rate) : 0.00
       }))
     };
 
@@ -463,12 +646,6 @@ export default function PurchaseOrderView({
                       >
                         View Details
                       </Link>
-                      <button
-                        onClick={() => onDeletePurchaseOrder(po.po_no)}
-                        className="px-4 py-2 text-sm border-2 border-red-200 hover:border-red-600 hover:text-red-600 hover:bg-red-50 rounded-lg text-red-600 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Trash2 size={14} /> Delete
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -513,7 +690,7 @@ export default function PurchaseOrderView({
           <div className="bg-white border-2 border-slate-200 rounded-xl p-5 sm:p-8 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Header Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
                     PO No. <b className="text-red-500">*</b>
@@ -540,6 +717,17 @@ export default function PurchaseOrderView({
                     className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
+                    Date of Delivery
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.delivery_date}
+                    onChange={set('delivery_date')}
+                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
+                  />
+                </div>
               </div>
 
               {/* Quotation Link */}
@@ -560,19 +748,34 @@ export default function PurchaseOrderView({
                 />
                 {showQtnDropdown && qtnSuggestions.length > 0 && (
                   <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
-                    {qtnSuggestions.map((q) => (
-                      <button
-                        key={q.quotation_no}
-                        type="button"
-                        onClick={() => selectQuotation(q)}
-                        className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                      >
-                        <div className="font-bold text-sm text-slate-900">{q.quotation_no}</div>
-                        <div className="text-xs text-slate-500">
-                          RFQ: {q.rfq_no} &bull; Customer: {q.customer_name || q.customer_id || '—'} &bull; Buyer: {q.buyer_name || '—'}
-                        </div>
-                      </button>
-                    ))}
+                    {qtnSuggestions.map((q) => {
+                      const qtnStatus = q.rfq_status || (rfqs.find(r => r.rfq_no === q.rfq_no)?.status) || 'rfq';
+                      return (
+                        <button
+                          key={q.quotation_no}
+                          type="button"
+                          onClick={() => selectQuotation(q)}
+                          className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="font-bold text-sm text-slate-900">{q.quotation_no}</div>
+                            {qtnStatus && (
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                qtnStatus === 'ordered' ? 'text-emerald-700 bg-emerald-50' : 
+                                qtnStatus === 'rejected' ? 'text-red-700 bg-red-50' : 
+                                qtnStatus === 'quotated' ? 'text-blue-700 bg-blue-50' : 
+                                'text-slate-700 bg-slate-50'
+                              }`}>
+                                {qtnStatus.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            RFQ: {q.rfq_no} &bull; Customer: {q.customer_name || q.customer_id || '—'} &bull; Buyer: {q.buyer_name || '—'}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
                 {qtnNotFound && (
@@ -597,8 +800,7 @@ export default function PurchaseOrderView({
                   </div>
                 </div>
               )}
-
-              {/* Items Table with Checkboxes */}
+              {/* Items List with Checkboxes */}
               {poItems.length > 0 && (
                 <div className="border border-slate-200 rounded-xl overflow-visible">
                   <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center rounded-t-xl">
@@ -611,152 +813,238 @@ export default function PurchaseOrderView({
                         const allChecked = poItems.every(i => i.checked);
                         const updated = poItems.map(i => ({ ...i, checked: !allChecked }));
                         setPoItems(updated);
-                        updateBasicValue(updated);
+                        updateFinancialValues(updated);
                       }}
                       className="text-xs text-blue-600 hover:text-blue-700 font-bold hover:underline cursor-pointer"
                     >
                       {poItems.every(i => i.checked) ? 'Deselect All' : 'Select All'}
                     </button>
                   </div>
-                  <div className="divide-y divide-slate-100">
+                  <div className="space-y-4 p-4 bg-slate-50/50">
                     {poItems.map((item) => (
-                      <React.Fragment key={item.item_code}>
                       <div
-                        className={`flex flex-col sm:flex-row sm:items-center px-5 py-4 gap-4 transition-colors ${
-                          item.checked ? 'bg-blue-50/20' : 'bg-white opacity-75'
+                        key={item.item_code}
+                        className={`border-2 rounded-xl transition-all duration-200 overflow-visible ${
+                          item.checked
+                            ? 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-md'
+                            : 'bg-slate-50/75 border-slate-100 opacity-60 hover:opacity-100 hover:border-slate-300 hover:shadow-sm'
                         }`}
                       >
-                        {/* Checkbox */}
-                        <button
-                          type="button"
-                          onClick={() => toggleItemChecked(item.item_code)}
-                          className="text-blue-600 focus:outline-none shrink-0"
+                        <div
+                          className={`flex flex-col sm:flex-row sm:items-center px-5 py-4 gap-4 transition-colors ${
+                            item.checked ? 'bg-blue-50/10' : ''
+                          }`}
                         >
-                          {item.checked ? <CheckSquare size={22} /> : <Square size={22} className="text-slate-400" />}
-                        </button>
+                          {/* Checkbox */}
+                          <button
+                            type="button"
+                            onClick={() => toggleItemChecked(item.item_code)}
+                            className="text-blue-600 focus:outline-none shrink-0"
+                          >
+                            {item.checked ? <CheckSquare size={22} /> : <Square size={22} className="text-slate-400" />}
+                          </button>
 
-                        {/* Details */}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono font-bold text-sm text-blue-700">
-                              {item.item_code}
-                            </span>
-                            {item.drawing_number && (
-                              <span className="text-xs text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-                                DRW: {item.drawing_number}
+                          {/* Details */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-bold text-sm text-blue-700">
+                                {item.item_code}
                               </span>
+                              {item.drawing_number && (
+                                <span className="text-xs text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                                  DRW: {item.drawing_number}
+                                </span>
+                              )}
+                            </div>
+                            {item.description && (
+                              <p className="text-xs text-slate-500 mt-1">{item.description}</p>
                             )}
                           </div>
-                          {item.description && (
-                            <p className="text-xs text-slate-500 mt-1">{item.description}</p>
-                          )}
+
+                          {/* Inputs (Quantity, Price, GST Category Search) */}
+                          <div className="flex flex-wrap gap-4 shrink-0">
+                            {/* GST Category Autocomplete per item */}
+                            <div className="flex flex-col items-start relative" ref={(el) => (gstRefs.current[item.item_code] = el)}>
+                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
+                                GST Category {item.checked && <b className="text-red-500">*</b>}
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Search GST (e.g. CGST 18%)"
+                                disabled={!item.checked}
+                                value={gstInputs[item.item_code] !== undefined ? gstInputs[item.item_code] : (item.gst_type || '')}
+                                onChange={(e) => handleItemGstInput(item.item_code, e.target.value)}
+                                onFocus={() => {
+                                  if (!item.checked) return;
+                                  // show matching suggestions (or all if empty) on focus
+                                  const currentVal = gstInputs[item.item_code] !== undefined ? gstInputs[item.item_code] : (item.gst_type || '');
+                                  const filtered = currentVal.trim()
+                                    ? gstRatesList.filter(r => r.type.toLowerCase().includes(currentVal.toLowerCase()))
+                                    : gstRatesList;
+                                  setGstSuggestions(filtered);
+                                  setActiveGstDropdown(item.item_code);
+                                }}
+                                className="w-44 px-2.5 py-1 text-left font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                autoComplete="off"
+                              />
+                              {activeGstDropdown === item.item_code && gstSuggestions.length > 0 && (
+                                <div className="absolute z-30 w-56 top-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                                  {gstSuggestions.map((gst) => (
+                                    <button
+                                      key={gst.id}
+                                      type="button"
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() => selectItemGstCategory(item.item_code, gst)}
+                                      className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                                    >
+                                      <div className="font-bold text-xs text-slate-900">{gst.type}</div>
+                                      <div className="text-[10px] text-slate-500">Rate: {parseFloat(gst.rate)}%</div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col items-end">
+                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
+                                Quantity
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                disabled={!item.checked}
+                                value={item.quantity}
+                                onChange={(e) => handleItemQtyChange(item.item_code, e.target.value)}
+                                className="w-20 px-2.5 py-1 text-right font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                              />
+                            </div>
+                            <div className="flex flex-col items-end">
+                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
+                                Price (₹)
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                disabled={!item.checked}
+                                value={item.unit_price}
+                                onChange={(e) => handleItemPriceChange(item.item_code, e.target.value)}
+                                className="w-28 px-2.5 py-1 text-right font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                              />
+                            </div>
+                          </div>
                         </div>
 
-                        {/* Inputs (Quantity & Price) */}
-                        <div className="flex gap-4 shrink-0">
-                          <div className="flex flex-col items-end">
-                            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                              Quantity
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              disabled={!item.checked}
-                              value={item.quantity}
-                              onChange={(e) => handleItemQtyChange(item.item_code, e.target.value)}
-                              className="w-20 px-2.5 py-1 text-right font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-                            />
-                          </div>
-                          <div className="flex flex-col items-end">
-                            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                              Price (₹)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              disabled={!item.checked}
-                              value={item.unit_price}
-                              onChange={(e) => handleItemPriceChange(item.item_code, e.target.value)}
-                              className="w-28 px-2.5 py-1 text-right font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Shipping Address Section per item */}
-                      {item.checked && (
-                        <div className="px-14 pb-4 bg-blue-50/20 border-t border-blue-100">
-                          {!item.showShipping ? (
-                            <button
-                              type="button"
-                              onClick={() => toggleShipping(item.item_code)}
-                              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer"
-                            >
-                              + Add Shipping Address (Optional)
-                            </button>
-                          ) : (
-                            <div className="mt-3 bg-white p-3 rounded-lg border border-slate-200">
-                              <div className="flex justify-between items-center mb-2">
-                                <label className="text-xs font-bold text-slate-700">Shipping Address</label>
+                        {/* Optional Section per item (Shipping Address & Special Delivery Date) */}
+                        {item.checked && (
+                          <div className="px-14 pb-4 bg-blue-50/10 border-t border-blue-50 rounded-b-xl">
+                            {/* Buttons row */}
+                            <div className="flex flex-wrap gap-4 mt-2">
+                              {!item.showShipping && (
                                 <button
                                   type="button"
                                   onClick={() => toggleShipping(item.item_code)}
-                                  className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer"
+                                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
                                 >
-                                  Remove
+                                  + Add Shipping Address (Optional)
                                 </button>
-                              </div>
-                              <div className="relative" ref={(el) => (shippingRefs.current[item.item_code] = el)}>
-                                <textarea
-                                  rows={2}
-                                  placeholder="Start typing customer ID, name, or just type the address..."
-                                  value={item.shipping_address || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    handleShippingChange(item.item_code, val);
-                                    if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
-                                      setActiveShippingDropdown(item.item_code);
-                                    } else {
-                                      setActiveShippingDropdown(null);
-                                    }
-                                  }}
-                                  onFocus={(e) => {
-                                    const val = e.target.value;
-                                    if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
-                                      setActiveShippingDropdown(item.item_code);
-                                    }
-                                  }}
-                                  className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium"
-                                  autoComplete="off"
-                                />
-                                {activeShippingDropdown === item.item_code && customers.filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase())).length > 0 && (
-                                  <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                                    {customers
-                                      .filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase()))
-                                      .slice(0, 6)
-                                      .map(c => (
-                                        <button
-                                          key={c.id}
-                                          type="button"
-                                          onClick={() => {
-                                            handleShippingChange(item.item_code, `${c.name}\n${c.address}`);
-                                            setActiveShippingDropdown(null);
-                                          }}
-                                          className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                                        >
-                                          <div className="font-bold text-sm text-slate-900">{c.id}</div>
-                                          <div className="text-xs text-slate-500">{c.name} &bull; {c.address}</div>
-                                        </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                              )}
+                              {!item.showDeliveryDate && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDeliveryDate(item.item_code)}
+                                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+                                >
+                                  + Date of Delivery (Optional)
+                                </button>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      )}
-                      </React.Fragment>
+
+                            {/* Shipping Address Section */}
+                            {item.showShipping && (
+                              <div className="mt-3 bg-white p-3 rounded-lg border border-slate-200">
+                                <div className="flex justify-between items-center mb-2">
+                                  <label className="text-xs font-bold text-slate-700">Shipping Address</label>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleShipping(item.item_code)}
+                                    className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                                <div className="relative" ref={(el) => (shippingRefs.current[item.item_code] = el)}>
+                                  <textarea
+                                    rows={2}
+                                    placeholder="Start typing customer ID, name, or just type the address..."
+                                    value={item.shipping_address || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      handleShippingChange(item.item_code, val);
+                                      if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
+                                        setActiveShippingDropdown(item.item_code);
+                                      } else {
+                                        setActiveShippingDropdown(null);
+                                      }
+                                    }}
+                                    onFocus={(e) => {
+                                      const val = e.target.value;
+                                      if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
+                                        setActiveShippingDropdown(item.item_code);
+                                      }
+                                    }}
+                                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium"
+                                    autoComplete="off"
+                                  />
+                                  {activeShippingDropdown === item.item_code && customers.filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase())).length > 0 && (
+                                    <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                                      {customers
+                                        .filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase()))
+                                        .slice(0, 6)
+                                        .map(c => (
+                                          <button
+                                            key={c.id}
+                                            type="button"
+                                            onClick={() => {
+                                              handleShippingChange(item.item_code, `${c.name}\n${c.address}`);
+                                              setActiveShippingDropdown(null);
+                                            }}
+                                            className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                                          >
+                                            <div className="font-bold text-sm text-slate-900">{c.id}</div>
+                                            <div className="text-xs text-slate-500">{c.name} &bull; {c.address}</div>
+                                          </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Delivery Date Section */}
+                            {item.showDeliveryDate && (
+                              <div className="mt-3 bg-white p-3 rounded-lg border border-slate-200">
+                                <div className="flex justify-between items-center mb-2">
+                                  <label className="text-xs font-bold text-slate-700">Special Date of Delivery</label>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleDeliveryDate(item.item_code)}
+                                    className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                                <input
+                                  type="date"
+                                  value={item.delivery_date || ''}
+                                  onChange={(e) => handleItemDeliveryDateChange(item.item_code, e.target.value)}
+                                  className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>

@@ -13,7 +13,8 @@ import {
   Receipt,
   Truck,
   Tag,
-  FileOutput
+  FileOutput,
+  Percent
 } from 'lucide-react';
 import logoImg from '../assets/image.jpeg';
 
@@ -32,6 +33,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
     { id: 'release-order',      label: 'Release Order',      icon: FileOutput },
     { id: 'delivery',           label: 'Delivery',           icon: Truck },
     { id: 'arc',                label: 'ARC',                icon: Tag },
+    { id: 'gst-category',       label: 'GST Categories',     icon: Percent },
   ];
 
   const NavContent = () => (

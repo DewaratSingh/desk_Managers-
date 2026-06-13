@@ -40,7 +40,10 @@ router.get('/', async (req, res) => {
               'drawing_number', i.drawing_number,
               'quantity', poi.quantity,
               'unit_price', poi.unit_price,
-              'shipping_address', poi.shipping_address
+              'shipping_address', poi.shipping_address,
+              'delivery_date', poi.delivery_date,
+              'gst_type', poi.gst_type,
+              'gst_rate', poi.gst_rate
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'
@@ -68,7 +71,7 @@ router.get('/', async (req, res) => {
 // Add new purchase order
 router.post('/', async (req, res) => {
   const {
-    po_no, contract_ref, quotation_no, po_date, gst, transport, other, basic_value, packing_forward, items = []
+    po_no, contract_ref, quotation_no, po_date, delivery_date, gst, transport, other, basic_value, packing_forward, items = []
   } = req.body;
 
   if (!po_no) {
@@ -92,13 +95,14 @@ router.post('/', async (req, res) => {
 
     // Insert purchase order
     await client.query(`
-      INSERT INTO purchase_orders (po_no, contract_ref, quotation_no, po_date, gst, transport, other, basic_value, packing_forward)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO purchase_orders (po_no, contract_ref, quotation_no, po_date, delivery_date, gst, transport, other, basic_value, packing_forward)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `, [
       po_no, 
       contract_ref || null,
       quotation_no || null, 
       po_date, 
+      delivery_date || null,
       parseFloat(gst) || 0.00, 
       parseFloat(transport) || 0.00, 
       parseFloat(other) || 0.00, 
@@ -121,9 +125,18 @@ router.post('/', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO purchase_order_items (po_no, item_code, quantity, unit_price, shipping_address)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [po_no, item.item_code, qty, price, item.shipping_address || null]);
+        INSERT INTO purchase_order_items (po_no, item_code, quantity, unit_price, shipping_address, delivery_date, gst_type, gst_rate)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [po_no, item.item_code, qty, price, item.shipping_address || null, item.delivery_date || null, item.gst_type || 'CGST/SGST', parseFloat(item.gst_rate) || 0.00]);
+    }
+
+    // Update linked RFQ status to 'ordered'
+    if (quotation_no) {
+      await client.query(`
+        UPDATE rfqs 
+        SET status = 'ordered' 
+        WHERE rfq_no = (SELECT rfq_no FROM quotations WHERE quotation_no = $1)
+      `, [quotation_no]);
     }
 
     await client.query('COMMIT');
@@ -142,7 +155,10 @@ router.post('/', async (req, res) => {
               'drawing_number', i.drawing_number,
               'quantity', poi.quantity,
               'unit_price', poi.unit_price,
-              'shipping_address', poi.shipping_address
+              'shipping_address', poi.shipping_address,
+              'delivery_date', poi.delivery_date,
+              'gst_type', poi.gst_type,
+              'gst_rate', poi.gst_rate
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'
@@ -172,7 +188,7 @@ router.post('/', async (req, res) => {
 router.put('/:po_no', async (req, res) => {
   const { po_no } = req.params;
   const {
-    contract_ref, quotation_no, po_date, gst, transport, other, basic_value, packing_forward, items = []
+    contract_ref, quotation_no, po_date, delivery_date, gst, transport, other, basic_value, packing_forward, items = []
   } = req.body;
 
   if (!po_date) {
@@ -185,13 +201,14 @@ router.put('/:po_no', async (req, res) => {
 
     const updateResult = await client.query(`
       UPDATE purchase_orders 
-      SET contract_ref = $1, quotation_no = $2, po_date = $3, gst = $4, transport = $5, other = $6, basic_value = $7, packing_forward = $8
-      WHERE po_no = $9
+      SET contract_ref = $1, quotation_no = $2, po_date = $3, delivery_date = $4, gst = $5, transport = $6, other = $7, basic_value = $8, packing_forward = $9
+      WHERE po_no = $10
       RETURNING *
     `, [
       contract_ref || null,
       quotation_no || null, 
       po_date, 
+      delivery_date || null,
       parseFloat(gst) || 0.00, 
       parseFloat(transport) || 0.00, 
       parseFloat(other) || 0.00, 
@@ -221,9 +238,9 @@ router.put('/:po_no', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO purchase_order_items (po_no, item_code, quantity, unit_price, shipping_address)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [po_no, item.item_code, qty, price, item.shipping_address || null]);
+        INSERT INTO purchase_order_items (po_no, item_code, quantity, unit_price, shipping_address, delivery_date, gst_type, gst_rate)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [po_no, item.item_code, qty, price, item.shipping_address || null, item.delivery_date || null, item.gst_type || 'CGST/SGST', parseFloat(item.gst_rate) || 0.00]);
     }
 
     await client.query('COMMIT');
@@ -241,7 +258,10 @@ router.put('/:po_no', async (req, res) => {
               'drawing_number', i.drawing_number,
               'quantity', poi.quantity,
               'unit_price', poi.unit_price,
-              'shipping_address', poi.shipping_address
+              'shipping_address', poi.shipping_address,
+              'delivery_date', poi.delivery_date,
+              'gst_type', poi.gst_type,
+              'gst_rate', poi.gst_rate
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'
@@ -270,15 +290,38 @@ router.put('/:po_no', async (req, res) => {
 // Delete purchase order
 router.delete('/:po_no', async (req, res) => {
   const { po_no } = req.params;
+  const client = await pool.connect();
   try {
-    const result = await pool.query('DELETE FROM purchase_orders WHERE po_no = $1 RETURNING *', [po_no]);
-    if (result.rows.length === 0) {
+    await client.query('BEGIN');
+    
+    // Find the linked quotation_no before deleting
+    const poCheck = await client.query('SELECT quotation_no FROM purchase_orders WHERE po_no = $1', [po_no]);
+    if (poCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Purchase Order not found' });
     }
+    const qtnNo = poCheck.rows[0].quotation_no;
+
+    // Delete PO
+    await client.query('DELETE FROM purchase_orders WHERE po_no = $1', [po_no]);
+
+    // Update RFQ status back to 'quotated'
+    if (qtnNo) {
+      await client.query(`
+        UPDATE rfqs 
+        SET status = 'quotated' 
+        WHERE rfq_no = (SELECT rfq_no FROM quotations WHERE quotation_no = $1)
+      `, [qtnNo]);
+    }
+
+    await client.query('COMMIT');
     res.json({ message: 'Purchase Order deleted successfully' });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error deleting purchase order:', error);
     res.status(500).json({ error: 'Server error deleting purchase order' });
+  } finally {
+    client.release();
   }
 });
 

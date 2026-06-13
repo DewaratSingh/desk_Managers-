@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -9,26 +9,33 @@ import {
   ListFilter,
   AlertCircle,
   FileText,
-  X
+  X,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
   ? 'http://localhost:5000/api'
   : `${window.location.protocol}//${window.location.hostname}:5000/api`;
 
-const DEFAULT_TERMS = `Delivery: 2 weeks
-Transportation: For PG
-GST-9% SGST + 9% CGST
-Packing Forwarding: NIL
-Payment: 30 DAYS CREDIT.
-Inspection: At our site before dispatch.
-Validity-30 days`;
+const DEFAULT_TERMS = `Prices are exclusive of applicable taxes unless otherwise specified.
+Delivery shall be as per mutually agreed schedule.
+Payment shall be made as per agreed terms.
+Inspection, if required, will be conducted before dispatch.
+Any change in specification or quantity may affect price and delivery.
+Freight and insurance, if applicable, shall be charged extra.
+Warranty is limited to manufacturing defects only.
+Quotation is subject to our final acceptance of the Purchase Order.
+All disputes shall be subject to local jurisdiction.
+This quotation remains valid for the period specified herein.`;
 
 const EMPTY_FORM = {
   quotation_no: '',
   rfq_no: '',
   quotation_date: '',
-  terms_and_conditions: DEFAULT_TERMS
+  terms_and_conditions: DEFAULT_TERMS,
+  gst_type: '',
+  gst_rate: 0.00
 };
 
 export default function AddQuotationView({
@@ -49,6 +56,12 @@ export default function AddQuotationView({
   // Selected RFQ details and its items
   const [selectedRFQ, setSelectedRFQ] = useState(null);
   const [quotationItems, setQuotationItems] = useState([]);
+
+  // GST Autocomplete
+  const [gstInput, setGstInput] = useState('');
+  const [gstSuggestions, setGstSuggestions] = useState([]);
+  const [showGstDropdown, setShowGstDropdown] = useState(false);
+  const gstRef = useRef(null);
 
   // RFQ autocomplete
   const [rfqInput, setRfqInput] = useState('');
@@ -75,10 +88,114 @@ export default function AddQuotationView({
       if (recQtnRef.current && !recQtnRef.current.contains(e.target)) {
         setShowRecQtnDropdown(false);
       }
+      if (gstRef.current && !gstRef.current.contains(e.target)) {
+        setShowGstDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const handleGstInput = async (val) => {
+    setGstInput(val);
+    setFormData((prev) => ({ ...prev, gst_type: val }));
+    if (!val.trim()) {
+      setGstSuggestions([]);
+      setShowGstDropdown(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/gst-rates?search=${encodeURIComponent(val)}&limit=5`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` }
+      });
+      const data = await res.json();
+      setGstSuggestions(data);
+      setShowGstDropdown(true);
+    } catch(e) { console.error(e); }
+  };
+
+  const selectGstCategory = (gst) => {
+    setGstInput(gst.type);
+    setFormData((prev) => ({ 
+      ...prev, 
+      gst_type: gst.type,
+      gst_rate: gst.rate
+    }));
+    setShowGstDropdown(false);
+  };
+
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [units, setUnits] = useState([]);
+
+  useEffect(() => {
+    const fetchUnits = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/units`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUnits(data);
+        }
+      } catch (err) {
+        console.error('Error fetching units:', err);
+      }
+    };
+    fetchUnits();
+  }, []);
+
+  // Handle prefill and redirection logic from RFQ detail view or restored state from Received Quotation redirection
+  useEffect(() => {
+    if (location.state && location.state.restoreQuotationData) {
+      const { editingNo: restoredEditingNo, formData: restoredForm, selectedRFQ: restoredRfq, quotationItems: restoredItems, selectedRecQtns: restoredRec } = location.state.restoreQuotationData;
+      setEditingNo(restoredEditingNo || null);
+      setFormData(restoredForm);
+      setRfqInput(restoredForm.rfq_no || '');
+      setSelectedRFQ(restoredRfq);
+      setQuotationItems(restoredItems);
+      setSelectedRecQtns(restoredRec);
+      setRecQtnInput('');
+      setViewMode('form');
+
+      // Clear location state immediately after prefilling
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (location.state && location.state.prefillRfqNo) {
+      const rfqNo = location.state.prefillRfqNo;
+      const matchedRfq = rfqs.find((r) => r.rfq_no === rfqNo);
+      if (matchedRfq) {
+        setEditingNo(null);
+        setFormData({
+          ...EMPTY_FORM,
+          quotation_date: new Date().toISOString().slice(0, 10),
+          rfq_no: rfqNo
+        });
+        setRfqInput(rfqNo);
+        setSelectedRFQ(matchedRfq);
+        if (Array.isArray(matchedRfq.items)) {
+          setQuotationItems(
+            matchedRfq.items.map((i) => ({
+              item_code: i.item_code,
+              description: i.description || '',
+              drawing_number: i.drawing_number || '',
+              quantity: i.quantity || 1,
+              unit: i.unit || 'Piece',
+              unit_price: '',
+              selected: true
+            }))
+          );
+        }
+        setSelectedRecQtns([]);
+        setRecQtnInput('');
+        fetchNextQuotationNo();
+        setViewMode('form');
+
+        // Clear location state immediately after prefilling
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [location.state, rfqs]);
 
   // Fetch next quotation no when entering creation form
   const fetchNextQuotationNo = async () => {
@@ -130,7 +247,9 @@ export default function AddQuotationView({
           description: i.description || '',
           drawing_number: i.drawing_number || '',
           quantity: i.quantity || 1,
-          unit_price: ''
+          unit: i.unit || 'Piece',
+          unit_price: '',
+          selected: true
         }))
       );
     }
@@ -147,6 +266,28 @@ export default function AddQuotationView({
         if (i.item_code === item_code) {
           // Keep as string to allow decimal editing in input, validate on submit
           return { ...i, unit_price: price };
+        }
+        return i;
+      })
+    );
+  };
+
+  const handleUnitChange = (item_code, unit) => {
+    setQuotationItems((prev) =>
+      prev.map((i) => {
+        if (i.item_code === item_code) {
+          return { ...i, unit };
+        }
+        return i;
+      })
+    );
+  };
+
+  const toggleItemSelection = (item_code) => {
+    setQuotationItems((prev) =>
+      prev.map((i) => {
+        if (i.item_code === item_code) {
+          return { ...i, selected: !i.selected };
         }
         return i;
       })
@@ -193,6 +334,22 @@ export default function AddQuotationView({
     setSelectedRecQtns(prev => prev.filter(rq => rq.received_quotation_no !== received_quotation_no));
   };
 
+  const handleRedirectToRecQtn = () => {
+    navigate('/', {
+      state: {
+        activeTab: 'received-quotation',
+        openForm: true,
+        restoreQuotationData: {
+          editingNo,
+          formData,
+          selectedRFQ,
+          quotationItems,
+          selectedRecQtns
+        }
+      }
+    });
+  };
+
   /* ── Navigation Helpers ── */
   const handleOpenAddForm = () => {
     setEditingNo(null);
@@ -205,34 +362,88 @@ export default function AddQuotationView({
     setQuotationItems([]);
     setSelectedRecQtns([]);
     setRecQtnInput('');
+    setGstInput('');
     fetchNextQuotationNo();
     setViewMode('form');
   };
 
-  const handleEditClick = (qtn) => {
+  const handleEditClick = async (qtn) => {
     setEditingNo(qtn.quotation_no);
     setFormData({
       quotation_no: qtn.quotation_no,
       rfq_no: qtn.rfq_no,
       quotation_date: qtn.quotation_date ? qtn.quotation_date.slice(0, 10) : '',
-      terms_and_conditions: qtn.terms_and_conditions || ''
+      terms_and_conditions: qtn.terms_and_conditions || '',
+      gst_type: qtn.gst_type || '',
+      gst_rate: qtn.gst_rate !== undefined ? qtn.gst_rate : 0.00
     });
+    setGstInput(qtn.gst_type || '');
 
     setRfqInput(qtn.rfq_no);
-    const linkedRFQ = rfqs.find((r) => r.rfq_no === qtn.rfq_no);
+    let linkedRFQ = rfqs.find((r) => r.rfq_no === qtn.rfq_no);
+
+    if (!linkedRFQ && qtn.rfq_no) {
+      try {
+        const savedToken = localStorage.getItem('dm_token');
+        const res = await fetch(`${API_BASE_URL}/rfqs?search=${encodeURIComponent(qtn.rfq_no)}&limit=5`, {
+          headers: { 'Authorization': `Bearer ${savedToken}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const matched = data.find(r => r.rfq_no === qtn.rfq_no);
+          if (matched) {
+            linkedRFQ = matched;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching linked RFQ on edit:', err);
+      }
+    }
+
     setSelectedRFQ(linkedRFQ || null);
 
-    setQuotationItems(
-      Array.isArray(qtn.items)
-        ? qtn.items.map((i) => ({
-            item_code: i.item_code,
-            description: i.description || '',
-            drawing_number: i.drawing_number || '',
-            quantity: i.quantity || 1,
-            unit_price: i.unit_price !== undefined ? i.unit_price : ''
-          }))
-        : []
-    );
+    const rfqItems = linkedRFQ && Array.isArray(linkedRFQ.items) ? linkedRFQ.items : [];
+    const qtnItems = Array.isArray(qtn.items) ? qtn.items : [];
+
+    let combinedItems = [];
+    if (rfqItems.length > 0) {
+      combinedItems = rfqItems.map((ri) => {
+        const qi = qtnItems.find((qi) => qi.item_code === ri.item_code);
+        if (qi) {
+          return {
+            item_code: ri.item_code,
+            description: ri.description || '',
+            drawing_number: ri.drawing_number || '',
+            quantity: qi.quantity || ri.quantity || 1,
+            unit: qi.unit || ri.unit || 'Piece',
+            unit_price: qi.unit_price !== undefined ? qi.unit_price : '',
+            selected: true
+          };
+        } else {
+          return {
+            item_code: ri.item_code,
+            description: ri.description || '',
+            drawing_number: ri.drawing_number || '',
+            quantity: ri.quantity || 1,
+            unit: ri.unit || 'Piece',
+            unit_price: '',
+            selected: false
+          };
+        }
+      });
+    } else {
+      combinedItems = qtnItems.map((qi) => ({
+        item_code: qi.item_code,
+        description: qi.description || '',
+        drawing_number: qi.drawing_number || '',
+        quantity: qi.quantity || 1,
+        unit: qi.unit || 'Piece',
+        unit_price: qi.unit_price !== undefined ? qi.unit_price : '',
+        selected: true
+      }));
+    }
+
+    setQuotationItems(combinedItems);
 
     setSelectedRecQtns(
       Array.isArray(qtn.received_quotations)
@@ -256,6 +467,7 @@ export default function AddQuotationView({
     setQuotationItems([]);
     setSelectedRecQtns([]);
     setRecQtnInput('');
+    setGstInput('');
     setViewMode('list');
   };
 
@@ -269,13 +481,15 @@ export default function AddQuotationView({
       return;
     }
 
-    if (quotationItems.length === 0) {
-      alert('Selected RFQ does not contain any items.');
+    const selectedItems = quotationItems.filter((i) => i.selected);
+
+    if (selectedItems.length === 0) {
+      alert('Please select at least one item to include in the quotation.');
       return;
     }
 
-    // Validate prices
-    for (const item of quotationItems) {
+    // Validate prices for selected items
+    for (const item of selectedItems) {
       const price = parseFloat(item.unit_price);
       if (item.unit_price === '' || isNaN(price) || price < 0) {
         alert(`Price for item ${item.item_code} is compulsory and must be at least 0.`);
@@ -285,7 +499,12 @@ export default function AddQuotationView({
 
     const payload = {
       ...formData,
-      items: quotationItems,
+      items: selectedItems.map((i) => ({
+        item_code: i.item_code,
+        quantity: i.quantity,
+        unit: i.unit || 'Piece',
+        unit_price: i.unit_price
+      })),
       received_quotation_nos: selectedRecQtns.map(rq => rq.received_quotation_no)
     };
 
@@ -406,11 +625,14 @@ export default function AddQuotationView({
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
-                {quotations.map((q) => (
-                  <div
-                    key={q.quotation_no}
-                    className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white hover:bg-slate-50/75 transition-colors"
-                  >
+                {quotations.map((q) => {
+                  const linkedRfq = rfqs.find((r) => r.rfq_no === q.rfq_no);
+                  const isLocked = linkedRfq && (linkedRfq.status === 'ordered' || linkedRfq.status === 'rejected');
+                  return (
+                    <div
+                      key={q.quotation_no}
+                      className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white hover:bg-slate-50/75 transition-colors"
+                    >
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-3">
                         <span className="font-mono font-extrabold text-sm text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
@@ -432,12 +654,14 @@ export default function AddQuotationView({
                     </div>
 
                     <div className="flex items-center gap-2.5 shrink-0">
-                      <button
-                        onClick={() => handleEditClick(q)}
-                        className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Edit2 size={14} /> Update Record
-                      </button>
+                      {!isLocked && (
+                        <button
+                          onClick={() => handleEditClick(q)}
+                          className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Edit2 size={14} /> Update Record
+                        </button>
+                      )}
                       <Link
                         to={`/quotation/${q.quotation_no}`}
                         className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 justify-center"
@@ -446,7 +670,7 @@ export default function AddQuotationView({
                       </Link>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             )}
             {quotations.length >= 20 && quotations.length % 20 === 0 && (
@@ -550,7 +774,17 @@ export default function AddQuotationView({
                           onClick={() => selectRFQ(rfq)}
                           className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
                         >
-                          <div className="font-bold text-sm text-slate-900">{rfq.rfq_no}</div>
+                          <div className="flex justify-between items-center">
+                            <div className="font-bold text-sm text-slate-900">{rfq.rfq_no}</div>
+                            {rfq.status && rfq.status !== 'rfq' && (
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                rfq.status === 'ordered' ? 'text-emerald-700 bg-emerald-50' : 
+                                rfq.status === 'rejected' ? 'text-red-700 bg-red-50' : 'text-blue-700 bg-blue-50'
+                              }`}>
+                                {rfq.status.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-slate-500">
                             Customer: {rfq.customer_id || '—'} &bull; Buyer: {rfq.buyer_name || '—'} &bull; {Array.isArray(rfq.items) ? rfq.items.length : 0} items
                           </div>
@@ -589,20 +823,42 @@ export default function AddQuotationView({
                 {/* Items and Amounts */}
                 {quotationItems.length > 0 && (
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
-                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                    <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center rounded-t-xl">
                       <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">
-                        Item Commercial Pricing Table ({quotationItems.length})
+                        Select items to quote from RFQ
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allSelected = quotationItems.every(i => i.selected);
+                          setQuotationItems(prev => prev.map(i => ({ ...i, selected: !allSelected })));
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-bold hover:underline cursor-pointer"
+                      >
+                        {quotationItems.every(i => i.selected) ? 'Deselect All' : 'Select All'}
+                      </button>
                     </div>
                     <div className="divide-y divide-slate-100">
                       {quotationItems.map((item) => (
                         <div
                           key={item.item_code}
-                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-5 py-4 gap-4 bg-white"
+                          className={`flex flex-col sm:flex-row sm:items-center px-5 py-4 gap-4 transition-colors ${
+                            item.selected ? 'bg-blue-50/20' : 'bg-white opacity-75'
+                          }`}
                         >
+                          {/* Checkbox */}
+                          <button
+                            type="button"
+                            onClick={() => toggleItemSelection(item.item_code)}
+                            className="text-blue-600 focus:outline-none shrink-0 cursor-pointer"
+                          >
+                            {item.selected ? <CheckSquare size={22} /> : <Square size={22} className="text-slate-400" />}
+                          </button>
+
+                          {/* Details */}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-bold text-sm text-blue-700">
+                              <span className={`font-mono font-bold text-sm ${item.selected ? 'text-blue-700' : 'text-slate-400'}`}>
                                 {item.item_code}
                               </span>
                               {item.drawing_number && (
@@ -619,25 +875,61 @@ export default function AddQuotationView({
                             )}
                           </div>
 
+                          {/* Unit Autocomplete Input */}
                           <div className="shrink-0 flex items-center gap-3">
                             <div className="flex flex-col items-end">
                               <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                Price / Piece (₹) *
+                                Unit {item.selected && <b className="text-red-500">*</b>}
+                              </label>
+                              <input
+                                type="text"
+                                list="quotation-units-list"
+                                required={item.selected}
+                                disabled={!item.selected}
+                                placeholder="e.g. Piece"
+                                value={item.unit || ''}
+                                onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
+                                className={`w-28 px-3 py-1.5 text-left font-bold text-sm rounded-lg focus:outline-none border-2 transition-colors ${
+                                  item.selected
+                                    ? 'text-slate-800 bg-white border-slate-200 focus:border-blue-500'
+                                    : 'text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed'
+                                }`}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Price Input */}
+                          <div className="shrink-0 flex items-center gap-3">
+                            <div className="flex flex-col items-end">
+                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
+                                Price / {item.unit || 'Piece'} (₹) {item.selected && <b className="text-red-500">*</b>}
                               </label>
                               <input
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                required
+                                required={item.selected}
+                                disabled={!item.selected}
                                 placeholder="0.00"
                                 value={item.unit_price}
                                 onChange={(e) => handlePriceChange(item.item_code, e.target.value)}
-                                className="w-32 px-3 py-1.5 text-right font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                                className={`w-32 px-3 py-1.5 text-right font-bold text-sm rounded-lg focus:outline-none border-2 transition-colors ${
+                                  item.selected
+                                    ? 'text-slate-800 bg-white border-slate-200 focus:border-blue-500'
+                                    : 'text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed'
+                                }`}
                               />
                             </div>
                           </div>
                         </div>
                       ))}
+                    </div>
+
+                    {/* Total Preview */}
+                    <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
+                      <p className="text-xl font-bold text-slate-800">
+                        Total: ₹{calculateTotal(quotationItems.filter(i => i.selected)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -672,21 +964,31 @@ export default function AddQuotationView({
                     className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium"
                     autoComplete="off"
                   />
-                  {showRecQtnDropdown && recQtnSuggestions.length > 0 && (
+                  {showRecQtnDropdown && recQtnInput.trim() !== '' && (
                     <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
-                      {recQtnSuggestions.map((rq) => (
+                      {recQtnSuggestions.length > 0 ? (
+                        recQtnSuggestions.map((rq) => (
+                          <button
+                            key={rq.received_quotation_no}
+                            type="button"
+                            onClick={() => addRecQtn(rq)}
+                            className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                          >
+                            <div className="font-bold text-sm text-slate-900">{rq.received_quotation_no}</div>
+                            <div className="text-xs text-slate-500">
+                              Buyer: {rq.buyer_name || '—'} &bull; Date: {fmtDate(rq.quotation_date)} &bull; {Array.isArray(rq.items) ? rq.items.length : 0} items
+                            </div>
+                          </button>
+                        ))
+                      ) : (
                         <button
-                          key={rq.received_quotation_no}
                           type="button"
-                          onClick={() => addRecQtn(rq)}
-                          className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                          onClick={handleRedirectToRecQtn}
+                          className="w-full text-left px-4 py-3 hover:bg-blue-50 text-blue-600 transition-colors font-semibold text-sm cursor-pointer flex items-center gap-1.5"
                         >
-                          <div className="font-bold text-sm text-slate-900">{rq.received_quotation_no}</div>
-                          <div className="text-xs text-slate-500">
-                            Buyer: {rq.buyer_name || '—'} &bull; Date: {fmtDate(rq.quotation_date)} &bull; {Array.isArray(rq.items) ? rq.items.length : 0} items
-                          </div>
+                          <Plus size={16} /> Add New Received Quotation
                         </button>
-                      ))}
+                      )}
                     </div>
                   )}
 
@@ -744,6 +1046,11 @@ export default function AddQuotationView({
           </div>
         </div>
       )}
+      <datalist id="quotation-units-list">
+        {units.map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
     </div>
   );
 }

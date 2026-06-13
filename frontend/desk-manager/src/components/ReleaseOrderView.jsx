@@ -28,6 +28,7 @@ const EMPTY_FORM = {
   buyer_phone: '',
   customer_id: '',
   ro_date: '',
+  delivery_date: '',
   gst: '0.00',
   transport: '0.00',
   other: '0.00',
@@ -68,6 +69,13 @@ export default function ReleaseOrderView({
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerRef = useRef(null);
 
+  // GST Autocomplete
+  const [activeGstDropdown, setActiveGstDropdown] = useState(null);
+  const [gstSuggestions, setGstSuggestions] = useState([]);
+  const [gstRatesList, setGstRatesList] = useState([]);
+  const [gstInputs, setGstInputs] = useState({});
+  const gstRefs = useRef({});
+
   // Item catalog search
   const [itemSearch, setItemSearch] = useState('');
   const [itemSuggestions, setItemSuggestions] = useState([]);
@@ -87,6 +95,18 @@ export default function ReleaseOrderView({
       if (buyerRef.current && !buyerRef.current.contains(e.target)) setShowBuyerDropdown(false);
       if (customerRef.current && !customerRef.current.contains(e.target)) setShowCustomerDropdown(false);
       if (itemRef.current && !itemRef.current.contains(e.target)) setShowItemDropdown(false);
+      if (activeGstDropdown) {
+        const ref = gstRefs.current[activeGstDropdown];
+        if (ref && !ref.contains(e.target)) {
+          // reset visible input back to the committed value (or empty)
+          const item = selectedItems.find(i => i.item_code === activeGstDropdown);
+          setGstInputs(prev => ({
+            ...prev,
+            [activeGstDropdown]: item ? (item.gst_type || '') : ''
+          }));
+          setActiveGstDropdown(null);
+        }
+      }
 
       if (activeShippingDropdown) {
         const ref = shippingRefs.current[activeShippingDropdown];
@@ -97,11 +117,29 @@ export default function ReleaseOrderView({
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [activeShippingDropdown]);
+  }, [activeShippingDropdown, activeGstDropdown, selectedItems]);
 
   // Load ARC prices on mount
   useEffect(() => {
     fetchARCPrices();
+    
+    const fetchGstRates = async () => {
+      try {
+        const savedToken = localStorage.getItem('dm_token');
+        const headers = { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${savedToken}`
+        };
+        const res = await fetch(`${API_BASE_URL}/gst-rates?limit=100`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setGstRatesList(data);
+        }
+      } catch (err) {
+        console.error('Error fetching GST rates:', err);
+      }
+    };
+    fetchGstRates();
   }, []);
 
   const fetchARCPrices = async () => {
@@ -190,7 +228,7 @@ export default function ReleaseOrderView({
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/items?search=${encodeURIComponent(val)}&limit=10`, {
+      const res = await fetch(`${API_BASE_URL}/arc?search=${encodeURIComponent(val)}&limit=10`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` }
       });
       const data = await res.json();
@@ -210,9 +248,11 @@ export default function ReleaseOrderView({
       return;
     }
 
-    // Lookup unit price from ARC items
+    // Use price from the selected ARC item, fallback to arcItems lookup if needed
     const arcMatch = arcItems.find((a) => a.item_code === item.item_code);
-    const unitPrice = arcMatch ? parseFloat(arcMatch.price).toFixed(2) : '0.00';
+    const unitPrice = item.price !== undefined && item.price !== null
+      ? parseFloat(item.price).toFixed(2)
+      : (arcMatch ? parseFloat(arcMatch.price).toFixed(2) : '0.00');
 
     const newItem = {
       item_code: item.item_code,
@@ -221,10 +261,12 @@ export default function ReleaseOrderView({
       quantity: 1,
       unit_price: unitPrice,
       delivery_date: '',
-      gst_type: 'CGST/UGST',
-      gst_rate: '',
+      gst_type: '',
+      gst_rate: '0.00',
       shipping_address: '',
-      showShipping: false
+      showShipping: false,
+      showDeliveryDate: false,
+      checked: true
     };
 
     const updated = [...selectedItems, newItem];
@@ -276,26 +318,62 @@ export default function ReleaseOrderView({
     setSelectedItems(selectedItems.map(i => i.item_code === item_code ? { ...i, delivery_date: val } : i));
   };
 
-  const handleItemGstTypeChange = (item_code, val) => {
-    const updated = selectedItems.map(i => i.item_code === item_code ? { ...i, gst_type: val } : i);
+  const toggleDeliveryDate = (item_code) => {
+    setSelectedItems(selectedItems.map(i => i.item_code === item_code ? { ...i, showDeliveryDate: !i.showDeliveryDate } : i));
+  };
+
+  const toggleItemChecked = (item_code) => {
+    const updated = selectedItems.map((i) =>
+      i.item_code === item_code ? { ...i, checked: !i.checked } : i
+    );
     setSelectedItems(updated);
     updateFinancialValues(updated);
   };
 
-  const handleItemGstRateChange = (item_code, val) => {
-    const updated = selectedItems.map(i => i.item_code === item_code ? { ...i, gst_rate: val } : i);
+  const handleItemGstInput = (item_code, val) => {
+    // Always update the visible input text immediately
+    setGstInputs(prev => ({ ...prev, [item_code]: val }));
+
+    if (!val.trim()) {
+      // user cleared the field — clear the committed value too
+      const updated = selectedItems.map(i =>
+        i.item_code === item_code ? { ...i, gst_type: '', gst_rate: '0.00' } : i
+      );
+      setSelectedItems(updated);
+      updateFinancialValues(updated);
+      setGstSuggestions([]);
+      setActiveGstDropdown(null);
+    } else {
+      const filtered = gstRatesList.filter(r =>
+        r.type.toLowerCase().includes(val.toLowerCase())
+      );
+      setGstSuggestions(filtered);
+      setActiveGstDropdown(item_code);
+    }
+  };
+
+  const selectItemGstCategory = (item_code, gst) => {
+    const updated = selectedItems.map(i =>
+      i.item_code === item_code ? { ...i, gst_type: gst.type, gst_rate: gst.rate.toString() } : i
+    );
     setSelectedItems(updated);
     updateFinancialValues(updated);
+    // sync the visible input to the selected label
+    setGstInputs(prev => ({ ...prev, [item_code]: gst.type }));
+    setActiveGstDropdown(null);
   };
 
   const updateFinancialValues = (itemsList) => {
-    const total = itemsList.reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0), 0);
-    const gstTotal = itemsList.reduce((sum, i) => {
-      const basic = (i.quantity || 0) * (parseFloat(i.unit_price) || 0);
-      const rate = parseFloat(i.gst_rate) || 0;
-      const multiplier = (i.gst_type === 'CGST/UGST') ? 2 : 1;
-      return sum + basic * (rate / 100) * multiplier;
-    }, 0);
+    const total = itemsList
+      .filter((i) => i.checked)
+      .reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0), 0);
+    const gstTotal = itemsList
+      .filter((i) => i.checked)
+      .reduce((sum, i) => {
+        const basic = (i.quantity || 0) * (parseFloat(i.unit_price) || 0);
+        const rate = parseFloat(i.gst_rate) || 0;
+        return sum + basic * (rate / 100);
+      }, 0);
     setFormData((prev) => ({ 
       ...prev, 
       basic_value: total.toFixed(2),
@@ -328,6 +406,7 @@ export default function ReleaseOrderView({
       buyer_phone: ro.buyer_phone || '',
       customer_id: ro.customer_id || '',
       ro_date: ro.ro_date ? ro.ro_date.slice(0, 10) : '',
+      delivery_date: ro.delivery_date ? ro.delivery_date.slice(0, 10) : '',
       gst: parseFloat(ro.gst).toFixed(2),
       transport: parseFloat(ro.transport).toFixed(2),
       other: parseFloat(ro.other).toFixed(2),
@@ -347,10 +426,12 @@ export default function ReleaseOrderView({
             quantity: i.quantity || 1,
             unit_price: parseFloat(i.unit_price).toFixed(2),
             delivery_date: i.delivery_date ? i.delivery_date.slice(0, 10) : '',
-            gst_type: i.gst_type || 'CGST/UGST',
-            gst_rate: i.gst_rate !== undefined && i.gst_rate !== null ? parseFloat(i.gst_rate).toString() : '',
+            gst_type: i.gst_type || '',
+            gst_rate: i.gst_rate !== undefined && i.gst_rate !== null ? parseFloat(i.gst_rate).toString() : '0.00',
             shipping_address: i.shipping_address || '',
-            showShipping: !!i.shipping_address
+            showShipping: !!i.shipping_address,
+            showDeliveryDate: !!i.delivery_date,
+            checked: true
           }))
         : []
     );
@@ -380,13 +461,14 @@ export default function ReleaseOrderView({
       return;
     }
 
-    if (selectedItems.length === 0) {
-      alert('You must add at least one item.');
+    const activeItems = selectedItems.filter((i) => i.checked);
+    if (activeItems.length === 0) {
+      alert('You must select at least one item to order.');
       return;
     }
 
-    // Validate quantities and prices
-    for (const item of selectedItems) {
+    // Validate quantities, prices, and GST Category
+    for (const item of activeItems) {
       if (item.quantity <= 0) {
         alert(`Quantity for item ${item.item_code} must be greater than 0.`);
         return;
@@ -395,16 +477,20 @@ export default function ReleaseOrderView({
         alert(`Unit price for item ${item.item_code} cannot be negative.`);
         return;
       }
+      if (!item.gst_type || !item.gst_type.trim()) {
+        alert(`Please select a valid GST Category for item ${item.item_code}.`);
+        return;
+      }
     }
 
     const payload = {
       ...formData,
-      items: selectedItems.map((i) => ({
+      items: activeItems.map((i) => ({
         item_code: i.item_code,
         quantity: i.quantity,
         unit_price: i.unit_price,
         delivery_date: i.delivery_date || null,
-        gst_type: i.gst_type || 'CGST/UGST',
+        gst_type: i.gst_type || '',
         gst_rate: i.gst_rate !== '' ? parseFloat(i.gst_rate) : 0.00,
         shipping_address: i.shipping_address || null
       }))
@@ -546,6 +632,12 @@ export default function ReleaseOrderView({
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 font-medium">
                         <span>Date: {fmtDate(ro.ro_date)}</span>
+                        {ro.delivery_date && (
+                          <>
+                            <span>•</span>
+                            <span className="text-slate-700 font-semibold">Delivery: {fmtDate(ro.delivery_date)}</span>
+                          </>
+                        )}
                         <span>•</span>
                         <span>Items: {Array.isArray(ro.items) ? ro.items.length : 0}</span>
                         <span>•</span>
@@ -573,12 +665,6 @@ export default function ReleaseOrderView({
                       >
                         View Details
                       </Link>
-                      <button
-                        onClick={() => onDeleteReleaseOrder(ro.ro_no)}
-                        className="px-4 py-2 text-sm border-2 border-red-200 hover:border-red-600 hover:text-red-600 hover:bg-red-50 rounded-lg text-red-600 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Trash2 size={14} /> Delete
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -623,9 +709,9 @@ export default function ReleaseOrderView({
           <div className="bg-white border-2 border-slate-200 rounded-xl p-5 sm:p-8 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Header Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div>
-                  <label className={labelCls}>
+                  <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
                     Release Order No. <b className="text-red-500">*</b>
                   </label>
                   <input
@@ -659,6 +745,17 @@ export default function ReleaseOrderView({
                     required
                     value={formData.ro_date}
                     onChange={set('ro_date')}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>
+                    Date of Delivery
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.delivery_date}
+                    onChange={set('delivery_date')}
                     className={inputCls}
                   />
                 </div>
@@ -768,190 +865,230 @@ export default function ReleaseOrderView({
                 )}
               </div>
 
-              {/* Items Table List */}
-              {selectedItems.length > 0 && (
-                <div className="border border-slate-200 rounded-xl overflow-visible bg-white">
+            {selectedItems.length > 0 && (
+                <div className="border border-slate-200 rounded-xl overflow-visible bg-white mt-4">
                   <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 rounded-t-xl flex justify-between items-center">
                     <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">
                       Release Order Items List ({selectedItems.length})
                     </span>
                   </div>
-                  <div className="divide-y divide-slate-100">
-                    {selectedItems.map((item) => (
+                  <div className="space-y-4 p-4 bg-slate-50/50">
+                    {selectedItems.map((item, index) => (
                       <React.Fragment key={item.item_code}>
-                        <div className="flex flex-col sm:flex-row sm:items-center px-5 py-4 gap-4 bg-white">
-                          {/* Trash / Delete Item */}
-                          <button
-                            type="button"
-                            onClick={() => removeItem(item.item_code)}
-                            className="text-red-500 hover:text-red-700 focus:outline-none shrink-0 cursor-pointer p-1 rounded hover:bg-red-50"
-                          >
-                            <Trash2 size={20} />
-                          </button>
-
-                          {/* Item Details */}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-bold text-sm text-blue-700">
-                                {item.item_code}
-                              </span>
-                              {item.drawing_number && (
-                                <span className="text-xs text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-                                  DRW: {item.drawing_number}
-                                </span>
-                              )}
-                            </div>
-                            {item.description && (
-                              <p className="text-xs text-slate-500 mt-1">{item.description}</p>
-                            )}
-                          </div>
-
-                          {/* Inputs (Delivery Date, GST Type, GST Rate, Quantity & Price) */}
-                          <div className="flex flex-wrap gap-4 shrink-0 items-end justify-end">
-                            <div className="flex flex-col items-start">
-                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                Delivery Date
-                              </label>
-                              <input
-                                type="date"
-                                value={item.delivery_date || ''}
-                                onChange={(e) => handleItemDeliveryDateChange(item.item_code, e.target.value)}
-                                className="w-36 px-2.5 py-1 font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
-                              />
-                            </div>
-                            <div className="flex flex-col items-start">
-                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                GST Type
-                              </label>
-                              <select
-                                value={item.gst_type || 'CGST/UGST'}
-                                onChange={(e) => handleItemGstTypeChange(item.item_code, e.target.value)}
-                                className="w-28 px-2.5 py-1.5 font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
-                              >
-                                <option value="CGST/UGST">CGST/UGST</option>
-                                <option value="IGST">IGST</option>
-                              </select>
-                            </div>
-                            <div className="flex flex-col items-end">
-                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                Rate (%)
-                              </label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                max="100"
-                                value={item.gst_rate || ''}
-                                onChange={(e) => handleItemGstRateChange(item.item_code, e.target.value)}
-                                className="w-20 px-2.5 py-1 text-right font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
-                                placeholder="0"
-                              />
-                            </div>
-                            <div className="flex flex-col items-end">
-                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                Quantity
-                              </label>
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.quantity}
-                                onChange={(e) => handleItemQtyChange(item.item_code, e.target.value)}
-                                className="w-20 px-2.5 py-1 text-right font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
-                              />
-                            </div>
-                            <div className="flex flex-col items-end">
-                              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                Price (₹)
-                              </label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={item.unit_price}
-                                onChange={(e) => handleItemPriceChange(item.item_code, e.target.value)}
-                                className="w-28 px-2.5 py-1 text-right font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Optional Shipping Address per item (PO same design) */}
-                        <div className="px-14 pb-4 bg-blue-50/10 border-t border-blue-50">
-                          {!item.showShipping ? (
+                        <div
+                          className="relative border-2 border-slate-200 rounded-xl transition-all duration-200 overflow-visible bg-white hover:border-red-500 hover:shadow-md"
+                        >
+                          <div className="flex flex-col lg:flex-row lg:items-center px-5 py-4 gap-6 transition-colors">
+                            {/* Delete Button on Left */}
                             <button
                               type="button"
-                              onClick={() => toggleShipping(item.item_code)}
-                              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer bg-transparent border-0"
+                              onClick={() => removeItem(item.item_code)}
+                              className="text-red-600 hover:text-red-800 focus:outline-none shrink-0 cursor-pointer bg-transparent border-0 p-1.5 rounded hover:bg-red-50 transition-colors"
+                              title="Remove Item"
                             >
-                              + Add Shipping Address (Optional)
+                              <Trash2 size={20} />
                             </button>
-                          ) : (
-                            <div className="mt-3 bg-white p-3 rounded-lg border border-slate-200">
-                              <div className="flex justify-between items-center mb-2">
-                                <label className="text-xs font-bold text-slate-700">Shipping Address</label>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleShipping(item.item_code)}
-                                  className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer bg-transparent border-0"
-                                >
-                                  Remove
-                                </button>
+
+                            {/* Details */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-bold text-base text-red-600">
+                                  {item.item_code}
+                                </span>
+                                {item.drawing_number && (
+                                  <span className="text-xs text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                                    DRW: {item.drawing_number}
+                                  </span>
+                                )}
                               </div>
-                              <div className="relative" ref={(el) => (shippingRefs.current[item.item_code] = el)}>
-                                <textarea
-                                  rows={2}
-                                  placeholder="Start typing customer ID, name, or just type the address..."
-                                  value={item.shipping_address || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    handleShippingChange(item.item_code, val);
-                                    if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
-                                      setActiveShippingDropdown(item.item_code);
-                                    } else {
-                                      setActiveShippingDropdown(null);
-                                    }
+                              {item.description && (
+                                <p className="text-xs text-slate-400 mt-1 font-semibold">{item.description}</p>
+                              )}
+                            </div>
+
+                            {/* Inputs (Quantity, Price, GST Search) */}
+                            <div className="flex flex-wrap items-center gap-4 shrink-0">
+                              {/* GST Category Autocomplete per item */}
+                              <div className="flex flex-col items-center relative" ref={(el) => (gstRefs.current[item.item_code] = el)}>
+                                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">
+                                  GST Category
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Search GST (e.g. CGST 18%)"
+                                  value={gstInputs[item.item_code] !== undefined ? gstInputs[item.item_code] : (item.gst_type || '')}
+                                  onChange={(e) => handleItemGstInput(item.item_code, e.target.value)}
+                                  onFocus={() => {
+                                    // show all suggestions (or filtered) on focus
+                                    const currentVal = gstInputs[item.item_code] !== undefined ? gstInputs[item.item_code] : (item.gst_type || '');
+                                    const filtered = currentVal.trim()
+                                      ? gstRatesList.filter(r => r.type.toLowerCase().includes(currentVal.toLowerCase()))
+                                      : gstRatesList;
+                                    setGstSuggestions(filtered);
+                                    setActiveGstDropdown(item.item_code);
                                   }}
-                                  onFocus={(e) => {
-                                    const val = e.target.value;
-                                    if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
-                                      setActiveShippingDropdown(item.item_code);
-                                    }
-                                  }}
-                                  className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-medium"
+                                  className="w-44 px-2.5 py-1.5 text-center font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-red-500"
                                   autoComplete="off"
                                 />
-                                {activeShippingDropdown === item.item_code && customers.filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase())).length > 0 && (
-                                  <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                                    {customers
-                                      .filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase()))
-                                      .slice(0, 6)
-                                      .map(c => (
-                                        <button
-                                          key={c.id}
-                                          type="button"
-                                          onClick={() => {
-                                            handleShippingChange(item.item_code, `${c.name}\n${c.address}`);
-                                            setActiveShippingDropdown(null);
-                                          }}
-                                          className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                                        >
-                                          <div className="font-bold text-sm text-slate-900">{c.id}</div>
-                                          <div className="text-xs text-slate-500">{c.name} &bull; {c.address}</div>
-                                        </button>
-                                      ))}
+                                {activeGstDropdown === item.item_code && gstSuggestions.length > 0 && (
+                                  <div className="absolute z-30 w-56 top-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                                    {gstSuggestions.map((gst) => (
+                                      <button
+                                        key={gst.id}
+                                        type="button"
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={() => selectItemGstCategory(item.item_code, gst)}
+                                        className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                                      >
+                                        <div className="font-bold text-xs text-slate-900">{gst.type}</div>
+                                        <div className="text-[10px] text-slate-500">Rate: {parseFloat(gst.rate)}%</div>
+                                      </button>
+                                    ))}
                                   </div>
                                 )}
                               </div>
+
+                              <div className="flex flex-col items-center">
+                                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">
+                                  Quantity
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => handleItemQtyChange(item.item_code, e.target.value)}
+                                  className="w-24 px-2.5 py-1.5 text-center font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-red-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                />
+                              </div>
+                              <div className="flex flex-col items-center">
+                                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">
+                                  Price (₹)
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={item.unit_price}
+                                  onChange={(e) => handleItemPriceChange(item.item_code, e.target.value)}
+                                  className="w-28 px-2.5 py-1.5 text-center font-bold text-sm text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-red-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                />
+                              </div>
                             </div>
-                          )}
+                          </div>
+
+                          {/* Optional Section per item (Shipping Address & Special Delivery Date) */}
+                          <div className="px-14 pb-4 bg-red-50/5 border-t border-red-100 rounded-b-xl">
+                              {/* Buttons row */}
+                              <div className="flex flex-wrap gap-4 mt-2">
+                                {!item.showShipping && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleShipping(item.item_code)}
+                                    className="text-xs font-bold text-red-700 hover:text-red-800 flex items-center gap-1 cursor-pointer bg-transparent border-0"
+                                  >
+                                    + Add Shipping Address (Optional)
+                                  </button>
+                                )}
+                                {!item.showDeliveryDate && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleDeliveryDate(item.item_code)}
+                                    className="text-xs font-bold text-red-700 hover:text-red-800 flex items-center gap-1 cursor-pointer bg-transparent border-0"
+                                  >
+                                    + Date of Delivery (Optional)
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Shipping Address Section */}
+                              {item.showShipping && (
+                                <div className="mt-3 bg-white p-3 rounded-lg border border-slate-200">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-bold text-slate-700">Shipping Address</label>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleShipping(item.item_code)}
+                                      className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                  <div className="relative" ref={(el) => (shippingRefs.current[item.item_code] = el)}>
+                                    <textarea
+                                      rows={2}
+                                      placeholder="Start typing customer ID, name, or just type the address..."
+                                      value={item.shipping_address || ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        handleShippingChange(item.item_code, val);
+                                        if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
+                                          setActiveShippingDropdown(item.item_code);
+                                        } else {
+                                          setActiveShippingDropdown(null);
+                                        }
+                                      }}
+                                      onFocus={(e) => {
+                                        const val = e.target.value;
+                                        if (val.trim() && customers.some(c => c.id.toLowerCase().includes(val.toLowerCase()) || c.name.toLowerCase().includes(val.toLowerCase()))) {
+                                          setActiveShippingDropdown(item.item_code);
+                                        }
+                                      }}
+                                      className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-red-500 placeholder:text-slate-400 font-medium"
+                                      autoComplete="off"
+                                    />
+                                    {activeShippingDropdown === item.item_code && customers.filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase())).length > 0 && (
+                                      <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                                        {customers
+                                          .filter(c => c.id.toLowerCase().includes((item.shipping_address || '').toLowerCase()) || c.name.toLowerCase().includes((item.shipping_address || '').toLowerCase()))
+                                          .slice(0, 6)
+                                          .map(c => (
+                                            <button
+                                              key={c.id}
+                                              type="button"
+                                              onClick={() => {
+                                                handleShippingChange(item.item_code, `${c.name}\n${c.address}`);
+                                                setActiveShippingDropdown(null);
+                                              }}
+                                              className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                                            >
+                                              <div className="font-bold text-sm text-slate-900">{c.id}</div>
+                                              <div className="text-xs text-slate-500">{c.name} &bull; {c.address}</div>
+                                            </button>
+                                          ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Delivery Date Section */}
+                              {item.showDeliveryDate && (
+                                <div className="mt-3 bg-white p-3 rounded-lg border border-slate-200">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-bold text-slate-700">Special Date of Delivery</label>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleDeliveryDate(item.item_code)}
+                                      className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                  <input
+                                    type="date"
+                                    value={item.delivery_date || ''}
+                                    onChange={(e) => handleItemDeliveryDateChange(item.item_code, e.target.value)}
+                                    className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-red-500 font-medium"
+                                  />
+                                </div>
+                              )}
+                            </div>
                         </div>
                       </React.Fragment>
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* Financial calculations (GST, transport, other same as PO) */}
               <div className="bg-slate-50/50 border border-slate-200 rounded-xl p-5 space-y-4">
                 <div className="font-bold text-slate-700 uppercase text-xs tracking-wider border-b border-slate-200 pb-2">
                   Commercial & Financial Breakdown

@@ -68,7 +68,7 @@ router.get('/', async (req, res) => {
 // Add new release order
 router.post('/', async (req, res) => {
   const {
-    ro_no, contract_ref, buyer_id, customer_id, ro_date, gst, transport, other, basic_value, packing_forward, items = []
+    ro_no, contract_ref, buyer_id, customer_id, ro_date, delivery_date, gst, transport, other, basic_value, packing_forward, items = []
   } = req.body;
 
   if (!ro_no) {
@@ -92,14 +92,15 @@ router.post('/', async (req, res) => {
 
     // Insert release order
     await client.query(`
-      INSERT INTO release_orders (ro_no, contract_ref, buyer_id, customer_id, ro_date, gst, transport, other, basic_value, packing_forward)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO release_orders (ro_no, contract_ref, buyer_id, customer_id, ro_date, delivery_date, gst, transport, other, basic_value, packing_forward)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `, [
       ro_no, 
       contract_ref || null,
       buyer_id || null,
       customer_id || null,
       ro_date, 
+      delivery_date || null,
       parseFloat(gst) || 0.00, 
       parseFloat(transport) || 0.00, 
       parseFloat(other) || 0.00, 
@@ -124,7 +125,7 @@ router.post('/', async (req, res) => {
       await client.query(`
         INSERT INTO release_order_items (ro_no, item_code, quantity, unit_price, shipping_address, delivery_date, gst_type, gst_rate)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [ro_no, item.item_code, qty, price, item.shipping_address || null, item.delivery_date || null, item.gst_type || 'CGST/UGST', parseFloat(item.gst_rate) || 0.00]);
+      `, [ro_no, item.item_code, qty, price, item.shipping_address || null, item.delivery_date || null, item.gst_type || 'CGST/SGST', parseFloat(item.gst_rate) || 0.00]);
     }
 
     await client.query('COMMIT');
@@ -173,7 +174,7 @@ router.post('/', async (req, res) => {
 router.put('/:ro_no', async (req, res) => {
   const { ro_no } = req.params;
   const {
-    contract_ref, buyer_id, customer_id, ro_date, gst, transport, other, basic_value, packing_forward, items = []
+    contract_ref, buyer_id, customer_id, ro_date, delivery_date, gst, transport, other, basic_value, packing_forward, items = []
   } = req.body;
 
   if (!ro_date) {
@@ -186,14 +187,15 @@ router.put('/:ro_no', async (req, res) => {
 
     const updateResult = await client.query(`
       UPDATE release_orders 
-      SET contract_ref = $1, buyer_id = $2, customer_id = $3, ro_date = $4, gst = $5, transport = $6, other = $7, basic_value = $8, packing_forward = $9
-      WHERE ro_no = $10
+      SET contract_ref = $1, buyer_id = $2, customer_id = $3, ro_date = $4, delivery_date = $5, gst = $6, transport = $7, other = $8, basic_value = $9, packing_forward = $10
+      WHERE ro_no = $11
       RETURNING *
     `, [
       contract_ref || null,
       buyer_id || null,
       customer_id || null,
       ro_date, 
+      delivery_date || null,
       parseFloat(gst) || 0.00, 
       parseFloat(transport) || 0.00, 
       parseFloat(other) || 0.00, 
@@ -225,7 +227,7 @@ router.put('/:ro_no', async (req, res) => {
       await client.query(`
         INSERT INTO release_order_items (ro_no, item_code, quantity, unit_price, shipping_address, delivery_date, gst_type, gst_rate)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [ro_no, item.item_code, qty, price, item.shipping_address || null, item.delivery_date || null, item.gst_type || 'CGST/UGST', parseFloat(item.gst_rate) || 0.00]);
+      `, [ro_no, item.item_code, qty, price, item.shipping_address || null, item.delivery_date || null, item.gst_type || 'CGST/SGST', parseFloat(item.gst_rate) || 0.00]);
     }
 
     await client.query('COMMIT');

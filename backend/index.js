@@ -16,6 +16,8 @@ const receivedQuotationsRouter = require('./routes/received_quotations');
 const purchaseOrdersRouter = require('./routes/purchase_orders');
 const arcRouter = require('./routes/arc');
 const releaseOrdersRouter = require('./routes/release_orders');
+const unitsRouter = require('./routes/units');
+const gstRatesRouter = require('./routes/gst_rates');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -48,6 +50,8 @@ app.use('/api/received-quotations', authenticateToken, receivedQuotationsRouter)
 app.use('/api/purchase-orders', authenticateToken, purchaseOrdersRouter);
 app.use('/api/arc', authenticateToken, arcRouter);
 app.use('/api/release-orders', authenticateToken, releaseOrdersRouter);
+app.use('/api/units', authenticateToken, unitsRouter);
+app.use('/api/gst-rates', authenticateToken, gstRatesRouter);
 
 // Serve static frontend
 const frontendDistPath = path.join(__dirname, '../frontend/desk-manager/dist');

@@ -2,15 +2,33 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
-// Get all ARC items
+// Get all ARC items (supports search filtering)
 router.get('/', async (req, res) => {
+  const { search } = req.query;
+  const limit = parseInt(req.query.limit) || 50;
+  
   try {
-    const { rows } = await pool.query(`
+    let queryText = `
       SELECT a.id, a.item_code, a.price, i.description, i.drawing_number 
       FROM arc_items a
       JOIN items i ON a.item_code = i.item_code
       ORDER BY a.created_at DESC
-    `);
+    `;
+    let values = [];
+
+    if (search) {
+      queryText = `
+        SELECT a.id, a.item_code, a.price, i.description, i.drawing_number 
+        FROM arc_items a
+        JOIN items i ON a.item_code = i.item_code
+        WHERE a.item_code ILIKE $1 OR i.description ILIKE $1 OR i.drawing_number ILIKE $1
+        ORDER BY a.created_at DESC
+        LIMIT $2
+      `;
+      values = [`%${search}%`, limit];
+    }
+
+    const { rows } = await pool.query(queryText, values);
     res.json(rows);
   } catch (error) {
     console.error('Error fetching ARC items:', error);

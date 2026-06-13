@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft, X, Printer, FileText, CheckCircle2 } from 'lucide-react';
 
 export default function RFQDetailView({ rfqs, buyers, customers, items }) {
   const { rfq_no } = useParams();
@@ -44,15 +44,32 @@ export default function RFQDetailView({ rfqs, buyers, customers, items }) {
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-6 sm:p-8 bg-[#f1f5f9] min-h-screen">
+    <div className="max-w-5xl mx-auto p-6 sm:p-8 bg-[#f1f5f9] print:bg-white print:p-0 min-h-screen">
       <div className="flex items-center mb-6">
-        <button onClick={() => navigate(-1)} className="flex items-center text-blue-600 hover:underline mr-4">
+        <button onClick={() => navigate(-1)} className="flex items-center text-blue-600 hover:underline mr-4 print:hidden">
           <ArrowLeft size={20} className="mr-1" /> Back
         </button>
-        <h1 className="text-3xl font-extrabold text-slate-900">RFQ Detail – {rfq.rfq_no}</h1>
+        <h1 className="text-3xl font-extrabold text-slate-900 print:text-2xl flex items-center gap-3">
+          RFQ Detail – {rfq.rfq_no}
+          {rfq.status === 'rejected' && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-full print:hidden">
+              <X size={12} /> Rejected
+            </span>
+          )}
+          {rfq.status === 'ordered' && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full print:hidden">
+              <CheckCircle2 size={12} /> Ordered
+            </span>
+          )}
+          {rfq.status === 'quotated' && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-full print:hidden">
+              <FileText size={12} /> Quotated
+            </span>
+          )}
+        </h1>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-xl shadow-sm">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-xl shadow-sm print:shadow-none print:border print:border-slate-200">
         {/* Basic Info */}
         <div>
           <h2 className="text-xl font-bold text-slate-800 mb-3">Basic Information</h2>
@@ -87,7 +104,7 @@ export default function RFQDetailView({ rfqs, buyers, customers, items }) {
       </div>
 
       {/* Items List */}
-      <div className="mt-8 bg-white p-6 rounded-xl shadow-sm">
+      <div className="mt-8 bg-white p-6 rounded-xl shadow-sm print:shadow-none print:border print:border-slate-200">
         <h2 className="text-2xl font-bold text-slate-800 mb-4">Items ({Array.isArray(rfq.items) ? rfq.items.length : 0})</h2>
         {Array.isArray(rfq.items) && rfq.items.length > 0 ? (
           <ul className="divide-y divide-slate-200">
@@ -104,14 +121,32 @@ export default function RFQDetailView({ rfqs, buyers, customers, items }) {
                   
                 </div>
                 <div className="shrink-0 flex flex-col items-end">
-                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Qty</span>
-                  <span className="px-3 py-1 bg-slate-100 border border-slate-200 text-slate-800 font-bold text-sm rounded-lg">{item.quantity || 1}</span>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Qty / Unit</span>
+                  <span className="px-3 py-1 bg-slate-100 border border-slate-200 text-slate-800 font-bold text-sm rounded-lg">{item.quantity || 1} {item.unit || 'Piece'}</span>
                 </div>
               </li>
             ))}
           </ul>
         ) : (
           <p className="text-slate-500">No items attached to this RFQ.</p>
+        )}
+      </div>
+
+      {/* Bottom Action Bar */}
+      <div className="mt-8 flex items-center justify-end gap-3 print:hidden">
+        <button 
+          onClick={() => window.print()} 
+          className="px-6 py-3 border-2 border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+        >
+          <Printer size={18} /> Print RFQ
+        </button>
+        {(!rfq.status || rfq.status === 'rfq') && (
+          <button 
+            onClick={() => navigate('/', { state: { activeTab: 'quotation', prefillRfqNo: rfq.rfq_no } })}
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <FileText size={18} /> Create Quotation
+          </button>
         )}
       </div>
     </div>

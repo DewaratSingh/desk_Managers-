@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Search, Edit2, Plus, RefreshCw, ArrowLeft, ListFilter, AlertCircle, X
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
   ? 'http://localhost:5000/api'
@@ -48,9 +48,29 @@ export default function RFQView({
   fetchMoreData, searchResource
 }) {
   const [viewMode, setViewMode] = useState('list');
+  const navigate = useNavigate();
+  const isQuotateRedirectRef = useRef(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingRFQ, setEditingRFQ] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [units, setUnits] = useState([]);
+
+  useEffect(() => {
+    const fetchUnits = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/units`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUnits(data);
+        }
+      } catch (err) {
+        console.error('Error fetching units:', err);
+      }
+    };
+    fetchUnits();
+  }, []);
 
   // Buyer autocomplete
   const [buyerInput, setBuyerInput] = useState('');
@@ -144,7 +164,7 @@ export default function RFQView({
       setShowItemDropdown(false);
       return; // already added
     }
-    setSelectedItems(prev => [...prev, { item_code: item.item_code, description: item.description, drawing_number: item.drawing_number, quantity: 1 }]);
+    setSelectedItems(prev => [...prev, { item_code: item.item_code, description: item.description, drawing_number: item.drawing_number, quantity: 1, unit: 'Piece' }]);
     setItemSearch('');
     setShowItemDropdown(false);
   };
@@ -161,6 +181,15 @@ export default function RFQView({
           ...item, 
           quantity: qty === '' ? '' : (isNaN(parsed) || parsed < 1 ? 1 : parsed)
         };
+      }
+      return item;
+    }));
+  };
+
+  const handleUnitChange = (item_code, unit) => {
+    setSelectedItems(prev => prev.map(item => {
+      if (item.item_code === item_code) {
+        return { ...item, unit };
       }
       return item;
     }));
@@ -190,7 +219,7 @@ export default function RFQView({
     });
     setBuyerInput(rfq.buyer_name || '');
     setCustomerInput(rfq.customer_id || '');
-    setSelectedItems(Array.isArray(rfq.items) ? rfq.items.map(i => ({ ...i, quantity: i.quantity || 1 })) : []);
+    setSelectedItems(Array.isArray(rfq.items) ? rfq.items.map(i => ({ ...i, quantity: i.quantity || 1, unit: i.unit || 'Piece' })) : []);
     setViewMode('form');
   };
 
@@ -226,8 +255,18 @@ export default function RFQView({
       const ok = await onUpdateRFQ(editingRFQ, payload);
       if (ok) backToList();
     } else {
+      const savedRfqNo = formData.rfq_no;
       const ok = await onAddRFQ(payload);
-      if (ok) { setFormData(EMPTY_FORM); setBuyerInput(''); setCustomerInput(''); setSelectedItems([]); setItemSearch(''); }
+      if (ok) {
+        setFormData(EMPTY_FORM);
+        setBuyerInput('');
+        setCustomerInput('');
+        setSelectedItems([]);
+        setItemSearch('');
+        if (isQuotateRedirectRef.current) {
+          navigate('/', { state: { activeTab: 'quotation', prefillRfqNo: savedRfqNo } });
+        }
+      }
     }
   };
 
@@ -289,10 +328,32 @@ export default function RFQView({
                       <span className="text-sm text-slate-600">{fmtDate(rfq.commercial_bid_due_date)}</span>
                       <span className="text-sm text-slate-600">{Array.isArray(rfq.items) ? rfq.items.length : 0} items</span>
                       <span className="text-sm text-slate-600">{rfq.customer_id || '—'}</span>
+                      {rfq.status === 'rejected' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-full">
+                          Rejected
+                        </span>
+                      )}
+                      {rfq.status === 'ordered' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">
+                          Ordered
+                        </span>
+                      )}
+                      {rfq.status === 'quotated' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-full">
+                          Quotated
+                        </span>
+                      )}
+                      {(!rfq.status || rfq.status === 'rfq') && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-full">
+                          RFQ
+                        </span>
+                      )}
                       <div className="ml-auto flex items-center gap-2.5 shrink-0">
-                        <button onClick={() => openEditForm(rfq)} className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer">
-                          <Edit2 size={14} /> Update Record
-                        </button>
+                        {(!rfq.status || rfq.status === 'rfq') && (
+                          <button onClick={() => openEditForm(rfq)} className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer">
+                            <Edit2 size={14} /> Update Record
+                          </button>
+                        )}
                         <Link to={`/rfq/${rfq.rfq_no}`} className="px-6 py-3 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 justify-center">
                           View Details
                         </Link>
@@ -539,6 +600,19 @@ export default function RFQView({
                                   className="w-20 px-2 py-1 text-center font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                                 />
                               </div>
+                              <div className="flex flex-col items-end">
+                                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Unit *</label>
+                                <input
+                                  type="text"
+                                  list="rfq-units-list"
+                                  required
+                                  placeholder="e.g. Piece"
+                                  value={item.unit || ''}
+                                  onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
+                                  className="w-24 px-2 py-1 text-center font-bold text-sm text-slate-800 bg-white border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                                  autoComplete="off"
+                                />
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => removeItem(item.item_code)}
@@ -566,9 +640,23 @@ export default function RFQView({
                 <button type="button" onClick={backToList} className="px-6 py-4 border-2 border-slate-200 hover:border-slate-300 rounded-lg font-bold text-base uppercase text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer">
                   Cancel
                 </button>
-                <button type="submit" disabled={isLoading}
+                {!editingRFQ && (
+                  <button
+                    type="submit"
+                    onClick={() => { isQuotateRedirectRef.current = true; }}
+                    disabled={isLoading}
+                    className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 rounded-lg font-bold text-base uppercase tracking-wider text-white transition-colors cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Save &amp; Quotate
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  onClick={() => { isQuotateRedirectRef.current = false; }}
+                  disabled={isLoading}
                   className={`px-10 py-4 rounded-lg font-bold text-base uppercase tracking-wider text-white transition-colors cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed
-                    ${editingRFQ ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                    ${editingRFQ ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                >
                   {isLoading ? 'Processing...' : editingRFQ
                     ? <><RefreshCw size={18} className="animate-spin" /> Update RFQ</>
                     : <><Plus size={18} /> Save RFQ</>}
@@ -578,6 +666,11 @@ export default function RFQView({
           </div>
         </div>
       )}
+      <datalist id="rfq-units-list">
+        {units.map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
     </div>
   );
 }

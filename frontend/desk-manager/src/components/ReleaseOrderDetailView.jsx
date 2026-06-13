@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Printer } from 'lucide-react';
 
 export default function ReleaseOrderDetailView({ releaseOrders, customers, buyers }) {
   const { ro_no: ro_no_param } = useParams();
@@ -58,21 +58,25 @@ export default function ReleaseOrderDetailView({ releaseOrders, customers, buyer
   const grossTotal = basicValue + gstValue + transportValue + packingValue + otherValue;
 
   return (
-    <div className="max-w-5xl mx-auto p-6 sm:p-8 bg-[#f1f5f9] min-h-screen text-slate-900">
-      <div className="flex items-center mb-6">
+    <div className="max-w-5xl mx-auto p-6 sm:p-8 bg-[#f1f5f9] print:bg-white print:p-0 min-h-screen text-slate-900">
+      <div className="flex items-center mb-6 print:hidden">
         <button onClick={() => navigate(-1)} className="flex items-center text-blue-600 hover:underline mr-4 cursor-pointer bg-transparent border-0 px-4 py-2 rounded-lg transition-colors text-sm">
           <ArrowLeft size={16} className="mr-1.5" /> Back
         </button>
         <h1 className="text-3xl font-extrabold text-slate-900">Release Order Detail – {ro.ro_no}</h1>
       </div>
+      <h1 className="text-2xl font-extrabold text-slate-900 mb-6 hidden print:block">Release Order – {ro.ro_no}</h1>
 
       {/* Grid of basic info, customer info, buyer info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-xl shadow-sm border border-slate-200 print:shadow-none print:border print:border-slate-200">
         <div>
           <h2 className="text-xl font-bold text-slate-800 mb-3 border-b border-slate-100 pb-1.5">RO Information</h2>
           <div className="space-y-2 text-sm">
             <p><span className="font-semibold text-slate-500">RO No:</span> <span className="font-mono bg-slate-100 px-2 py-0.5 rounded font-bold text-blue-700">{ro.ro_no}</span></p>
             <p><span className="font-semibold text-slate-500">RO Date:</span> <span className="font-bold">{fmtDate(ro.ro_date)}</span></p>
+            {ro.delivery_date && (
+              <p><span className="font-semibold text-slate-500">Delivery Date:</span> <span className="font-bold text-slate-800">{fmtDate(ro.delivery_date)}</span></p>
+            )}
             {ro.contract_ref && (
               <p><span className="font-semibold text-slate-500">Contract Ref:</span> <span className="font-bold">{ro.contract_ref}</span></p>
             )}
@@ -105,16 +109,19 @@ export default function ReleaseOrderDetailView({ releaseOrders, customers, buyer
       </div>
 
       {/* Items Section */}
-      <div className="mt-6 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+      <div className="mt-6 bg-white p-6 rounded-xl shadow-sm border border-slate-200 print:shadow-none print:border print:border-slate-200">
         <h2 className="text-xl font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Release Items ({Array.isArray(ro.items) ? ro.items.length : 0})</h2>
         {Array.isArray(ro.items) && ro.items.length > 0 ? (
-          <div className="divide-y divide-slate-200">
+          <div className="space-y-4">
             {ro.items.map((item) => (
-              <div key={item.item_code} className="py-4 border-b border-slate-100 last:border-0 flex flex-col gap-3">
+              <div
+                key={item.item_code}
+                className="p-5 bg-slate-50/30 hover:bg-white border border-slate-200 hover:border-red-500 hover:shadow-md rounded-xl transition-all duration-200 flex flex-col gap-3 print:bg-white print:border-slate-200 print:shadow-none"
+              >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-sm text-blue-700">{item.item_code}</span>
+                      <span className="font-mono font-bold text-sm text-red-600">{item.item_code}</span>
                       {item.drawing_number && (
                         <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">DRW: {item.drawing_number}</span>
                       )}
@@ -123,39 +130,39 @@ export default function ReleaseOrderDetailView({ releaseOrders, customers, buyer
                       <p className="text-xs text-slate-500 mt-1">{item.description}</p>
                     )}
                   </div>
-                  <div className="shrink-0 flex flex-wrap gap-x-6 gap-y-2 justify-end">
-                    {item.delivery_date && (
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Del. Date</span>
-                        <span className="text-slate-800 font-bold text-sm">{fmtDate(item.delivery_date)}</span>
-                      </div>
-                    )}
-                    {item.gst_rate !== undefined && item.gst_rate !== null && (
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{item.gst_type || 'CGST/UGST'}</span>
-                        <span className="text-slate-800 font-bold text-sm">
-                          {item.gst_type === 'CGST/UGST' ? `${parseFloat(item.gst_rate)}% + ${parseFloat(item.gst_rate)}%` : `${parseFloat(item.gst_rate)}%`}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex flex-col items-end">
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Qty</span>
-                      <span className="text-slate-800 font-bold text-sm">{item.quantity || 1}</span>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Rate</span>
-                      <span className="text-slate-800 font-bold text-sm">₹{parseFloat(item.unit_price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Amount</span>
-                      <span className="text-slate-800 font-bold text-sm">₹{((item.quantity || 1) * parseFloat(item.unit_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{item.gst_type || 'CGST/SGST'}</span>
+                    <span className="text-slate-800 font-bold text-sm">
+                      {item.gst_rate !== undefined && item.gst_rate !== null ? parseFloat(item.gst_rate) : 0}% (₹{((item.quantity || 1) * parseFloat(item.unit_price) * ((parseFloat(item.gst_rate) || 0) / 100)).toLocaleString('en-IN', { minimumFractionDigits: 2 })})
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Qty</span>
+                    <span className="text-slate-800 font-bold text-sm">{item.quantity || 1}</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Rate</span>
+                    <span className="text-slate-800 font-bold text-sm">₹{parseFloat(item.unit_price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Amount</span>
+                    <span className="text-slate-800 font-bold text-sm">₹{((item.quantity || 1) * parseFloat(item.unit_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                   </div>
                 </div>
-                {item.shipping_address && (
-                  <div className="bg-slate-50 p-3 rounded border border-slate-200 text-xs">
-                    <span className="font-bold text-slate-600 block mb-1 uppercase tracking-wider" style={{ fontSize: '10px' }}>Shipping Address</span>
-                    <span className="text-slate-700 whitespace-pre-wrap">{item.shipping_address}</span>
+                {(item.shipping_address || item.delivery_date) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded border border-slate-200 text-xs print:bg-white print:border-slate-200">
+                    {item.shipping_address && (
+                      <div>
+                        <span className="font-bold text-slate-600 block mb-1 uppercase tracking-wider text-[10px]">Shipping Address</span>
+                        <span className="text-slate-700 whitespace-pre-wrap">{item.shipping_address}</span>
+                      </div>
+                    )}
+                    {item.delivery_date && (
+                      <div>
+                        <span className="font-bold text-slate-600 block mb-1 uppercase tracking-wider text-[10px]">Special Delivery Date</span>
+                        <span className="text-slate-700 font-bold">{fmtDate(item.delivery_date)}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -167,7 +174,7 @@ export default function ReleaseOrderDetailView({ releaseOrders, customers, buyer
       </div>
 
       {/* Commercial Breakdown */}
-      <div className="mt-6 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+      <div className="mt-6 bg-white p-6 rounded-xl shadow-sm border border-slate-200 print:shadow-none print:border print:border-slate-200">
         <h2 className="text-xl font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Financial Breakdown</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
           <div className="space-y-2.5">
@@ -206,6 +213,16 @@ export default function ReleaseOrderDetailView({ releaseOrders, customers, buyer
             ₹{grossTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </span>
         </div>
+      </div>
+
+      {/* Bottom Action Bar */}
+      <div className="mt-8 flex items-center justify-end gap-3 print:hidden">
+        <button 
+          onClick={() => window.print()} 
+          className="px-6 py-3 border-2 border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+        >
+          <Printer size={18} /> Print / Save as PDF
+        </button>
       </div>
     </div>
   );

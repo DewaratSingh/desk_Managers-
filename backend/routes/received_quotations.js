@@ -29,9 +29,7 @@ router.get('/', async (req, res) => {
               'drawing_number', i.drawing_number,
               'long_description', i.long_description,
               'quantity', rqi.quantity,
-              'unit_price', rqi.unit_price,
-              'gst_type', rqi.gst_type,
-              'gst_rate', rqi.gst_rate
+              'unit_price', rqi.unit_price
             ) ORDER BY rqi.id
           ) FILTER (WHERE rqi.item_code IS NOT NULL),
           '[]'
@@ -88,7 +86,7 @@ router.get('/next-no', async (req, res) => {
 // Add new received quotation
 router.post('/', async (req, res) => {
   const {
-    quotation_date, buyer_id, terms_and_conditions, items = []
+    received_quotation_no: custom_no, quotation_date, buyer_id, terms_and_conditions, items = []
   } = req.body;
 
   if (!quotation_date) {
@@ -99,25 +97,28 @@ router.post('/', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const currentYear = new Date(quotation_date).getFullYear();
-    const prefix = `RQTN-${currentYear}-`;
-    const nextNumResult = await client.query(`
-      SELECT received_quotation_no FROM received_quotations 
-      WHERE received_quotation_no LIKE $1 
-      ORDER BY received_quotation_no DESC 
-      LIMIT 1
-    `, [`${prefix}%`]);
+    let received_quotation_no = custom_no;
+    if (!received_quotation_no) {
+      const currentYear = new Date(quotation_date).getFullYear();
+      const prefix = `RQTN-${currentYear}-`;
+      const nextNumResult = await client.query(`
+        SELECT received_quotation_no FROM received_quotations 
+        WHERE received_quotation_no LIKE $1 
+        ORDER BY received_quotation_no DESC 
+        LIMIT 1
+      `, [`${prefix}%`]);
 
-    let nextSeq = 1;
-    if (nextNumResult.rows.length > 0) {
-      const lastNo = nextNumResult.rows[0].received_quotation_no;
-      const parts = lastNo.split('-');
-      const lastSeq = parseInt(parts[parts.length - 1]);
-      if (!isNaN(lastSeq)) {
-        nextSeq = lastSeq + 1;
+      let nextSeq = 1;
+      if (nextNumResult.rows.length > 0) {
+        const lastNo = nextNumResult.rows[0].received_quotation_no;
+        const parts = lastNo.split('-');
+        const lastSeq = parseInt(parts[parts.length - 1]);
+        if (!isNaN(lastSeq)) {
+          nextSeq = lastSeq + 1;
+        }
       }
+      received_quotation_no = `${prefix}${String(nextSeq).padStart(4, '0')}`;
     }
-    const received_quotation_no = `${prefix}${String(nextSeq).padStart(4, '0')}`;
 
     // Insert received quotation
     await client.query(`
@@ -140,10 +141,10 @@ router.post('/', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO received_quotation_items (received_quotation_no, item_code, quantity, unit_price, gst_type, gst_rate)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO received_quotation_items (received_quotation_no, item_code, quantity, unit_price)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (received_quotation_no, item_code) DO NOTHING
-      `, [received_quotation_no, item.item_code, qty, price, item.gst_type || 'CGST/UGST', parseFloat(item.gst_rate) || 0.00]);
+      `, [received_quotation_no, item.item_code, qty, price]);
     }
 
     await client.query('COMMIT');
@@ -159,9 +160,7 @@ router.post('/', async (req, res) => {
               'drawing_number', i.drawing_number,
               'long_description', i.long_description,
               'quantity', rqi.quantity,
-              'unit_price', rqi.unit_price,
-              'gst_type', rqi.gst_type,
-              'gst_rate', rqi.gst_rate
+              'unit_price', rqi.unit_price
             ) ORDER BY rqi.id
           ) FILTER (WHERE rqi.item_code IS NOT NULL),
           '[]'
@@ -227,9 +226,9 @@ router.put('/:received_quotation_no', async (req, res) => {
       }
 
       await client.query(`
-        INSERT INTO received_quotation_items (received_quotation_no, item_code, quantity, unit_price, gst_type, gst_rate)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [received_quotation_no, item.item_code, qty, price, item.gst_type || 'CGST/UGST', parseFloat(item.gst_rate) || 0.00]);
+        INSERT INTO received_quotation_items (received_quotation_no, item_code, quantity, unit_price)
+        VALUES ($1, $2, $3, $4)
+      `, [received_quotation_no, item.item_code, qty, price]);
     }
 
     await client.query('COMMIT');
@@ -245,9 +244,7 @@ router.put('/:received_quotation_no', async (req, res) => {
               'drawing_number', i.drawing_number,
               'long_description', i.long_description,
               'quantity', rqi.quantity,
-              'unit_price', rqi.unit_price,
-              'gst_type', rqi.gst_type,
-              'gst_rate', rqi.gst_rate
+              'unit_price', rqi.unit_price
             ) ORDER BY rqi.id
           ) FILTER (WHERE rqi.item_code IS NOT NULL),
           '[]'
