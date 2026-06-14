@@ -340,40 +340,74 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
                 <div className="space-y-6">
                   {/* Pipeline Visual Stepper */}
                   <div className="flex items-center justify-between px-4 pb-4 border-b border-slate-100">
-                    <div className="flex flex-col items-center gap-1.5">
-                      <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
+                    <div 
+                      onClick={() => {
+                        handleCloseDrawer();
+                        navigate(`/rfq/${encodeURIComponent(traceData.rfq.rfq_no)}`);
+                      }}
+                      className="flex flex-col items-center gap-1.5 cursor-pointer group hover:scale-105 transition-transform"
+                      title="View RFQ Details"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs group-hover:bg-blue-700 shadow-sm">
                         1
                       </div>
-                      <span className="text-[10px] font-black text-slate-700 uppercase">RFQ</span>
+                      <span className="text-[10px] font-black text-slate-700 uppercase group-hover:text-blue-600 transition-colors">RFQ</span>
                     </div>
                     <div className="flex-1 h-0.5 bg-slate-200 mx-2 mb-4 relative">
                       {traceData.quotation && <div className="absolute inset-0 bg-blue-600" />}
                     </div>
 
-                    <div className="flex flex-col items-center gap-1.5">
+                    <div 
+                      onClick={() => {
+                        if (traceData.quotation) {
+                          handleCloseDrawer();
+                          navigate(`/quotation/${encodeURIComponent(traceData.quotation.quotation_no)}`);
+                        }
+                      }}
+                      className={`flex flex-col items-center gap-1.5 ${traceData.quotation ? 'cursor-pointer group hover:scale-105 transition-transform' : 'opacity-65'}`}
+                      title={traceData.quotation ? "View Quotation Details" : "Quotation Pending"}
+                    >
                       <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors
-                        ${traceData.quotation ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
+                        ${traceData.quotation ? 'bg-blue-600 text-white group-hover:bg-blue-700 shadow-sm' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
                         2
                       </div>
-                      <span className={`text-[10px] font-black uppercase ${traceData.quotation ? 'text-slate-700' : 'text-slate-400'}`}>Quotation</span>
+                      <span className={`text-[10px] font-black uppercase ${traceData.quotation ? 'text-slate-700 group-hover:text-blue-600 transition-colors' : 'text-slate-400'}`}>Quotation</span>
                     </div>
                     <div className="flex-1 h-0.5 bg-slate-200 mx-2 mb-4 relative">
                       {traceData.purchase_order && <div className="absolute inset-0 bg-blue-600" />}
                     </div>
 
-                    <div className="flex flex-col items-center gap-1.5">
+                    <div 
+                      onClick={() => {
+                        if (traceData.purchase_order) {
+                          handleCloseDrawer();
+                          navigate(`/purchase-order/${encodeURIComponent(traceData.purchase_order.po_no)}`);
+                        }
+                      }}
+                      className={`flex flex-col items-center gap-1.5 ${traceData.purchase_order ? 'cursor-pointer group hover:scale-105 transition-transform' : 'opacity-65'}`}
+                      title={traceData.purchase_order ? "View Purchase Order Details" : "Purchase Order Pending"}
+                    >
                       <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors
-                        ${traceData.purchase_order ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
+                        ${traceData.purchase_order ? 'bg-emerald-600 text-white group-hover:bg-emerald-700 shadow-sm' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
                         3
                       </div>
-                      <span className={`text-[10px] font-black uppercase ${traceData.purchase_order ? 'text-slate-700' : 'text-slate-400'}`}>PO Order</span>
+                      <span className={`text-[10px] font-black uppercase ${traceData.purchase_order ? 'text-slate-700 group-hover:text-emerald-600 transition-colors' : 'text-slate-400'}`}>PO Order</span>
                     </div>
                   </div>
 
                   {/* STAGE 1: RFQ DETAILS */}
                   <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
                     <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                      <h4 className="text-sm font-extrabold uppercase text-slate-500 tracking-wider">Stage 1: RFQ Details</h4>
+                      <button
+                        onClick={() => {
+                          handleCloseDrawer();
+                          navigate(`/rfq/${encodeURIComponent(traceData.rfq.rfq_no)}`);
+                        }}
+                        className="text-sm font-extrabold uppercase text-slate-500 hover:text-blue-600 transition-colors tracking-wider flex items-center gap-1.5 cursor-pointer"
+                        title="Open RFQ Details"
+                      >
+                        Stage 1: RFQ Details <ArrowUpRight size={14} />
+                      </button>
                       <span className="text-[10px] font-bold text-slate-400">Created {fmtDate(traceData.rfq.created_at)}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
@@ -399,7 +433,16 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
                   {traceData.quotation ? (
                     <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
                       <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                        <h4 className="text-sm font-extrabold uppercase text-slate-500 tracking-wider">Stage 2: Quotation Details</h4>
+                        <button
+                          onClick={() => {
+                            handleCloseDrawer();
+                            navigate(`/quotation/${encodeURIComponent(traceData.quotation.quotation_no)}`);
+                          }}
+                          className="text-sm font-extrabold uppercase text-slate-500 hover:text-blue-600 transition-colors tracking-wider flex items-center gap-1.5 cursor-pointer"
+                          title="Open Quotation Details"
+                        >
+                          Stage 2: Quotation Details <ArrowUpRight size={14} />
+                        </button>
                         <div className="flex items-center gap-2">
                           {traceData.rfq.status === 'rejected' && (
                             <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">REJECTED</span>
@@ -451,7 +494,16 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
                   {traceData.purchase_order ? (
                     <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
                       <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                        <h4 className="text-sm font-extrabold uppercase text-slate-500 tracking-wider">Stage 3: Purchase Order Details</h4>
+                        <button
+                          onClick={() => {
+                            handleCloseDrawer();
+                            navigate(`/purchase-order/${encodeURIComponent(traceData.purchase_order.po_no)}`);
+                          }}
+                          className="text-sm font-extrabold uppercase text-slate-500 hover:text-emerald-600 transition-colors tracking-wider flex items-center gap-1.5 cursor-pointer"
+                          title="Open Purchase Order Details"
+                        >
+                          Stage 3: Purchase Order Details <ArrowUpRight size={14} />
+                        </button>
                         <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">{traceData.purchase_order.po_no}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs">

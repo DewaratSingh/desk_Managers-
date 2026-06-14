@@ -603,7 +603,7 @@ export default function AddQuotationView({
             <Search size={22} className="text-slate-400 shrink-0" />
             <input
               type="text"
-              placeholder="Search by quotation no. or RFQ no..."
+              placeholder="Search by quotation no., RFQ no., buyer name, customer ID, or item code..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-transparent focus:outline-none text-lg text-slate-900 placeholder:text-slate-400 font-semibold"
@@ -628,19 +628,42 @@ export default function AddQuotationView({
                 {quotations.map((q) => {
                   const linkedRfq = rfqs.find((r) => r.rfq_no === q.rfq_no);
                   const isLocked = linkedRfq && (linkedRfq.status === 'ordered' || linkedRfq.status === 'rejected');
+                  const customerId = q.customer_id || linkedRfq?.customer_id || '—';
+                  const buyerName = q.buyer_name || linkedRfq?.buyer_name || '—';
+                  const status = q.rfq_status || linkedRfq?.status || 'rfq';
                   return (
                     <div
                       key={q.quotation_no}
                       className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white hover:bg-slate-50/75 transition-colors"
                     >
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-3">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-3">
                         <span className="font-mono font-extrabold text-sm text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
                           {q.quotation_no}
                         </span>
                         <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
                           RFQ: {q.rfq_no}
                         </span>
+                        {status === 'ordered' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">
+                            Ordered
+                          </span>
+                        )}
+                        {status === 'rejected' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-full">
+                            Rejected
+                          </span>
+                        )}
+                        {status !== 'ordered' && status !== 'rejected' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-full">
+                            Quotated
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs font-semibold text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span>Customer ID: <span className="text-slate-800 font-bold">{customerId}</span></span>
+                        <span className="text-slate-300">|</span>
+                        <span>Buyer: <span className="text-slate-800 font-bold">{buyerName}</span></span>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 font-medium">
                         <span>Date: {fmtDate(q.quotation_date)}</span>
