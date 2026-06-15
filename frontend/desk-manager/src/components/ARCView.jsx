@@ -24,9 +24,15 @@ export default function ARCView({ items }) {
   const [suggestions, setSuggestions] = useState([]);
   const inputRef = useRef(null);
 
+  const [hasMore, setHasMore] = useState(false);
+
+  // Trigger server-side fetching with debouncing when searchQuery changes
   useEffect(() => {
-    fetchARCItems();
-  }, []);
+    const delayDebounceFn = setTimeout(() => {
+      fetchARCItems(searchQuery, false);
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -38,14 +44,26 @@ export default function ARCView({ items }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const fetchARCItems = async () => {
+  const fetchARCItems = async (search = '', append = false) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/arc`, {
+      const offset = append ? arcItems.length : 0;
+      const url = `${API_BASE_URL}/arc?limit=20&offset=${offset}` + 
+        (search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '');
+        
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` }
       });
       const data = await res.json();
-      setArcItems(Array.isArray(data) ? data : []);
+      const newItems = Array.isArray(data) ? data : [];
+      
+      if (append) {
+        setArcItems(prev => [...prev, ...newItems]);
+      } else {
+        setArcItems(newItems);
+      }
+      // If we fetched exactly 20 items, there might be more to load
+      setHasMore(newItems.length === 20);
     } catch (e) {
       console.error(e);
     } finally {
@@ -116,7 +134,7 @@ export default function ARCView({ items }) {
         setPrice('');
         setEditingItemCode(null);
         setViewMode('list');
-        fetchARCItems();
+        fetchARCItems(searchQuery, false);
       }
     } catch (e) {
       console.error(e);
@@ -144,7 +162,7 @@ export default function ARCView({ items }) {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` }
       });
       if (!res.ok) throw new Error('Delete failed');
-      fetchARCItems();
+      fetchARCItems(searchQuery, false);
     } catch (e) {
       console.error(e);
       alert('Error deleting ARC item');
@@ -169,16 +187,8 @@ export default function ARCView({ items }) {
     setViewMode('list');
   };
 
-  // Client-side filtering of ARC items
-  const filteredArcItems = arcItems.filter((arc) => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-    return (
-      arc.item_code.toLowerCase().includes(q) ||
-      (arc.description && arc.description.toLowerCase().includes(q)) ||
-      (arc.drawing_number && arc.drawing_number.toLowerCase().includes(q))
-    );
-  });
+  // The filtered items list is now directly loaded server-side
+  const filteredArcItems = arcItems;
 
   return (
     <div className="flex-1 p-4 sm:p-8 lg:p-10 bg-[#f1f5f9] max-w-5xl mx-auto w-full text-slate-900">
@@ -275,6 +285,17 @@ export default function ARCView({ items }) {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {hasMore && (
+              <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
+                <button
+                  onClick={() => fetchARCItems(searchQuery, true)}
+                  disabled={isLoading}
+                  className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isLoading ? 'Loading...' : 'Load More ARC Items'}
+                </button>
               </div>
             )}
           </div>

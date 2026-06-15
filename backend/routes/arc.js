@@ -2,18 +2,14 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
-// Get all ARC items (supports search filtering)
+// Get all ARC items (supports search, limit, and offset)
 router.get('/', async (req, res) => {
   const { search } = req.query;
-  const limit = parseInt(req.query.limit) || 50;
+  const limit = parseInt(req.query.limit) || 20;
+  const offset = parseInt(req.query.offset) || 0;
   
   try {
-    let queryText = `
-      SELECT a.id, a.item_code, a.price, i.description, i.drawing_number 
-      FROM arc_items a
-      JOIN items i ON a.item_code = i.item_code
-      ORDER BY a.created_at DESC
-    `;
+    let queryText = '';
     let values = [];
 
     if (search) {
@@ -23,9 +19,18 @@ router.get('/', async (req, res) => {
         JOIN items i ON a.item_code = i.item_code
         WHERE a.item_code ILIKE $1 OR i.description ILIKE $1 OR i.drawing_number ILIKE $1
         ORDER BY a.created_at DESC
-        LIMIT $2
+        LIMIT $2 OFFSET $3
       `;
-      values = [`%${search}%`, limit];
+      values = [`%${search}%`, limit, offset];
+    } else {
+      queryText = `
+        SELECT a.id, a.item_code, a.price, i.description, i.drawing_number 
+        FROM arc_items a
+        JOIN items i ON a.item_code = i.item_code
+        ORDER BY a.created_at DESC
+        LIMIT $1 OFFSET $2
+      `;
+      values = [limit, offset];
     }
 
     const { rows } = await pool.query(queryText, values);
