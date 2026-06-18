@@ -27,7 +27,8 @@ export default function AddItemView({
   isLoading,
   error,
   fetchMoreData,
-  searchResource
+  searchResource,
+  onCancel
 }) {
   // viewMode: 'list' (default) | 'form'
   const [viewMode, setViewMode] = useState('list');
@@ -88,7 +89,11 @@ export default function AddItemView({
   const handleBackToDirectory = () => {
     setEditingCode(null);
     setFormData(EMPTY_FORM);
-    setViewMode('list');
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else {
+      setViewMode('list');
+    }
   };
 
   /* ── Submit ── */

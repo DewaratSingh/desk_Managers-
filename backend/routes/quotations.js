@@ -112,7 +112,7 @@ router.get('/next-no', async (req, res) => {
 // Add new quotation
 router.post('/', async (req, res) => {
   const {
-    rfq_no, quotation_date, terms_and_conditions, gst_type, gst_rate, items = [], received_quotation_nos = []
+    rfq_no, quotation_date, terms_and_conditions, gst_type, gst_rate, items = [], received_quotation_nos = [], trade_id: bodyTradeId
   } = req.body;
 
   if (!rfq_no || !quotation_date) {
@@ -122,6 +122,15 @@ router.post('/', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Auto-resolve trade_id from RFQ if not passed
+    let trade_id = bodyTradeId;
+    if (!trade_id) {
+      const rfqRes = await client.query('SELECT trade_id FROM rfqs WHERE rfq_no = $1', [rfq_no]);
+      if (rfqRes.rows.length > 0) {
+        trade_id = rfqRes.rows[0].trade_id;
+      }
+    }
 
     const currentYear = new Date(quotation_date).getFullYear();
     const prefix = `QTN-${currentYear}-`;
@@ -145,12 +154,19 @@ router.post('/', async (req, res) => {
 
     // Insert quotation
     await client.query(`
-      INSERT INTO quotations (quotation_no, rfq_no, quotation_date, terms_and_conditions, gst_type, gst_rate)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO quotations (quotation_no, rfq_no, quotation_date, terms_and_conditions, gst_type, gst_rate, trade_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
     `, [
       quotation_no, rfq_no, quotation_date, terms_and_conditions || null,
-      gst_type || null, gst_rate !== undefined ? parseFloat(gst_rate) : 0.00
+      gst_type || null, gst_rate !== undefined ? parseFloat(gst_rate) : 0.00,
+      trade_id
     ]);
+
+    // Link document in trades table
+    if (trade_id) {
+      const { appendDocToTrade } = require('../db');
+      await appendDocToTrade(client, trade_id, 'QUOTATION', quotation_no);
+    }
 
     // Insert linked received quotations
     if (Array.isArray(received_quotation_nos)) {
@@ -356,26 +372,31 @@ router.put('/:quotation_no', async (req, res) => {
   }
 });
 
-// Reject quotation (updates linked RFQ status to 'rejected')
+// Reject quotation (updates linked RFQ status to 'rejected' and trade status to 'rejected')
 router.post('/:quotation_no/reject', async (req, res) => {
   const { quotation_no } = req.params;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     
-    // Find linked RFQ
-    const qtnResult = await client.query('SELECT rfq_no FROM quotations WHERE quotation_no = $1', [quotation_no]);
+    // Find linked RFQ and trade_id
+    const qtnResult = await client.query('SELECT rfq_no, trade_id FROM quotations WHERE quotation_no = $1', [quotation_no]);
     if (qtnResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Quotation not found' });
     }
-    const rfq_no = qtnResult.rows[0].rfq_no;
+    const { rfq_no, trade_id } = qtnResult.rows[0];
     
     // Update RFQ status to 'rejected'
     await client.query("UPDATE rfqs SET status = 'rejected' WHERE rfq_no = $1", [rfq_no]);
+
+    // Update Trade status to 'rejected'
+    if (trade_id) {
+      await client.query("UPDATE trades SET status = 'rejected' WHERE trade_id = $1", [trade_id]);
+    }
     
     await client.query('COMMIT');
-    res.json({ message: 'Quotation rejected successfully', rfq_no });
+    res.json({ message: 'Quotation rejected successfully', rfq_no, trade_id });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error rejecting quotation:', error);

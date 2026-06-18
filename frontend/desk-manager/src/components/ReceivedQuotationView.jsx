@@ -22,12 +22,14 @@ const EMPTY_FORM = {
   buyer_name: '',
   buyer_email: '',
   buyer_phone: '',
+  customer_id: '',
   quotation_date: '',
   terms_and_conditions: ''
 };
 
 export default function ReceivedQuotationView({
   buyers,
+  customers,
   items: catalogItems,
   receivedQuotations,
   onAddReceivedQuotation,
@@ -36,7 +38,10 @@ export default function ReceivedQuotationView({
   isLoading,
   error,
   fetchMoreData,
-  searchResource
+  searchResource,
+  forceFormOpen,
+  onClearForceFormOpen,
+  onCancel
 }) {
   const [viewMode, setViewMode] = useState('list');
   const [formData, setFormData] = useState(EMPTY_FORM);
@@ -55,6 +60,7 @@ export default function ReceivedQuotationView({
         quotation_date: new Date().toISOString().slice(0, 10)
       });
       setBuyerInput('');
+      setCustomerInput('');
       setItemInput('');
       setSelectedItems([]);
       fetchNextQuotationNo();
@@ -64,8 +70,50 @@ export default function ReceivedQuotationView({
       const nextState = { ...location.state };
       delete nextState.openForm;
       navigate(location.pathname, { replace: true, state: nextState });
+    } else if (location.state && location.state.editReceivedQuotationNo) {
+      const editNo = location.state.editReceivedQuotationNo;
+      const matched = receivedQuotations.find(rq => rq.received_quotation_no === editNo);
+      if (matched) {
+        handleEditClick(matched);
+      } else {
+        const fetchAndEdit = async () => {
+          try {
+            const savedToken = localStorage.getItem('dm_token');
+            const headers = { 'Authorization': `Bearer ${savedToken}` };
+            const res = await fetch(`${API_BASE_URL}/received-quotations?search=${encodeURIComponent(editNo)}&limit=1`, { headers });
+            if (res.ok) {
+              const data = await res.json();
+              const found = data.find(rq => rq.received_quotation_no === editNo);
+              if (found) handleEditClick(found);
+            }
+          } catch (e) {
+            console.error('Error fetching received quotation for edit:', e);
+          }
+        };
+        fetchAndEdit();
+      }
+      const nextState = { ...location.state };
+      delete nextState.editReceivedQuotationNo;
+      navigate(location.pathname, { replace: true, state: nextState });
     }
-  }, [location.state]);
+  }, [location.state, receivedQuotations]);
+
+  useEffect(() => {
+    if (forceFormOpen) {
+      setEditingNo(null);
+      setFormData({
+        ...EMPTY_FORM,
+        quotation_date: new Date().toISOString().slice(0, 10)
+      });
+      setBuyerInput('');
+      setCustomerInput('');
+      setItemInput('');
+      setSelectedItems([]);
+      fetchNextQuotationNo();
+      setViewMode('form');
+      if (onClearForceFormOpen) onClearForceFormOpen();
+    }
+  }, [forceFormOpen, onClearForceFormOpen]);
 
   // Selected items and pricing
   const [selectedItems, setSelectedItems] = useState([]);
@@ -75,6 +123,12 @@ export default function ReceivedQuotationView({
   const [buyerSuggestions, setBuyerSuggestions] = useState([]);
   const [showBuyerDropdown, setShowBuyerDropdown] = useState(false);
   const buyerRef = useRef(null);
+
+  // Customer autocomplete
+  const [customerInput, setCustomerInput] = useState('');
+  const [customerSuggestions, setCustomerSuggestions] = useState([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const customerRef = useRef(null);
 
   // Item autocomplete
   const [itemInput, setItemInput] = useState('');
@@ -90,6 +144,7 @@ export default function ReceivedQuotationView({
     const handler = (e) => {
       if (buyerRef.current && !buyerRef.current.contains(e.target)) setShowBuyerDropdown(false);
       if (itemRef.current && !itemRef.current.contains(e.target)) setShowItemDropdown(false);
+      if (customerRef.current && !customerRef.current.contains(e.target)) setShowCustomerDropdown(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -140,6 +195,31 @@ export default function ReceivedQuotationView({
 
   const buyerNotFound = buyerInput.trim().length > 0 && !formData.buyer_id &&
     buyers.filter(b => b.name.toLowerCase().startsWith(buyerInput.toLowerCase())).length === 0;
+
+  // ── Customer Lookup ──
+  const handleCustomerInput = async (val) => {
+    setCustomerInput(val);
+    setFormData((prev) => ({ ...prev, customer_id: val }));
+    if (!val.trim()) { setCustomerSuggestions([]); setShowCustomerDropdown(false); return; }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers?search=${encodeURIComponent(val)}&limit=5`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('dm_token')}` }
+      });
+      const data = await res.json();
+      setCustomerSuggestions(data);
+      setShowCustomerDropdown(true);
+    } catch(e) { console.error(e); }
+  };
+
+  const selectCustomer = (c) => {
+    setCustomerInput(c.id);
+    setFormData((prev) => ({ ...prev, customer_id: c.id }));
+    setShowCustomerDropdown(false);
+  };
+
+  const customerNotFound = customerInput.trim().length > 0 &&
+    (customers || []).filter(c => c.id.toLowerCase().startsWith(customerInput.toLowerCase()) || c.name.toLowerCase().startsWith(customerInput.toLowerCase())).length === 0;
 
   // ── Item Lookup ──
   const handleItemInput = async (val) => {
@@ -210,10 +290,12 @@ export default function ReceivedQuotationView({
       buyer_name: rq.buyer_name || '',
       buyer_email: rq.buyer_email || '',
       buyer_phone: rq.buyer_phone || '',
+      customer_id: rq.customer_id || '',
       quotation_date: rq.quotation_date ? rq.quotation_date.slice(0, 10) : '',
       terms_and_conditions: rq.terms_and_conditions || ''
     });
     setBuyerInput(rq.buyer_name || '');
+    setCustomerInput(rq.customer_id || '');
     setItemInput('');
     setSelectedItems(Array.isArray(rq.items) ? rq.items.map(i => ({
       item_code: i.item_code,
@@ -238,9 +320,14 @@ export default function ReceivedQuotationView({
     setEditingNo(null);
     setFormData(EMPTY_FORM);
     setBuyerInput('');
+    setCustomerInput('');
     setItemInput('');
     setSelectedItems([]);
-    setViewMode('list');
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else {
+      setViewMode('list');
+    }
   };
 
   // ── Submit ──
@@ -250,6 +337,11 @@ export default function ReceivedQuotationView({
 
     if (!formData.buyer_id) {
       alert('Please select a valid Buyer from the suggestion dropdown.');
+      return;
+    }
+
+    if (!formData.customer_id) {
+      alert('Please select a valid Customer from the suggestion dropdown.');
       return;
     }
 
@@ -295,6 +387,7 @@ export default function ReceivedQuotationView({
           quotation_date: new Date().toISOString().slice(0, 10)
         });
         setBuyerInput('');
+        setCustomerInput('');
         setItemInput('');
         setSelectedItems([]);
         fetchNextQuotationNo();
@@ -430,6 +523,14 @@ export default function ReceivedQuotationView({
                         <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
                           Buyer: {rq.buyer_name || '—'}
                         </span>
+                        {rq.customer_id && (
+                          <>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                              Customer: {rq.customer_id}
+                            </span>
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 font-medium">
                         <span>Date: {fmtDate(rq.quotation_date)}</span>
@@ -582,6 +683,60 @@ export default function ReceivedQuotationView({
                       <span>{formData.buyer_email}</span>
                       <span className="text-slate-400">|</span>
                       <span>{formData.buyer_phone}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Customer Lookup */}
+                <div ref={customerRef} className="relative">
+                  <label className={labelCls}>Customer ID <b className="text-red-500">*</b></label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Search and select customer name/ID..."
+                    value={customerInput}
+                    onChange={(e) => handleCustomerInput(e.target.value)}
+                    onFocus={() => customerInput.trim() && setShowCustomerDropdown(true)}
+                    className={inputCls}
+                    autoComplete="off"
+                  />
+                  {showCustomerDropdown && customerSuggestions.length > 0 && (
+                    <div className="absolute z-30 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                      {customerSuggestions.slice(0, 6).map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectCustomer(c)}
+                          className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                        >
+                          <div className="font-bold text-sm text-slate-900">{c.name}</div>
+                          <div className="text-xs text-slate-500">ID: {c.id} &bull; {c.email}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {customerNotFound && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No customer found for "{customerInput}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onNavigateAndOpenForm) onNavigateAndOpenForm('add-customer', 'customer');
+                        }}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded font-extrabold text-[10px] transition-colors cursor-pointer shrink-0 uppercase tracking-wider"
+                      >
+                        Add Customer
+                      </button>
+                    </div>
+                  )}
+                  {formData.customer_id && (
+                    <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                      <span>✓ Customer linked</span>
+                      <span className="text-slate-400">|</span>
+                      <span>{(customers || []).find(c => c.id === formData.customer_id)?.name}</span>
                     </div>
                   )}
                 </div>

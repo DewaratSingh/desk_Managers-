@@ -19,7 +19,8 @@ export default function AddBuyerView({
   isLoading,
   error,
   fetchMoreData,
-  searchResource
+  searchResource,
+  onCancel
 }) {
   // viewMode: 'list' (default) or 'form'
   const [viewMode, setViewMode] = useState('list');
@@ -87,7 +88,11 @@ export default function AddBuyerView({
       email: '',
       phone: ''
     });
-    setViewMode('list'); // Switch back to directory list
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else {
+      setViewMode('list');
+    }
   };
 
   // Submit Handler

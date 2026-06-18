@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Search, Edit2, Plus, RefreshCw, ArrowLeft, ListFilter, AlertCircle, X
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
   ? 'http://localhost:5000/api'
@@ -45,10 +45,15 @@ export default function RFQView({
   onAddRFQ, onUpdateRFQ,
   onNavigateAndOpenForm,
   isLoading, error,
-  fetchMoreData, searchResource
+  fetchMoreData, searchResource,
+  setActiveTab,
+  forceFormOpen,
+  onClearForceFormOpen,
+  onCancel
 }) {
   const [viewMode, setViewMode] = useState('list');
   const navigate = useNavigate();
+  const location = useLocation();
   const isQuotateRedirectRef = useRef(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingRFQ, setEditingRFQ] = useState(null);
@@ -71,6 +76,44 @@ export default function RFQView({
     };
     fetchUnits();
   }, []);
+
+  // Handle direct form opening from navigation state
+  useEffect(() => {
+    if (location.state?.openForm) {
+      setViewMode('form');
+      setEditingRFQ(null);
+      setFormData(EMPTY_FORM);
+      setBuyerInput(''); setCustomerInput('');
+      setSelectedItems([]);
+      // Replace state to avoid re-triggering using the router way
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, navigate]);
+
+  // Handle auto-opening edit form when navigated with editRfqNo state
+  useEffect(() => {
+    const editRfqNo = location.state?.editRfqNo;
+    if (editRfqNo) {
+      const rfq = rfqs.find(r => r.rfq_no === editRfqNo);
+      if (rfq) {
+        openEditForm(rfq);
+      }
+      // Replace state to avoid re-triggering
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, navigate, rfqs]);
+
+  // Handle direct form opening from forceFormOpen prop
+  useEffect(() => {
+    if (forceFormOpen) {
+      setViewMode('form');
+      setEditingRFQ(null);
+      setFormData(EMPTY_FORM);
+      setBuyerInput(''); setCustomerInput('');
+      setSelectedItems([]);
+      if (onClearForceFormOpen) onClearForceFormOpen();
+    }
+  }, [forceFormOpen, onClearForceFormOpen]);
 
   // Buyer autocomplete
   const [buyerInput, setBuyerInput] = useState('');
@@ -229,7 +272,14 @@ export default function RFQView({
     setBuyerInput(''); setCustomerInput('');
     setSelectedItems([]);
     setItemSearch('');
-    setViewMode('list');
+    
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else if (setActiveTab) {
+      setActiveTab('dashboard');
+    } else {
+      setViewMode('list');
+    }
   };
 
   // ── Submit ──
@@ -258,13 +308,17 @@ export default function RFQView({
       const savedRfqNo = formData.rfq_no;
       const ok = await onAddRFQ(payload);
       if (ok) {
-        setFormData(EMPTY_FORM);
-        setBuyerInput('');
-        setCustomerInput('');
-        setSelectedItems([]);
-        setItemSearch('');
         if (isQuotateRedirectRef.current) {
+          // Clear form and navigate to Quotation tab
+          setFormData(EMPTY_FORM);
+          setBuyerInput('');
+          setCustomerInput('');
+          setSelectedItems([]);
+          setItemSearch('');
           navigate('/', { state: { activeTab: 'quotation', prefillRfqNo: savedRfqNo } });
+        } else {
+          // Clear form and redirect to Dashboard via backToList()
+          backToList();
         }
       }
     }

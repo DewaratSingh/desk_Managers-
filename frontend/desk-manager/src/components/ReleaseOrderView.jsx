@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -46,8 +46,12 @@ export default function ReleaseOrderView({
   isLoading,
   error,
   fetchMoreData,
-  searchResource
+  searchResource,
+  forceFormOpen,
+  onClearForceFormOpen,
+  onCancel
 }) {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState('list');
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingNo, setEditingNo] = useState(null);
@@ -395,6 +399,13 @@ export default function ReleaseOrderView({
     setViewMode('form');
   };
 
+  useEffect(() => {
+    if (forceFormOpen) {
+      handleOpenAddForm();
+      if (onClearForceFormOpen) onClearForceFormOpen();
+    }
+  }, [forceFormOpen]);
+
   const handleEditClick = (ro) => {
     setEditingNo(ro.ro_no);
     setFormData({
@@ -445,7 +456,11 @@ export default function ReleaseOrderView({
     setCustomerInput('');
     setSelectedItems([]);
     setItemSearch('');
-    setViewMode('list');
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else {
+      setViewMode('list');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -500,8 +515,8 @@ export default function ReleaseOrderView({
       const success = await onUpdateReleaseOrder(editingNo, payload);
       if (success) handleBackToDirectory();
     } else {
-      const success = await onAddReleaseOrder(payload);
-      if (success) {
+      const createdRo = await onAddReleaseOrder(payload);
+      if (createdRo) {
         setFormData({
           ...EMPTY_FORM,
           ro_date: new Date().toISOString().slice(0, 10)
@@ -510,6 +525,11 @@ export default function ReleaseOrderView({
         setCustomerInput('');
         setSelectedItems([]);
         setItemSearch('');
+        if (createdRo.trade_id) {
+          navigate(`/trace/${encodeURIComponent(createdRo.trade_id)}`);
+        } else {
+          setViewMode('list');
+        }
       }
     }
   };
@@ -573,13 +593,7 @@ export default function ReleaseOrderView({
                 Record and manage release orders linked to clients and agreements.
               </p>
             </div>
-            <button
-              onClick={handleOpenAddForm}
-              className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm self-start sm:self-auto"
-            >
-              <Plus size={20} />
-              New Release Order
-            </button>
+            
           </div>
 
           {/* Search */}

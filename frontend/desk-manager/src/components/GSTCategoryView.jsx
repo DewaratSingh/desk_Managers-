@@ -10,7 +10,7 @@ const EMPTY_FORM = {
   rate: ''
 };
 
-export default function GSTCategoryView() {
+export default function GSTCategoryView({ onCancel }) {
   const [gstRates, setGstRates] = useState([]);
   const [viewMode, setViewMode] = useState('list');
   const [formData, setFormData] = useState(EMPTY_FORM);
@@ -67,7 +67,11 @@ export default function GSTCategoryView() {
     setEditingId(null);
     setFormData(EMPTY_FORM);
     setError(null);
-    setViewMode('list');
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else {
+      setViewMode('list');
+    }
   };
 
   const handleSubmit = async (e) => {

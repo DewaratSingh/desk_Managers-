@@ -29,9 +29,13 @@ router.get('/', async (req, res) => {
 
     const queryText = `
       SELECT po.*,
-        q.quotation_date,
-        r.rfq_no, r.customer_id, c.name AS customer_name, c.address AS customer_address,
+        COALESCE(q.quotation_date, rq.quotation_date) AS quotation_date,
+        r.rfq_no, 
+        COALESCE(r.customer_id, rq.customer_id) AS customer_id, 
+        c.name AS customer_name, 
+        c.address AS customer_address,
         b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
+        COALESCE(EXISTS (SELECT 1 FROM grns WHERE grns.trade_id = po.trade_id), false) AS has_grn,
         COALESCE(
           json_agg(
             json_build_object(
@@ -43,7 +47,9 @@ router.get('/', async (req, res) => {
               'shipping_address', poi.shipping_address,
               'delivery_date', poi.delivery_date,
               'gst_type', poi.gst_type,
-              'gst_rate', poi.gst_rate
+              'gst_rate', poi.gst_rate,
+              'status', poi.status,
+              'vendor', poi.vendor
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'
@@ -53,10 +59,11 @@ router.get('/', async (req, res) => {
       LEFT JOIN items i ON poi.item_code = i.item_code
       LEFT JOIN quotations q ON po.quotation_no = q.quotation_no
       LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
-      LEFT JOIN customers c ON r.customer_id = c.id
-      LEFT JOIN buyers b ON r.buyer_id = b.id
+      LEFT JOIN received_quotations rq ON po.quotation_no = rq.received_quotation_no
+      LEFT JOIN customers c ON COALESCE(r.customer_id, rq.customer_id) = c.id
+      LEFT JOIN buyers b ON COALESCE(r.buyer_id, rq.buyer_id) = b.id
       ${whereClause}
-      GROUP BY po.po_no, q.quotation_date, r.rfq_no, r.customer_id, c.name, c.address, b.name, b.email, b.phone
+      GROUP BY po.po_no, q.quotation_date, rq.quotation_date, r.rfq_no, r.customer_id, rq.customer_id, c.name, c.address, b.name, b.email, b.phone
       ORDER BY po.created_at DESC
       LIMIT $1 OFFSET $2
     `;
@@ -68,10 +75,42 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get next auto-generated purchase order number
+router.get('/next-no', async (req, res) => {
+  try {
+    const currentYear = new Date().getFullYear();
+    const prefix = `PO-${currentYear}-`;
+    
+    const queryText = `
+      SELECT po_no FROM purchase_orders 
+      WHERE po_no LIKE $1 
+      ORDER BY po_no DESC 
+      LIMIT 1
+    `;
+    const { rows } = await pool.query(queryText, [`${prefix}%`]);
+    
+    let nextSeq = 1;
+    if (rows.length > 0) {
+      const lastNo = rows[0].po_no;
+      const parts = lastNo.split('-');
+      const lastSeq = parseInt(parts[parts.length - 1]);
+      if (!isNaN(lastSeq)) {
+        nextSeq = lastSeq + 1;
+      }
+    }
+    
+    const nextNo = `${prefix}${String(nextSeq).padStart(4, '0')}`;
+    res.json({ next_no: nextNo });
+  } catch (error) {
+    console.error('Error generating next PO number:', error);
+    res.status(500).json({ error: 'Server error generating next PO number' });
+  }
+});
+
 // Add new purchase order
 router.post('/', async (req, res) => {
   const {
-    po_no, contract_ref, quotation_no, po_date, delivery_date, gst, transport, other, basic_value, packing_forward, items = []
+    po_no, contract_ref, quotation_no, po_date, delivery_date, gst, transport, other, basic_value, packing_forward, items = [], trade_id: bodyTradeId
   } = req.body;
 
   if (!po_no) {
@@ -86,6 +125,20 @@ router.post('/', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Auto-resolve trade_id from quotation if not passed
+    let trade_id = bodyTradeId;
+    if (!trade_id && quotation_no) {
+      const qRes = await client.query('SELECT trade_id FROM quotations WHERE quotation_no = $1', [quotation_no]);
+      if (qRes.rows.length > 0) {
+        trade_id = qRes.rows[0].trade_id;
+      } else {
+        const rqRes = await client.query('SELECT trade_id FROM received_quotations WHERE received_quotation_no = $1', [quotation_no]);
+        if (rqRes.rows.length > 0) {
+          trade_id = rqRes.rows[0].trade_id;
+        }
+      }
+    }
+
     // Check if PO Number already exists
     const checkPo = await client.query('SELECT po_no FROM purchase_orders WHERE po_no = $1', [po_no]);
     if (checkPo.rows.length > 0) {
@@ -95,8 +148,8 @@ router.post('/', async (req, res) => {
 
     // Insert purchase order
     await client.query(`
-      INSERT INTO purchase_orders (po_no, contract_ref, quotation_no, po_date, delivery_date, gst, transport, other, basic_value, packing_forward)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO purchase_orders (po_no, contract_ref, quotation_no, po_date, delivery_date, gst, transport, other, basic_value, packing_forward, trade_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `, [
       po_no, 
       contract_ref || null,
@@ -107,8 +160,15 @@ router.post('/', async (req, res) => {
       parseFloat(transport) || 0.00, 
       parseFloat(other) || 0.00, 
       parseFloat(basic_value) || 0.00, 
-      parseFloat(packing_forward) || 0.00
+      parseFloat(packing_forward) || 0.00,
+      trade_id
     ]);
+
+    // Link document in trades table
+    if (trade_id) {
+      const { appendDocToTrade } = require('../db');
+      await appendDocToTrade(client, trade_id, 'PO', po_no);
+    }
 
     // Insert items
     for (const item of items) {
@@ -144,9 +204,13 @@ router.post('/', async (req, res) => {
     // Fetch and return the newly created purchase order
     const { rows } = await pool.query(`
       SELECT po.*,
-        q.quotation_date,
-        r.rfq_no, r.customer_id, c.name AS customer_name, c.address AS customer_address,
+        COALESCE(q.quotation_date, rq.quotation_date) AS quotation_date,
+        r.rfq_no, 
+        COALESCE(r.customer_id, rq.customer_id) AS customer_id, 
+        c.name AS customer_name, 
+        c.address AS customer_address,
         b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
+        COALESCE(EXISTS (SELECT 1 FROM grns WHERE grns.trade_id = po.trade_id), false) AS has_grn,
         COALESCE(
           json_agg(
             json_build_object(
@@ -158,7 +222,9 @@ router.post('/', async (req, res) => {
               'shipping_address', poi.shipping_address,
               'delivery_date', poi.delivery_date,
               'gst_type', poi.gst_type,
-              'gst_rate', poi.gst_rate
+              'gst_rate', poi.gst_rate,
+              'status', poi.status,
+              'vendor', poi.vendor
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'
@@ -168,10 +234,11 @@ router.post('/', async (req, res) => {
       LEFT JOIN items i ON poi.item_code = i.item_code
       LEFT JOIN quotations q ON po.quotation_no = q.quotation_no
       LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
-      LEFT JOIN customers c ON r.customer_id = c.id
-      LEFT JOIN buyers b ON r.buyer_id = b.id
+      LEFT JOIN received_quotations rq ON po.quotation_no = rq.received_quotation_no
+      LEFT JOIN customers c ON COALESCE(r.customer_id, rq.customer_id) = c.id
+      LEFT JOIN buyers b ON COALESCE(r.buyer_id, rq.buyer_id) = b.id
       WHERE po.po_no = $1
-      GROUP BY po.po_no, q.quotation_date, r.rfq_no, r.customer_id, c.name, c.address, b.name, b.email, b.phone
+      GROUP BY po.po_no, q.quotation_date, rq.quotation_date, r.rfq_no, r.customer_id, rq.customer_id, c.name, c.address, b.name, b.email, b.phone
     `, [po_no]);
 
     res.status(201).json(rows[0]);
@@ -193,6 +260,19 @@ router.put('/:po_no', async (req, res) => {
 
   if (!po_date) {
     return res.status(400).json({ error: 'PO Date is required' });
+  }
+
+  try {
+    const grnCheck = await pool.query(
+      'SELECT 1 FROM grns WHERE trade_id = (SELECT trade_id FROM purchase_orders WHERE po_no = $1) LIMIT 1',
+      [po_no]
+    );
+    if (grnCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'Cannot edit Purchase Order because a Goods Receipt Note (GRN) has already been generated.' });
+    }
+  } catch (error) {
+    console.error('Error checking GRN status for PO edit:', error);
+    return res.status(500).json({ error: 'Server error checking GRN status' });
   }
 
   const client = await pool.connect();
@@ -247,9 +327,13 @@ router.put('/:po_no', async (req, res) => {
 
     const { rows } = await pool.query(`
       SELECT po.*,
-        q.quotation_date,
-        r.rfq_no, r.customer_id, c.name AS customer_name, c.address AS customer_address,
+        COALESCE(q.quotation_date, rq.quotation_date) AS quotation_date,
+        r.rfq_no, 
+        COALESCE(r.customer_id, rq.customer_id) AS customer_id, 
+        c.name AS customer_name, 
+        c.address AS customer_address,
         b.name AS buyer_name, b.email AS buyer_email, b.phone AS buyer_phone,
+        COALESCE(EXISTS (SELECT 1 FROM grns WHERE grns.trade_id = po.trade_id), false) AS has_grn,
         COALESCE(
           json_agg(
             json_build_object(
@@ -261,7 +345,9 @@ router.put('/:po_no', async (req, res) => {
               'shipping_address', poi.shipping_address,
               'delivery_date', poi.delivery_date,
               'gst_type', poi.gst_type,
-              'gst_rate', poi.gst_rate
+              'gst_rate', poi.gst_rate,
+              'status', poi.status,
+              'vendor', poi.vendor
             ) ORDER BY poi.id
           ) FILTER (WHERE poi.item_code IS NOT NULL),
           '[]'
@@ -271,10 +357,11 @@ router.put('/:po_no', async (req, res) => {
       LEFT JOIN items i ON poi.item_code = i.item_code
       LEFT JOIN quotations q ON po.quotation_no = q.quotation_no
       LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
-      LEFT JOIN customers c ON r.customer_id = c.id
-      LEFT JOIN buyers b ON r.buyer_id = b.id
+      LEFT JOIN received_quotations rq ON po.quotation_no = rq.received_quotation_no
+      LEFT JOIN customers c ON COALESCE(r.customer_id, rq.customer_id) = c.id
+      LEFT JOIN buyers b ON COALESCE(r.buyer_id, rq.buyer_id) = b.id
       WHERE po.po_no = $1
-      GROUP BY po.po_no, q.quotation_date, r.rfq_no, r.customer_id, c.name, c.address, b.name, b.email, b.phone
+      GROUP BY po.po_no, q.quotation_date, rq.quotation_date, r.rfq_no, r.customer_id, rq.customer_id, c.name, c.address, b.name, b.email, b.phone
     `, [po_no]);
 
     res.json(rows[0]);
@@ -290,6 +377,20 @@ router.put('/:po_no', async (req, res) => {
 // Delete purchase order
 router.delete('/:po_no', async (req, res) => {
   const { po_no } = req.params;
+
+  try {
+    const grnCheck = await pool.query(
+      'SELECT 1 FROM grns WHERE trade_id = (SELECT trade_id FROM purchase_orders WHERE po_no = $1) LIMIT 1',
+      [po_no]
+    );
+    if (grnCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'Cannot delete Purchase Order because a Goods Receipt Note (GRN) has already been generated.' });
+    }
+  } catch (error) {
+    console.error('Error checking GRN status for PO deletion:', error);
+    return res.status(500).json({ error: 'Server error checking GRN status' });
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -320,6 +421,70 @@ router.delete('/:po_no', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error deleting purchase order:', error);
     res.status(500).json({ error: 'Server error deleting purchase order' });
+  } finally {
+    client.release();
+  }
+});
+// Update status and vendor of a specific item in a purchase order
+router.put('/:po_no/items/:item_code', async (req, res) => {
+  const { po_no, item_code } = req.params;
+  const { status, vendor } = req.body;
+
+  try {
+    const grnCheck = await pool.query(
+      'SELECT 1 FROM grns WHERE trade_id = (SELECT trade_id FROM purchase_orders WHERE po_no = $1) LIMIT 1',
+      [po_no]
+    );
+    if (grnCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'Cannot edit Purchase Order items because a Goods Receipt Note (GRN) has already been generated.' });
+    }
+  } catch (error) {
+    console.error('Error checking GRN status for PO item edit:', error);
+    return res.status(500).json({ error: 'Server error checking GRN status' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Update purchase_order_items
+    const updateRes = await client.query(`
+      UPDATE purchase_order_items
+      SET status = $1, vendor = $2
+      WHERE po_no = $3 AND item_code = $4
+      RETURNING *
+    `, [status || 'pending', vendor || '', po_no, item_code]);
+
+    if (updateRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Purchase Order Item not found' });
+    }
+
+    // 2. Insert the status into status lookup table if it's new
+    if (status && status.trim() !== '') {
+      await client.query(`
+        INSERT INTO status (name)
+        VALUES ($1)
+        ON CONFLICT (name) DO NOTHING
+      `, [status.trim()]);
+    }
+
+    await client.query('COMMIT');
+
+    // 3. Query the updated items list for the PO and return them
+    const itemsRes = await pool.query(`
+      SELECT poi.*, i.description, i.drawing_number
+      FROM purchase_order_items poi
+      LEFT JOIN items i ON poi.item_code = i.item_code
+      WHERE poi.po_no = $1
+      ORDER BY poi.id
+    `, [po_no]);
+
+    res.json(itemsRes.rows);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error updating purchase order item:', error);
+    res.status(500).json({ error: 'Server error updating purchase order item' });
   } finally {
     client.release();
   }

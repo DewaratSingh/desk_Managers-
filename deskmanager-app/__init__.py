@@ -1,3 +1,0 @@
-"""
-DeskManager Server Controller Package
-"""

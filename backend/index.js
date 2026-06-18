@@ -16,8 +16,14 @@ const receivedQuotationsRouter = require('./routes/received_quotations');
 const purchaseOrdersRouter = require('./routes/purchase_orders');
 const arcRouter = require('./routes/arc');
 const releaseOrdersRouter = require('./routes/release_orders');
+const deliveryNotesRouter = require('./routes/delivery_notes');
+const invoicesRouter = require('./routes/invoices');
 const unitsRouter = require('./routes/units');
 const gstRatesRouter = require('./routes/gst_rates');
+const grnsRouter = require('./routes/grns');
+const paymentsRouter = require('./routes/payments');
+const tradesRouter = require('./routes/trades');
+const statusRouter = require('./routes/status');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -50,8 +56,14 @@ app.use('/api/received-quotations', authenticateToken, receivedQuotationsRouter)
 app.use('/api/purchase-orders', authenticateToken, purchaseOrdersRouter);
 app.use('/api/arc', authenticateToken, arcRouter);
 app.use('/api/release-orders', authenticateToken, releaseOrdersRouter);
+app.use('/api/delivery-notes', authenticateToken, deliveryNotesRouter);
+app.use('/api/invoices', authenticateToken, invoicesRouter);
 app.use('/api/units', authenticateToken, unitsRouter);
 app.use('/api/gst-rates', authenticateToken, gstRatesRouter);
+app.use('/api/grns', authenticateToken, grnsRouter);
+app.use('/api/payments', authenticateToken, paymentsRouter);
+app.use('/api/trades', authenticateToken, tradesRouter);
+app.use('/api/status', authenticateToken, statusRouter);
 
 // Serve static frontend
 const frontendDistPath = path.join(__dirname, '../frontend/desk-manager/dist');

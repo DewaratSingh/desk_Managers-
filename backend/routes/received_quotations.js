@@ -86,7 +86,7 @@ router.get('/next-no', async (req, res) => {
 // Add new received quotation
 router.post('/', async (req, res) => {
   const {
-    received_quotation_no: custom_no, quotation_date, buyer_id, terms_and_conditions, items = []
+    received_quotation_no: custom_no, quotation_date, buyer_id, customer_id, terms_and_conditions, items = []
   } = req.body;
 
   if (!quotation_date) {
@@ -120,11 +120,37 @@ router.post('/', async (req, res) => {
       received_quotation_no = `${prefix}${String(nextSeq).padStart(4, '0')}`;
     }
 
+    // Generate trade ID
+    const year = new Date(quotation_date).getFullYear();
+    const prefixTrade = `TRADE-${year}-`;
+    const lastTrade = await client.query(
+      'SELECT trade_id FROM trades WHERE trade_id LIKE $1 ORDER BY trade_id DESC LIMIT 1 FOR UPDATE',
+      [`${prefixTrade}%`]
+    );
+    let nextSeqTrade = 1;
+    if (lastTrade.rows.length > 0) {
+      const lastId = lastTrade.rows[0].trade_id;
+      const parts = lastId.split('-');
+      if (parts.length === 3) {
+        const lastSeq = parseInt(parts[2], 10);
+        if (!isNaN(lastSeq)) {
+          nextSeqTrade = lastSeq + 1;
+        }
+      }
+    }
+    const activeTradeId = `${prefixTrade}${String(nextSeqTrade).padStart(4, '0')}`;
+
+    const docs = [{ id: received_quotation_no, type: 'QUOTATION' }];
+    await client.query(
+      'INSERT INTO trades (trade_id, documents, status, trade_type) VALUES ($1, $2, $3, $4)',
+      [activeTradeId, JSON.stringify(docs), 'quotation', 'buy']
+    );
+
     // Insert received quotation
     await client.query(`
-      INSERT INTO received_quotations (received_quotation_no, buyer_id, quotation_date, terms_and_conditions)
-      VALUES ($1, $2, $3, $4)
-    `, [received_quotation_no, buyer_id || null, quotation_date, terms_and_conditions || null]);
+      INSERT INTO received_quotations (received_quotation_no, buyer_id, customer_id, quotation_date, terms_and_conditions, trade_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [received_quotation_no, buyer_id || null, customer_id || null, quotation_date, terms_and_conditions || null, activeTradeId]);
 
     // Insert items
     for (const item of items) {
@@ -187,7 +213,7 @@ router.post('/', async (req, res) => {
 router.put('/:received_quotation_no', async (req, res) => {
   const { received_quotation_no } = req.params;
   const {
-    buyer_id, quotation_date, terms_and_conditions, items = []
+    buyer_id, customer_id, quotation_date, terms_and_conditions, items = []
   } = req.body;
 
   if (!quotation_date) {
@@ -200,10 +226,10 @@ router.put('/:received_quotation_no', async (req, res) => {
 
     const updateResult = await client.query(`
       UPDATE received_quotations 
-      SET buyer_id = $1, quotation_date = $2, terms_and_conditions = $3
-      WHERE received_quotation_no = $4
+      SET buyer_id = $1, customer_id = $2, quotation_date = $3, terms_and_conditions = $4
+      WHERE received_quotation_no = $5
       RETURNING *
-    `, [buyer_id || null, quotation_date, terms_and_conditions || null, received_quotation_no]);
+    `, [buyer_id || null, customer_id || null, quotation_date, terms_and_conditions || null, received_quotation_no]);
 
     if (updateResult.rows.length === 0) {
       await client.query('ROLLBACK');

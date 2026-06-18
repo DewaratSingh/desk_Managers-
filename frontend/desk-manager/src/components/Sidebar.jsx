@@ -14,7 +14,10 @@ import {
   Truck,
   Tag,
   FileOutput,
-  Percent
+  Percent,
+  FileSpreadsheet,
+  FolderCheck,
+  CreditCard
 } from 'lucide-react';
 import logoImg from '../assets/image.jpeg';
 
@@ -26,12 +29,9 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
     { id: 'add-customer',       label: 'Customer',           icon: UserPlus },
     { id: 'add-buyer',          label: 'Buyer',              icon: Users },
     { id: 'add-item',           label: 'Item',               icon: Package },
-    { id: 'rfq',                label: 'RFQ Feeding',        icon: ClipboardList },
-    { id: 'received-quotation', label: 'Received Quotation', icon: FileCheck },
-    { id: 'quotation',          label: 'Quotation',          icon: FileText },
     { id: 'purchase-order',     label: 'Purchase Order',     icon: Receipt },
     { id: 'release-order',      label: 'Release Order',      icon: FileOutput },
-    { id: 'delivery',           label: 'Delivery',           icon: Truck },
+    { id: 'payment',            label: 'Payment',            icon: CreditCard },
     { id: 'arc',                label: 'ARC',                icon: Tag },
     { id: 'gst-category',       label: 'GST Categories',     icon: Percent },
   ];

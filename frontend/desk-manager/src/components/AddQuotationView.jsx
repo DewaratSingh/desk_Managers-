@@ -46,7 +46,8 @@ export default function AddQuotationView({
   isLoading,
   error,
   fetchMoreData,
-  searchResource
+  searchResource,
+  onCancel
 }) {
   const [viewMode, setViewMode] = useState('list');
   const [formData, setFormData] = useState(EMPTY_FORM);
@@ -194,8 +195,16 @@ export default function AddQuotationView({
         // Clear location state immediately after prefilling
         navigate(location.pathname, { replace: true, state: {} });
       }
+    } else if (location.state && location.state.editQuotationNo) {
+      const qtnNo = location.state.editQuotationNo;
+      const matchedQtn = quotations.find((q) => q.quotation_no === qtnNo);
+      if (matchedQtn) {
+        handleEditClick(matchedQtn);
+        // Clear location state immediately after prefilling
+        navigate(location.pathname, { replace: true, state: {} });
+      }
     }
-  }, [location.state, rfqs]);
+  }, [location.state, rfqs, quotations]);
 
   // Fetch next quotation no when entering creation form
   const fetchNextQuotationNo = async () => {
@@ -468,7 +477,11 @@ export default function AddQuotationView({
     setSelectedRecQtns([]);
     setRecQtnInput('');
     setGstInput('');
-    setViewMode('list');
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else {
+      setViewMode('list');
+    }
   };
 
   /* ── Submit Handler ── */

@@ -5,7 +5,7 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
   ? 'http://localhost:5000/api'
   : `${window.location.protocol}//${window.location.hostname}:5000/api`;
 
-export default function ARCView({ items }) {
+export default function ARCView({ items, onCancel }) {
   const [arcItems, setArcItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -184,7 +184,11 @@ export default function ARCView({ items }) {
     setItemInput('');
     setSelectedItem(null);
     setPrice('');
-    setViewMode('list');
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else {
+      setViewMode('list');
+    }
   };
 
   // The filtered items list is now directly loaded server-side

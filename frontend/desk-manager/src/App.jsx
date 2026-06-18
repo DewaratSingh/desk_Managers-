@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import AddCustomerView from './components/AddCustomerView';
@@ -15,9 +15,16 @@ import PurchaseOrderView from './components/PurchaseOrderView';
 import PurchaseOrderDetailView from './components/PurchaseOrderDetailView';
 import ReleaseOrderView from './components/ReleaseOrderView';
 import ReleaseOrderDetailView from './components/ReleaseOrderDetailView';
+import DeliveryNoteView from './components/DeliveryNoteView';
+import DeliveryNoteDetailView from './components/DeliveryNoteDetailView';
+import InvoiceView from './components/InvoiceView';
+import InvoiceDetailView from './components/InvoiceDetailView';
 import ARCView from './components/ARCView';
 import GSTCategoryView from './components/GSTCategoryView';
 import LoginView from './components/LoginView';
+import GRNView from './components/GRNView';
+import PaymentView from './components/PaymentView';
+import TradeTraceView from './components/TradeTraceView';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -28,17 +35,59 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // Track pathname changes to identify referrer routes
+  const [prevPathname, setPrevPathname] = useState(null);
+  const [referrer, setReferrer] = useState(null);
+
+  useEffect(() => {
+    if (location.pathname === '/' && prevPathname && prevPathname !== '/') {
+      setReferrer(prevPathname);
+    }
+    setPrevPathname(location.pathname);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (location.state && location.state.activeTab) {
+      if (location.state.activeTab !== activeTab) {
+        setReferrer(activeTab);
+      }
       setActiveTab(location.state.activeTab);
     }
   }, [location.state]);
 
+  const handleSidebarTabChange = (tab) => {
+    setReferrer(null);
+    setActiveTab(tab);
+  };
+
+  const handleNavigateAndOpenForm = (tab, type) => {
+    setReferrer(activeTab);
+    setActiveTab(tab);
+    setForceFormOpen(type);
+  };
+
+  const handleCancelForm = (fallbackViewModeSetter) => {
+    if (referrer) {
+      const targetReferrer = referrer;
+      setReferrer(null);
+      if (!targetReferrer.startsWith('/')) {
+        setActiveTab(targetReferrer);
+      } else {
+        navigate(targetReferrer);
+      }
+    } else {
+      if (typeof fallbackViewModeSetter === 'function') {
+        fallbackViewModeSetter('list');
+      }
+    }
+  };
+
   // Auth state
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true); // true on first mount (session check)
+  const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
   // Data lists
@@ -50,28 +99,29 @@ export default function App() {
   const [receivedQuotations, setReceivedQuotations] = useState([]);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [releaseOrders, setReleaseOrders] = useState([]);
+  const [deliveryNotes, setDeliveryNotes] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [trades, setTrades] = useState([]);
 
   // General States
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [forceFormOpen, setForceFormOpen] = useState(null); // 'customer', 'buyer', 'item' or null
+  const [forceFormOpen, setForceFormOpen] = useState(null);
 
   // ============================================================================
   // AUTH LIFECYCLE
   // ============================================================================
 
-  // On mount: check localStorage for a saved session and verify it against server
   useEffect(() => {
     const savedToken = localStorage.getItem('dm_token');
     const savedUser = localStorage.getItem('dm_user');
 
     if (savedToken && savedUser) {
-      // Optimistically restore session, then verify
       setToken(savedToken);
       setUser(JSON.parse(savedUser));
       verifyToken(savedToken);
     } else {
-      setAuthLoading(false); // No saved session — show login immediately
+      setAuthLoading(false);
     }
   }, []);
 
@@ -81,11 +131,10 @@ export default function App() {
         headers: { 'Authorization': `Bearer ${tkn}` }
       });
       if (!res.ok) {
-        // Session is no longer valid (server restarted, etc.) — force re-login
         clearSession();
       }
     } catch {
-      // Network error — keep optimistic session rather than forcing logout
+      // Network error — keep optimistic session
     } finally {
       setAuthLoading(false);
     }
@@ -104,6 +153,7 @@ export default function App() {
     setReceivedQuotations([]);
     setPurchaseOrders([]);
     setReleaseOrders([]);
+    setTrades([]);
   };
 
   const handleLogin = async (username, password) => {
@@ -121,7 +171,6 @@ export default function App() {
         return;
       }
 
-      // Persist session to localStorage
       localStorage.setItem('dm_token', data.token);
       localStorage.setItem('dm_user', JSON.stringify(data.user));
       setToken(data.token);
@@ -139,7 +188,6 @@ export default function App() {
     triggerToast('You have been signed out.', 'info');
   };
 
-  // Helper: returns Authorization header object whenever token is available
   const authHeaders = () =>
     token ? { 'Authorization': `Bearer ${token}` } : {};
 
@@ -171,7 +219,7 @@ export default function App() {
     setError(null);
     try {
       const headers = { 'Authorization': `Bearer ${activeToken}` };
-      const [custRes, buyerRes, itemRes, rfqRes, quotationRes, receivedQuotationRes, poRes, roRes] = await Promise.all([
+      const [custRes, buyerRes, itemRes, rfqRes, quotationRes, receivedQuotationRes, poRes, roRes, dnRes, invRes, tradeRes] = await Promise.all([
         fetch(`${API_BASE_URL}/customers?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/buyers?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/items?limit=20&offset=0`, { headers }),
@@ -180,6 +228,9 @@ export default function App() {
         fetch(`${API_BASE_URL}/received-quotations?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/purchase-orders?limit=20&offset=0`, { headers }),
         fetch(`${API_BASE_URL}/release-orders?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/delivery-notes?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/invoices?limit=20&offset=0`, { headers }),
+        fetch(`${API_BASE_URL}/trades?limit=20&offset=0`, { headers }),
       ]);
 
       if (
@@ -190,13 +241,16 @@ export default function App() {
         quotationRes.status === 401 ||
         receivedQuotationRes.status === 401 ||
         poRes.status === 401 ||
-        roRes.status === 401
+        roRes.status === 401 ||
+        dnRes.status === 401 ||
+        invRes.status === 401 ||
+        tradeRes.status === 401
       ) {
         clearSession();
         return;
       }
 
-      if (!custRes.ok || !buyerRes.ok || !itemRes.ok || !rfqRes.ok || !quotationRes.ok || !receivedQuotationRes.ok || !poRes.ok || !roRes.ok) {
+      if (!custRes.ok || !buyerRes.ok || !itemRes.ok || !rfqRes.ok || !quotationRes.ok || !receivedQuotationRes.ok || !poRes.ok || !roRes.ok || !dnRes.ok || !invRes.ok || !tradeRes.ok) {
         throw new Error('Some API requests failed');
       }
 
@@ -208,6 +262,9 @@ export default function App() {
       setReceivedQuotations(await receivedQuotationRes.json());
       setPurchaseOrders(await poRes.json());
       setReleaseOrders(await roRes.json());
+      setDeliveryNotes(await dnRes.json());
+      setInvoices(await invRes.json());
+      setTrades(await tradeRes.json());
     } catch (err) {
       console.error('Error fetching data:', err.message);
       setError('Unable to connect to the API. Please verify the backend service is running on port 5000.');
@@ -232,6 +289,9 @@ export default function App() {
       else if (resource === 'received-quotations') setReceivedQuotations(prev => [...prev, ...newData]);
       else if (resource === 'purchase-orders') setPurchaseOrders(prev => [...prev, ...newData]);
       else if (resource === 'release-orders') setReleaseOrders(prev => [...prev, ...newData]);
+      else if (resource === 'delivery-notes') setDeliveryNotes(prev => [...prev, ...newData]);
+      else if (resource === 'invoices') setInvoices(prev => [...prev, ...newData]);
+      else if (resource === 'trades') setTrades(prev => [...prev, ...newData]);
       
       return newData;
     } catch (err) {
@@ -256,6 +316,9 @@ export default function App() {
       else if (resource === 'received-quotations') setReceivedQuotations(data);
       else if (resource === 'purchase-orders') setPurchaseOrders(data);
       else if (resource === 'release-orders') setReleaseOrders(data);
+      else if (resource === 'delivery-notes') setDeliveryNotes(data);
+      else if (resource === 'invoices') setInvoices(data);
+      else if (resource === 'trades') setTrades(data);
       
       return data;
     } catch (err) {
@@ -501,6 +564,20 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to add RFQ');
+
+      // Auto-create trade workflow with linked RFQ ID
+      try {
+        await fetch(`${API_BASE_URL}/trades`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            documents: [{ type: 'RFQ', id: data.rfq_no }]
+          }),
+        });
+      } catch (tradeErr) {
+        console.error('Failed to auto-create trade entry:', tradeErr);
+      }
+
       setRfqs((prev) => [data, ...prev]);
       triggerToast('RFQ successfully saved!', 'success');
       return true;
@@ -649,7 +726,6 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to reject quotation');
       
-      // Update RFQs status locally
       setRfqs((prev) =>
         prev.map((r) => (r.rfq_no === data.rfq_no ? { ...r, status: 'rejected' } : r))
       );
@@ -716,6 +792,18 @@ export default function App() {
     }
   };
 
+  const handleUpdatePOItems = (poNo, updatedItems) => {
+    setPurchaseOrders((prev) =>
+      prev.map((po) => (po.po_no === poNo ? { ...po, items: updatedItems } : po))
+    );
+  };
+
+  const handleUpdateROItems = (roNo, updatedItems) => {
+    setReleaseOrders((prev) =>
+      prev.map((ro) => (ro.ro_no === roNo ? { ...ro, items: updatedItems } : ro))
+    );
+  };
+
   const handleDeletePurchaseOrder = async (po_no) => {
     if (!window.confirm('Remove this Purchase Order permanently?')) return;
     setIsLoading(true);
@@ -755,7 +843,7 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Failed to add release order');
       setReleaseOrders((prev) => [data, ...prev]);
       triggerToast('Release Order successfully saved!', 'success');
-      return true;
+      return data;
     } catch (err) {
       setError(err.message);
       triggerToast(err.message, 'error');
@@ -810,6 +898,149 @@ export default function App() {
   };
 
   // ============================================================================
+  // DELIVERY NOTE HANDLERS
+  // ============================================================================
+
+  const handleAddDeliveryNote = async (dnData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/delivery-notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(dnData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add delivery note');
+      setDeliveryNotes((prev) => [data, ...prev]);
+      fetchAllData();
+      triggerToast('Delivery Note successfully saved!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateDeliveryNote = async (dn_no, dnData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/delivery-notes/${encodeURIComponent(dn_no)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(dnData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update delivery note');
+      setDeliveryNotes((prev) => prev.map((dn) => (dn.delivery_note_no === dn_no ? data : dn)));
+      triggerToast('Delivery Note updated successfully!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteDeliveryNote = async (dn_no) => {
+    if (!window.confirm('Remove this Delivery Note permanently?')) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/delivery-notes/${encodeURIComponent(dn_no)}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete delivery note');
+      setDeliveryNotes((prev) => prev.filter((dn) => dn.delivery_note_no !== dn_no));
+      triggerToast('Delivery Note deleted successfully.', 'success');
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ============================================================================
+  // INVOICE HANDLERS
+  // ============================================================================
+
+  const handleAddInvoice = async (invData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/invoices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(invData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add invoice');
+      setInvoices((prev) => [data, ...prev]);
+      triggerToast('Invoice successfully saved!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateInvoice = async (invoice_no, invData) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/invoices/${encodeURIComponent(invoice_no)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(invData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update invoice');
+      setInvoices((prev) => prev.map((inv) => (inv.invoice_no === invoice_no ? data : inv)));
+      triggerToast('Invoice updated successfully!', 'success');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteInvoice = async (invoice_no) => {
+    if (!window.confirm('Remove this Invoice permanently?')) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/invoices/${encodeURIComponent(invoice_no)}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete invoice');
+      setInvoices((prev) => prev.filter((inv) => inv.invoice_no !== invoice_no));
+      triggerToast('Invoice deleted successfully.', 'success');
+    } catch (err) {
+      setError(err.message);
+      triggerToast(err.message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ============================================================================
   // RENDER
   // ============================================================================
 
@@ -818,10 +1049,11 @@ export default function App() {
       case 'dashboard':
         return (
           <DashboardView
-            rfqs={rfqs}
+            trades={trades}
             setActiveTab={setActiveTab}
             fetchMoreData={fetchMoreData}
             searchResource={searchResource}
+            setForceFormOpen={setForceFormOpen}
           />
         );
       case 'add-customer':
@@ -837,6 +1069,7 @@ export default function App() {
             error={error}
             fetchMoreData={fetchMoreData}
             searchResource={searchResource}
+            onCancel={handleCancelForm}
           />
         );
       case 'add-buyer':
@@ -852,6 +1085,7 @@ export default function App() {
             error={error}
             fetchMoreData={fetchMoreData}
             searchResource={searchResource}
+            onCancel={handleCancelForm}
           />
         );
       case 'add-item':
@@ -867,6 +1101,7 @@ export default function App() {
             error={error}
             fetchMoreData={fetchMoreData}
             searchResource={searchResource}
+            onCancel={handleCancelForm}
           />
         );
       case 'rfq':
@@ -878,14 +1113,34 @@ export default function App() {
             items={items}
             onAddRFQ={handleAddRFQ}
             onUpdateRFQ={handleUpdateRFQ}
-            onNavigateAndOpenForm={(tab, type) => {
-              setActiveTab(tab);
-              setForceFormOpen(type);
-            }}
+            onNavigateAndOpenForm={handleNavigateAndOpenForm}
             isLoading={isLoading}
             error={error}
             fetchMoreData={fetchMoreData}
             searchResource={searchResource}
+            setActiveTab={setActiveTab}
+            forceFormOpen={forceFormOpen === 'rfq'}
+            onClearForceFormOpen={() => setForceFormOpen(null)}
+            onCancel={handleCancelForm}
+          />
+        );
+      case 'received-quotation':
+        return (
+          <ReceivedQuotationView
+            buyers={buyers}
+            customers={customers}
+            items={items}
+            receivedQuotations={receivedQuotations}
+            onAddReceivedQuotation={handleAddReceivedQuotation}
+            onUpdateReceivedQuotation={handleUpdateReceivedQuotation}
+            onNavigateAndOpenForm={handleNavigateAndOpenForm}
+            isLoading={isLoading}
+            error={error}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
+            forceFormOpen={forceFormOpen === 'received-quotation'}
+            onClearForceFormOpen={() => setForceFormOpen(null)}
+            onCancel={handleCancelForm}
           />
         );
       case 'quotation':
@@ -899,24 +1154,7 @@ export default function App() {
             error={error}
             fetchMoreData={fetchMoreData}
             searchResource={searchResource}
-          />
-        );
-      case 'received-quotation':
-        return (
-          <ReceivedQuotationView
-            buyers={buyers}
-            items={items}
-            receivedQuotations={receivedQuotations}
-            onAddReceivedQuotation={handleAddReceivedQuotation}
-            onUpdateReceivedQuotation={handleUpdateReceivedQuotation}
-            onNavigateAndOpenForm={(tab, type) => {
-              setActiveTab(tab);
-              setForceFormOpen(type);
-            }}
-            isLoading={isLoading}
-            error={error}
-            fetchMoreData={fetchMoreData}
-            searchResource={searchResource}
+            onCancel={handleCancelForm}
           />
         );
       case 'purchase-order':
@@ -933,6 +1171,7 @@ export default function App() {
             error={error}
             fetchMoreData={fetchMoreData}
             searchResource={searchResource}
+            onCancel={handleCancelForm}
           />
         );
       case 'release-order':
@@ -948,12 +1187,43 @@ export default function App() {
             error={error}
             fetchMoreData={fetchMoreData}
             searchResource={searchResource}
+            forceFormOpen={forceFormOpen === 'release-order'}
+            onClearForceFormOpen={() => setForceFormOpen(null)}
+            onCancel={handleCancelForm}
+          />
+        );
+      case 'delivery':
+        return (
+          <DeliveryNoteView
+            deliveryNotes={deliveryNotes}
+            onAddDeliveryNote={handleAddDeliveryNote}
+            onUpdateDeliveryNote={handleUpdateDeliveryNote}
+            isLoading={isLoading}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
+            onCancel={handleCancelForm}
+          />
+        );
+      case 'invoice':
+        return (
+          <InvoiceView
+            invoices={invoices}
+            onAddInvoice={handleAddInvoice}
+            onUpdateInvoice={handleUpdateInvoice}
+            isLoading={isLoading}
+            fetchMoreData={fetchMoreData}
+            searchResource={searchResource}
+            onCancel={handleCancelForm}
           />
         );
       case 'arc':
-        return <ARCView items={items} />;
+        return <ARCView items={items} onCancel={handleCancelForm} />;
       case 'gst-category':
-        return <GSTCategoryView />;
+        return <GSTCategoryView onCancel={handleCancelForm} />;
+      case 'grn':
+        return <GRNView onCancel={handleCancelForm} />;
+      case 'payment':
+        return <PaymentView onCancel={handleCancelForm} />;
       default:
         return <DashboardView />;
     }
@@ -1005,7 +1275,7 @@ export default function App() {
             <div className="flex flex-col lg:flex-row h-screen w-screen bg-[#f1f5f9] text-slate-900 overflow-hidden">
               <Sidebar
                 activeTab={activeTab}
-                setActiveTab={setActiveTab}
+                setActiveTab={handleSidebarTabChange}
                 user={user}
                 onLogout={handleLogout}
               />
@@ -1036,6 +1306,7 @@ export default function App() {
             <ReceivedQuotationDetailView
               receivedQuotations={receivedQuotations}
               buyers={buyers}
+              customers={customers}
             />
           } />
           <Route path="/purchase-order/:po_no" element={
@@ -1045,6 +1316,7 @@ export default function App() {
               rfqs={rfqs}
               customers={customers}
               buyers={buyers}
+              onUpdatePOItems={handleUpdatePOItems}
             />
           } />
           <Route path="/release-order/:ro_no" element={
@@ -1052,10 +1324,24 @@ export default function App() {
               releaseOrders={releaseOrders}
               customers={customers}
               buyers={buyers}
+              onUpdateROItems={handleUpdateROItems}
             />
+          } />
+          <Route path="/delivery-note/:delivery_note_no" element={
+            <DeliveryNoteDetailView
+              deliveryNotes={deliveryNotes}
+            />
+          } />
+          <Route path="/invoice/:invoice_no" element={
+            <InvoiceDetailView
+              invoices={invoices}
+            />
+          } />
+          <Route path="/trace/:trade_id" element={
+            <TradeTraceView setActiveTab={setActiveTab} />
           } />
         </Routes>
         <ToastContainer />
-      </>
-    );
+    </>
+  );
 }

@@ -25,31 +25,29 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
   ? 'http://localhost:5000/api'
   : `${window.location.protocol}//${window.location.hostname}:5000/api`;
 
-export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, searchResource }) {
+export default function DashboardView({ trades: initialTrades = [], setActiveTab, fetchMoreData, searchResource, setForceFormOpen }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRfqNo, setSelectedRfqNo] = useState(null);
-  const [traceData, setTraceData] = useState(null);
-  const [traceLoading, setTraceLoading] = useState(false);
-  const [traceError, setTraceError] = useState(null);
   const navigate = useNavigate();
 
   // Local trades list state supporting combined filters
-  const [trades, setTrades] = useState(rfqs);
+  const [tradesList, setTradesList] = useState(initialTrades);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
 
-  // Synchronize with parent rfqs list (when loaded/modified)
+  // Synchronize with parent trades list (when loaded/modified)
   useEffect(() => {
-    setTrades(rfqs);
-  }, [rfqs]);
+    setTradesList(initialTrades);
+  }, [initialTrades]);
 
   // Combined fetch helper
-  const loadTrades = async (search, status, append = false) => {
+  const loadTrades = async (search, status, type, append = false) => {
     try {
       const savedToken = localStorage.getItem('dm_token');
-      const offset = append ? trades.length : 0;
-      const url = `${API_BASE_URL}/rfqs?limit=20&offset=${offset}`
+      const offset = append ? tradesList.length : 0;
+      const url = `${API_BASE_URL}/trades?limit=20&offset=${offset}`
         + `${search ? `&search=${encodeURIComponent(search)}` : ''}`
-        + `${status && status !== 'all' ? `&status=${encodeURIComponent(status)}` : ''}`;
+        + `${status && status !== 'all' ? `&status=${encodeURIComponent(status)}` : ''}`
+        + `${type && type !== 'all' ? `&trade_type=${encodeURIComponent(type)}` : ''}`;
       
       const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${savedToken}` }
@@ -57,60 +55,43 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
       if (append) {
-        setTrades(prev => [...prev, ...data]);
+        setTradesList(prev => [...prev, ...data]);
       } else {
-        setTrades(data);
+        setTradesList(data);
       }
     } catch (e) {
       console.error('Error filtering trades:', e);
     }
   };
 
-  // Trigger server-side load on search query or status filter change
+  // Trigger server-side load on search query or filters change
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (searchQuery !== '' || statusFilter !== 'all') {
-        loadTrades(searchQuery, statusFilter, false);
+      if (searchQuery !== '' || statusFilter !== 'all' || typeFilter !== 'all') {
+        loadTrades(searchQuery, statusFilter, typeFilter, false);
       } else {
-        setTrades(rfqs);
+        setTradesList(initialTrades);
       }
     }, 300);
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery, statusFilter, rfqs]);
+  }, [searchQuery, statusFilter, typeFilter, initialTrades]);
 
-  // Load RFQ Trace Details
-  const handleRowClick = async (rfqNo) => {
-    setSelectedRfqNo(rfqNo);
-    setTraceData(null);
-    setTraceLoading(true);
-    setTraceError(null);
-    try {
-      const savedToken = localStorage.getItem('dm_token');
-      const res = await fetch(`${API_BASE_URL}/rfqs/${encodeURIComponent(rfqNo)}/trace`, {
-        headers: { 'Authorization': `Bearer ${savedToken}` }
-      });
-      if (!res.ok) throw new Error('Failed to load trade trace details');
-      const data = await res.json();
-      setTraceData(data);
-    } catch (err) {
-      setTraceError(err.message);
-    } finally {
-      setTraceLoading(false);
-    }
-  };
+  // Stepper state counts (filtered by typeFilter to reflect actual available counts)
+  const filteredForCounts = typeFilter === 'all' 
+    ? initialTrades 
+    : initialTrades.filter(t => t.trade_type === typeFilter);
 
-  // Close Trace Drawer
-  const handleCloseDrawer = () => {
-    setSelectedRfqNo(null);
-    setTraceData(null);
-  };
-
-  // Stepper state counts
-  const totalTrades = rfqs.length;
-  const countRfq = rfqs.filter(r => r.status === 'rfq').length;
-  const countQuotated = rfqs.filter(r => r.status === 'quotated').length;
-  const countOrdered = rfqs.filter(r => r.status === 'ordered').length;
-  const countRejected = rfqs.filter(r => r.status === 'rejected').length;
+  const totalTrades = filteredForCounts.length;
+  const countRfq = filteredForCounts.filter(r => r.status === 'rfq').length;
+  const countQuotated = filteredForCounts.filter(r => r.status === 'quotated' || r.status === 'quotation').length;
+  const countOrdered = filteredForCounts.filter(r => r.status === 'ordered' || r.status === 'po').length;
+  const countArc = filteredForCounts.filter(r => r.status === 'ro').length;
+  const countDn = filteredForCounts.filter(r => r.status === 'dn').length;
+  const countInvoice = filteredForCounts.filter(r => r.status === 'invoice').length;
+  const countGrn = filteredForCounts.filter(r => r.status === 'grn').length;
+  const countPayment = filteredForCounts.filter(r => r.status === 'payment').length;
+  const countCompleted = filteredForCounts.filter(r => r.status === 'completed').length;
+  const countRejected = filteredForCounts.filter(r => r.status === 'rejected').length;
 
   const fmtDate = (d) => {
     if (!d) return '—';
@@ -129,15 +110,53 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
   const getStatusBadge = (status) => {
     switch (status) {
       case 'ordered':
+      case 'po':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">
             <CheckCircle2 size={12} /> Ordered
           </span>
         );
+      case 'ro':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-full">
+            <CheckCircle2 size={12} /> ARC (Release Order)
+          </span>
+        );
       case 'quotated':
+      case 'quotation':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-full">
             <FileText size={12} /> Quotated
+          </span>
+        );
+      case 'dn':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full">
+            <Layers size={12} /> Delivery Note
+          </span>
+        );
+      case 'invoice':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full">
+            <FileText size={12} /> Invoice
+          </span>
+        );
+      case 'grn':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-full">
+            <Package size={12} /> GRN
+          </span>
+        );
+      case 'payment':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-full">
+            <CheckCircle2 size={12} /> Payment
+          </span>
+        );
+      case 'completed':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 rounded-full">
+            <CheckCircle2 size={12} /> Completed
           </span>
         );
       case 'rejected':
@@ -167,7 +186,50 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
           </p>
         </div>
 
-       
+        {/* Quick Actions Buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <button
+            onClick={() => {
+              setActiveTab('rfq');
+              if (setForceFormOpen) setForceFormOpen('rfq');
+            }}
+            className="flex items-center justify-between p-5 bg-white border-2 border-slate-200 rounded-xl hover:border-blue-600 hover:shadow-md transition-all text-left cursor-pointer group"
+          >
+            <div>
+              <p className="font-extrabold text-slate-800 text-lg group-hover:text-blue-600 transition-colors">Sell Products</p>
+              <p className="text-xs text-slate-400 font-semibold mt-1">Start standard product sales process</p>
+            </div>
+            <ArrowUpRight className="text-slate-400 group-hover:text-blue-600 transition-colors shrink-0" size={20} />
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('release-order');
+              if (setForceFormOpen) setForceFormOpen('release-order');
+            }}
+            className="flex items-center justify-between p-5 bg-white border-2 border-slate-200 rounded-xl hover:border-blue-600 hover:shadow-md transition-all text-left cursor-pointer group"
+          >
+            <div>
+              <p className="font-extrabold text-slate-800 text-lg group-hover:text-blue-600 transition-colors">Sell as ARC</p>
+              <p className="text-xs text-slate-400 font-semibold mt-1">Manage Annual Rate Contract orders</p>
+            </div>
+            <ArrowUpRight className="text-slate-400 group-hover:text-blue-600 transition-colors shrink-0" size={20} />
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('received-quotation');
+              if (setForceFormOpen) setForceFormOpen('received-quotation');
+            }}
+            className="flex items-center justify-between p-5 bg-white border-2 border-slate-200 rounded-xl hover:border-blue-600 hover:shadow-md transition-all text-left cursor-pointer group"
+          >
+            <div>
+              <p className="font-extrabold text-slate-800 text-lg group-hover:text-blue-600 transition-colors">Buy Product</p>
+              <p className="text-xs text-slate-400 font-semibold mt-1">Create purchase orders for suppliers</p>
+            </div>
+            <ArrowUpRight className="text-slate-400 group-hover:text-blue-600 transition-colors shrink-0" size={20} />
+          </button>
+        </div>
 
         {/* Search & Filter Bar */}
         <div className="space-y-3">
@@ -175,60 +237,83 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
             <Search size={22} className="text-slate-400 shrink-0" />
             <input
               type="text"
-              placeholder="Search trades by RFQ No, Customer name, Buyer name, or Item code..."
+              placeholder="Search trades by Trade ID, Customer name, or Buyer name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-transparent focus:outline-none text-lg text-slate-900 placeholder:text-slate-400 font-semibold"
             />
           </div>
 
-          {/* Status Filter Chips Row */}
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors border cursor-pointer select-none
-                ${statusFilter === 'all' 
-                  ? 'bg-blue-600 border-blue-600 text-white font-extrabold' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-            >
-              All Trades ({totalTrades})
-            </button>
-            <button
-              onClick={() => setStatusFilter('rfq')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors border flex items-center gap-1.5 cursor-pointer select-none
-                ${statusFilter === 'rfq' 
-                  ? 'bg-slate-700 border-slate-700 text-white font-extrabold' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-            >
-              <Clock size={12} /> RFQs ({countRfq})
-            </button>
-            <button
-              onClick={() => setStatusFilter('quotated')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors border flex items-center gap-1.5 cursor-pointer select-none
-                ${statusFilter === 'quotated' 
-                  ? 'bg-blue-600 border-blue-600 text-white font-extrabold' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-            >
-              <FileText size={12} /> Quotated ({countQuotated})
-            </button>
-            <button
-              onClick={() => setStatusFilter('ordered')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors border flex items-center gap-1.5 cursor-pointer select-none
-                ${statusFilter === 'ordered' 
-                  ? 'bg-emerald-600 border-emerald-600 text-white font-extrabold' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-            >
-              <CheckCircle2 size={12} /> Ordered ({countOrdered})
-            </button>
-            <button
-              onClick={() => setStatusFilter('rejected')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors border flex items-center gap-1.5 cursor-pointer select-none
-                ${statusFilter === 'rejected' 
-                  ? 'bg-red-600 border-red-600 text-white font-extrabold' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-            >
-              <X size={12} /> Rejected ({countRejected})
-            </button>
+          {/* Filter Layout: Type Chips + Status Dropdown */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-1">
+            {/* Flow Type Filter Buttons */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setTypeFilter('all')}
+                className={`px-4 py-2.5 text-xs font-bold rounded-lg transition-colors border cursor-pointer select-none
+                  ${typeFilter === 'all' 
+                    ? 'bg-blue-600 border-blue-600 text-white font-extrabold' 
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                All Types
+              </button>
+              <button
+                type="button"
+                onClick={() => setTypeFilter('buy')}
+                className={`px-4 py-2.5 text-xs font-bold rounded-lg transition-colors border cursor-pointer select-none
+                  ${typeFilter === 'buy' 
+                    ? 'bg-pink-600 border-pink-600 text-white font-extrabold' 
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                Buy Flow (Supplier)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTypeFilter('ARC')}
+                className={`px-4 py-2.5 text-xs font-bold rounded-lg transition-colors border cursor-pointer select-none
+                  ${typeFilter === 'ARC' 
+                    ? 'bg-emerald-600 border-emerald-600 text-white font-extrabold' 
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                ARC Flow
+              </button>
+              <button
+                type="button"
+                onClick={() => setTypeFilter('sell')}
+                className={`px-4 py-2.5 text-xs font-bold rounded-lg transition-colors border cursor-pointer select-none
+                  ${typeFilter === 'sell' 
+                    ? 'bg-indigo-600 border-indigo-600 text-white font-extrabold' 
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                Sell Flow (Standard)
+              </button>
+            </div>
+
+            {/* Status Selection Dropdown */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="status-select" className="text-xs font-extrabold text-slate-500 uppercase tracking-wider select-none shrink-0">
+                Status:
+              </label>
+              <select
+                id="status-select"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-white border-2 border-slate-200 text-slate-700 text-sm font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-blue-600 transition-colors cursor-pointer w-full md:w-auto"
+              >
+                <option value="all">All Statuses ({totalTrades})</option>
+                <option value="rfq">RFQ ({countRfq})</option>
+                <option value="quotation">Quotated ({countQuotated})</option>
+                <option value="po">Ordered ({countOrdered})</option>
+                <option value="ro">ARC ({countArc})</option>
+                <option value="dn">Delivery Notes ({countDn})</option>
+                <option value="invoice">Invoices ({countInvoice})</option>
+                <option value="grn">GRNs ({countGrn})</option>
+                <option value="payment">Payments ({countPayment})</option>
+                <option value="completed">Completed ({countCompleted})</option>
+                <option value="rejected">Rejected ({countRejected})</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -237,37 +322,58 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
           <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
             <span className="text-sm font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-2">
               <TrendingUp size={16} className="text-blue-600" />
-              Active Trade List ({trades.length})
+              Active Trade List ({tradesList.length})
             </span>
           </div>
 
-          {trades.length === 0 ? (
+          {tradesList.length === 0 ? (
             <div className="p-16 text-center text-slate-400 text-lg font-semibold">
               No Trade record matches current criteria.
             </div>
           ) : (
             <div className="divide-y divide-slate-200">
-              {trades.map((rfq) => {
-                const totalVal = parseFloat(rfq.total_value) || 0;
+              {tradesList.map((trade) => {
+                const totalVal = parseFloat(trade.total_value) || 0;
                 return (
                   <div
-                    key={rfq.rfq_no}
-                    onClick={() => handleRowClick(rfq.rfq_no)}
+                    key={trade.trade_id}
+                    onClick={() => navigate(`/trace/${encodeURIComponent(trade.trade_id)}`)}
                     className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white hover:bg-slate-50/75 transition-all cursor-pointer group"
                   >
                     <div className="space-y-2">
                       <div className="flex items-center gap-3">
                         <span className="font-mono font-extrabold text-sm text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
-                          {rfq.rfq_no}
+                          {trade.trade_id}
                         </span>
+                        {trade.trade_type && (
+                          <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
+                            trade.trade_type === 'sell' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                            trade.trade_type === 'ARC' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            trade.trade_type === 'buy' ? 'bg-pink-50 text-pink-700 border-pink-200' :
+                            'bg-slate-50 text-slate-700 border-slate-200'
+                          }`}>
+                            {trade.trade_type}
+                          </span>
+                        )}
                         <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                          Created: {fmtDate(rfq.created_at)}
+                          Created: {fmtDate(trade.created_at)}
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 font-medium">
-                        <span className="flex items-center gap-1"><Building2 size={14} className="text-slate-400" /> {rfq.customer_name || '—'}</span>
+                        <span className="flex items-center gap-1.5" title={trade.customer_address || ''}>
+                          <Building2 size={14} className="text-slate-400" /> 
+                          <span className="font-semibold text-slate-700">{trade.customer_name || '—'}</span>
+                        </span>
                         <span>•</span>
-                        <span className="flex items-center gap-1"><User size={14} className="text-slate-400" /> {rfq.buyer_name || '—'}</span>
+                        <span className="flex items-center gap-1.5">
+                          <User size={14} className="text-slate-400" /> 
+                          <span className="font-semibold text-slate-700">{trade.buyer_name || '—'}</span>
+                          {(trade.buyer_email || trade.buyer_phone) && (
+                            <span className="text-xs text-slate-400 font-normal">
+                              ({[trade.buyer_email, trade.buyer_phone].filter(Boolean).join(' • ')})
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
 
@@ -279,7 +385,7 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
                         </span>
                       </div>
                       <div className="flex items-center gap-4">
-                        {getStatusBadge(rfq.status)}
+                        {getStatusBadge(trade.status)}
                         <ChevronRight size={18} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
                       </div>
                     </div>
@@ -289,10 +395,10 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
             </div>
           )}
 
-          {trades.length >= 20 && trades.length % 20 === 0 && (
+          {tradesList.length >= 20 && tradesList.length % 20 === 0 && (
             <div className="flex justify-center p-4 bg-slate-50 border-t border-slate-200">
               <button
-                onClick={() => loadTrades(searchQuery, statusFilter, true)}
+                onClick={() => loadTrades(searchQuery, statusFilter, typeFilter, true)}
                 className="px-6 py-2.5 border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 text-slate-700 font-bold text-sm rounded-lg transition-colors cursor-pointer"
               >
                 Load More Trades
@@ -301,285 +407,6 @@ export default function DashboardView({ rfqs = [], setActiveTab, fetchMoreData, 
           )}
         </div>
       </div>
-
-      {/* Side Slider Panel / Drawer for Trace timeline */}
-      {selectedRfqNo && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs transition-opacity duration-300">
-          <div className="w-full max-w-xl bg-white h-full shadow-2xl flex flex-col animate-slide-in relative overflow-y-auto">
-            {/* Drawer Header */}
-            <div className="p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-              <div>
-                <h3 className="text-lg font-black text-slate-800">Trade Timeline Trace</h3>
-                <p className="text-xs text-slate-400 font-semibold font-mono mt-0.5">RFQ: {selectedRfqNo}</p>
-              </div>
-              <button
-                onClick={handleCloseDrawer}
-                className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Drawer Content */}
-            <div className="flex-1 p-6 overflow-y-auto space-y-6">
-              {traceLoading && (
-                <div className="flex flex-col items-center justify-center py-20 gap-3">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-                  <span className="text-sm font-bold text-slate-400">Loading trace data...</span>
-                </div>
-              )}
-
-              {traceError && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-semibold flex items-center gap-2">
-                  <AlertCircle size={16} />
-                  {traceError}
-                </div>
-              )}
-
-              {traceData && (
-                <div className="space-y-6">
-                  {/* Pipeline Visual Stepper */}
-                  <div className="flex items-center justify-between px-4 pb-4 border-b border-slate-100">
-                    <div 
-                      onClick={() => {
-                        handleCloseDrawer();
-                        navigate(`/rfq/${encodeURIComponent(traceData.rfq.rfq_no)}`);
-                      }}
-                      className="flex flex-col items-center gap-1.5 cursor-pointer group hover:scale-105 transition-transform"
-                      title="View RFQ Details"
-                    >
-                      <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs group-hover:bg-blue-700 shadow-sm">
-                        1
-                      </div>
-                      <span className="text-[10px] font-black text-slate-700 uppercase group-hover:text-blue-600 transition-colors">RFQ</span>
-                    </div>
-                    <div className="flex-1 h-0.5 bg-slate-200 mx-2 mb-4 relative">
-                      {traceData.quotation && <div className="absolute inset-0 bg-blue-600" />}
-                    </div>
-
-                    <div 
-                      onClick={() => {
-                        if (traceData.quotation) {
-                          handleCloseDrawer();
-                          navigate(`/quotation/${encodeURIComponent(traceData.quotation.quotation_no)}`);
-                        }
-                      }}
-                      className={`flex flex-col items-center gap-1.5 ${traceData.quotation ? 'cursor-pointer group hover:scale-105 transition-transform' : 'opacity-65'}`}
-                      title={traceData.quotation ? "View Quotation Details" : "Quotation Pending"}
-                    >
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors
-                        ${traceData.quotation ? 'bg-blue-600 text-white group-hover:bg-blue-700 shadow-sm' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
-                        2
-                      </div>
-                      <span className={`text-[10px] font-black uppercase ${traceData.quotation ? 'text-slate-700 group-hover:text-blue-600 transition-colors' : 'text-slate-400'}`}>Quotation</span>
-                    </div>
-                    <div className="flex-1 h-0.5 bg-slate-200 mx-2 mb-4 relative">
-                      {traceData.purchase_order && <div className="absolute inset-0 bg-blue-600" />}
-                    </div>
-
-                    <div 
-                      onClick={() => {
-                        if (traceData.purchase_order) {
-                          handleCloseDrawer();
-                          navigate(`/purchase-order/${encodeURIComponent(traceData.purchase_order.po_no)}`);
-                        }
-                      }}
-                      className={`flex flex-col items-center gap-1.5 ${traceData.purchase_order ? 'cursor-pointer group hover:scale-105 transition-transform' : 'opacity-65'}`}
-                      title={traceData.purchase_order ? "View Purchase Order Details" : "Purchase Order Pending"}
-                    >
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors
-                        ${traceData.purchase_order ? 'bg-emerald-600 text-white group-hover:bg-emerald-700 shadow-sm' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
-                        3
-                      </div>
-                      <span className={`text-[10px] font-black uppercase ${traceData.purchase_order ? 'text-slate-700 group-hover:text-emerald-600 transition-colors' : 'text-slate-400'}`}>PO Order</span>
-                    </div>
-                  </div>
-
-                  {/* STAGE 1: RFQ DETAILS */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                      <button
-                        onClick={() => {
-                          handleCloseDrawer();
-                          navigate(`/rfq/${encodeURIComponent(traceData.rfq.rfq_no)}`);
-                        }}
-                        className="text-sm font-extrabold uppercase text-slate-500 hover:text-blue-600 transition-colors tracking-wider flex items-center gap-1.5 cursor-pointer"
-                        title="Open RFQ Details"
-                      >
-                        Stage 1: RFQ Details <ArrowUpRight size={14} />
-                      </button>
-                      <span className="text-[10px] font-bold text-slate-400">Created {fmtDate(traceData.rfq.created_at)}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div><b className="text-slate-400">RFQ Date:</b> <span className="font-semibold text-slate-800">{fmtDate(traceData.rfq.rfq_date)}</span></div>
-                      <div><b className="text-slate-400">Customer:</b> <span className="font-semibold text-slate-800">{traceData.rfq.customer_name || '—'}</span></div>
-                      <div><b className="text-slate-400">Buyer Contact:</b> <span className="font-semibold text-slate-800">{traceData.rfq.buyer_name || '—'}</span></div>
-                      <div><b className="text-slate-400">Technical Bid Due:</b> <span className="font-semibold text-slate-800">{fmtDate(traceData.rfq.technical_bid_due_date)}</span></div>
-                    </div>
-                    <div className="pt-2">
-                      <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5">Items in RFQ ({traceData.rfq.items.length})</p>
-                      <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                        {traceData.rfq.items.map((item, idx) => (
-                          <div key={idx} className="flex justify-between text-[11px] bg-slate-50 p-2 rounded font-medium border border-slate-100">
-                            <span className="font-mono text-slate-700">{item.item_code} ({item.quantity} {item.unit || 'Piece'})</span>
-                            <span className="text-slate-500 max-w-64 truncate">{item.description}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* STAGE 2: QUOTATION DETAILS */}
-                  {traceData.quotation ? (
-                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-                      <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                        <button
-                          onClick={() => {
-                            handleCloseDrawer();
-                            navigate(`/quotation/${encodeURIComponent(traceData.quotation.quotation_no)}`);
-                          }}
-                          className="text-sm font-extrabold uppercase text-slate-500 hover:text-blue-600 transition-colors tracking-wider flex items-center gap-1.5 cursor-pointer"
-                          title="Open Quotation Details"
-                        >
-                          Stage 2: Quotation Details <ArrowUpRight size={14} />
-                        </button>
-                        <div className="flex items-center gap-2">
-                          {traceData.rfq.status === 'rejected' && (
-                            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">REJECTED</span>
-                          )}
-                          <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{traceData.quotation.quotation_no}</span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div><b className="text-slate-400">Quotation Date:</b> <span className="font-semibold text-slate-800">{fmtDate(traceData.quotation.quotation_date)}</span></div>
-                        <div><b className="text-slate-400">GST Setup:</b> <span className="font-semibold text-slate-800">{traceData.quotation.gst_type || 'CGST/SGST'} &bull; {parseFloat(traceData.quotation.gst_rate)}%</span></div>
-                      </div>
-                      <div className="pt-2">
-                        <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5">Quoted Items ({traceData.quotation.items.length})</p>
-                        <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                          {traceData.quotation.items.map((item, idx) => (
-                            <div key={idx} className="flex justify-between text-[11px] bg-slate-50 p-2 rounded font-medium border border-slate-100">
-                              <span className="font-mono text-slate-700">{item.item_code} ({item.quantity} {item.unit})</span>
-                              <span className="font-bold text-slate-800">₹{parseFloat(item.unit_price).toLocaleString('en-IN', { minimumFractionDigits: 2 })} / unit</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      {traceData.quotation.terms_and_conditions && (
-                        <div className="pt-2 border-t border-slate-100 text-[10px]">
-                          <b className="text-slate-400 uppercase tracking-wider block mb-1">Terms & Conditions</b>
-                          <p className="text-slate-600 whitespace-pre-wrap line-clamp-3">{traceData.quotation.terms_and_conditions}</p>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
-                      <FileText className="mx-auto text-slate-300 mb-2" size={24} />
-                      <span className="text-sm font-bold text-slate-400 block">Stage 2: Quotation Pending</span>
-                      <p className="text-xs text-slate-400 mt-1">This trade is in the RFQ stage. Commercial bid preparation is required.</p>
-                      <button
-                        onClick={() => {
-                          handleCloseDrawer();
-                          setActiveTab('quotation');
-                          navigate('/', { state: { activeTab: 'quotation', prefillRfqNo: traceData.rfq.rfq_no } });
-                        }}
-                        className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-sm"
-                      >
-                        Create Quotation <ArrowRight size={14} />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* STAGE 3: ORDER / PURCHASE ORDER DETAILS */}
-                  {traceData.purchase_order ? (
-                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-                      <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                        <button
-                          onClick={() => {
-                            handleCloseDrawer();
-                            navigate(`/purchase-order/${encodeURIComponent(traceData.purchase_order.po_no)}`);
-                          }}
-                          className="text-sm font-extrabold uppercase text-slate-500 hover:text-emerald-600 transition-colors tracking-wider flex items-center gap-1.5 cursor-pointer"
-                          title="Open Purchase Order Details"
-                        >
-                          Stage 3: Purchase Order Details <ArrowUpRight size={14} />
-                        </button>
-                        <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">{traceData.purchase_order.po_no}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div><b className="text-slate-400">PO Date:</b> <span className="font-semibold text-slate-800">{fmtDate(traceData.purchase_order.po_date)}</span></div>
-                        {traceData.purchase_order.delivery_date && (
-                          <div><b className="text-slate-400">Delivery Date:</b> <span className="font-semibold text-slate-800">{fmtDate(traceData.purchase_order.delivery_date)}</span></div>
-                        )}
-                        {traceData.purchase_order.contract_ref && (
-                          <div><b className="text-slate-400">Contract Ref:</b> <span className="font-semibold text-slate-800">{traceData.purchase_order.contract_ref}</span></div>
-                        )}
-                      </div>
-                      <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-[11px] font-medium">
-                        <div className="flex justify-between text-slate-600"><span>Basic Value:</span> <span>₹{parseFloat(traceData.purchase_order.basic_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between text-slate-600"><span>GST Tax:</span> <span>₹{parseFloat(traceData.purchase_order.gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between text-slate-600"><span>Freight/Transport:</span> <span>₹{parseFloat(traceData.purchase_order.transport).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between text-slate-600"><span>Packing & Fwd:</span> <span>₹{parseFloat(traceData.purchase_order.packing_forward).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-                      </div>
-                      <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
-                        <span className="text-xs font-extrabold uppercase text-slate-400 tracking-wider">Gross PO Total</span>
-                        <span className="text-base font-black text-emerald-700">
-                          ₹{(
-                            (parseFloat(traceData.purchase_order.basic_value) || 0) +
-                            (parseFloat(traceData.purchase_order.gst) || 0) +
-                            (parseFloat(traceData.purchase_order.transport) || 0) +
-                            (parseFloat(traceData.purchase_order.packing_forward) || 0) +
-                            (parseFloat(traceData.purchase_order.other) || 0)
-                          ).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          handleCloseDrawer();
-                          navigate(`/purchase-order/${encodeURIComponent(traceData.purchase_order.po_no)}`);
-                        }}
-                        className="w-full mt-2 inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer border border-slate-200"
-                      >
-                        View Full Purchase Order Details <ArrowUpRight size={14} />
-                      </button>
-                    </div>
-                  ) : traceData.rfq.status === 'rejected' ? (
-                    <div className="bg-red-50/50 border-2 border-dashed border-red-200 rounded-xl p-6 text-center">
-                      <X className="mx-auto text-red-400 mb-2" size={24} />
-                      <span className="text-sm font-bold text-red-600 block">Stage 3: Trade Terminated</span>
-                      <p className="text-xs text-red-500 mt-1">
-                        This trade was rejected at the quotation stage. No Purchase Order can be generated.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
-                      <Lock className="mx-auto text-slate-300 mb-2" size={24} />
-                      <span className="text-sm font-bold text-slate-400 block">Stage 3: Purchase Order Locked</span>
-                      <p className="text-xs text-slate-400 mt-1">
-                        {traceData.quotation 
-                          ? 'Commercial quotation has been prepared. Next step is recording the Purchase Order.' 
-                          : 'Quotation preparation is required before placing a Purchase Order.'}
-                      </p>
-                      {traceData.quotation && (
-                        <button
-                          onClick={() => {
-                            handleCloseDrawer();
-                            setActiveTab('purchase-order');
-                            navigate('/', { state: { activeTab: 'purchase-order', prefillQuotationNo: traceData.quotation.quotation_no } });
-                          }}
-                          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-sm"
-                        >
-                          Make Purchase Order <ArrowRight size={14} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -43,12 +43,14 @@ export default function PurchaseOrderView({
   isLoading,
   error,
   fetchMoreData,
-  searchResource
+  searchResource,
+  onCancel
 }) {
   const [viewMode, setViewMode] = useState('list');
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingNo, setEditingNo] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isBuyFlow, setIsBuyFlow] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -83,61 +85,116 @@ export default function PurchaseOrderView({
   useEffect(() => {
     if (location.state && location.state.prefillQuotationNo) {
       const qtnNo = location.state.prefillQuotationNo;
-      const matchedQtn = quotations.find((q) => q.quotation_no === qtnNo);
-      if (matchedQtn) {
-        setEditingNo(null);
-        setFormData({
-          ...EMPTY_FORM,
-          quotation_no: qtnNo,
-          po_date: new Date().toISOString().slice(0, 10)
-        });
-        setQtnInput(qtnNo);
-        setSelectedQuotation(matchedQtn);
-
-        // Initialize items with checked=true by default
-        if (Array.isArray(matchedQtn.items)) {
-          const qtnGstType = matchedQtn.gst_type || '';
-          const qtnGstRate = matchedQtn.gst_rate !== undefined && matchedQtn.gst_rate !== null ? parseFloat(matchedQtn.gst_rate).toString() : '0.00';
-          
-          const initializedItems = matchedQtn.items.map((i) => ({
-            item_code: i.item_code,
-            description: i.description || '',
-            drawing_number: i.drawing_number || '',
-            quantity: i.quantity || 1,
-            unit_price: i.unit_price || '0.00',
-            shipping_address: '',
-            showShipping: false,
-            delivery_date: '',
-            showDeliveryDate: false,
-            gst_type: qtnGstType,
-            gst_rate: qtnGstRate,
-            checked: true
-          }));
-          setPoItems(initializedItems);
-          
-          // calculate total
-          const total = initializedItems
-            .filter((i) => i.checked)
-            .reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0), 0);
-          const gstTotal = initializedItems
-            .filter((i) => i.checked)
-            .reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0) * (parseFloat(i.gst_rate) / 100), 0);
-          setFormData((prev) => ({ 
-            ...prev, 
-            quotation_no: qtnNo,
-            po_date: new Date().toISOString().slice(0, 10),
-            basic_value: total.toFixed(2),
-            gst: gstTotal.toFixed(2)
-          }));
+      
+      const loadAndPrefill = async () => {
+        let matchedQtn = quotations.find((q) => q.quotation_no === qtnNo);
+        
+        // If not found or if it is a Received Quotation, try loading from received quotations API
+        if (!matchedQtn && qtnNo.startsWith('RQTN-')) {
+          try {
+            const savedToken = localStorage.getItem('dm_token');
+            const headers = { 'Authorization': `Bearer ${savedToken}` };
+            const res = await fetch(`${API_BASE_URL}/received-quotations?search=${encodeURIComponent(qtnNo)}&limit=1`, { headers });
+            if (res.ok) {
+              const data = await res.json();
+              const found = data.find(rq => rq.received_quotation_no === qtnNo);
+              if (found) {
+                matchedQtn = {
+                  quotation_no: found.received_quotation_no,
+                  gst_type: '',
+                  gst_rate: '0.00',
+                  items: found.items.map(i => ({
+                    ...i,
+                    unit: 'Piece'
+                  }))
+                };
+              }
+            }
+          } catch (err) {
+            console.error('Error prefilling PO from received quotation:', err);
+          }
         }
         
-        setViewMode('form');
+        if (matchedQtn) {
+          const isBuy = qtnNo.startsWith('RQTN-') || location.state?.isBuy;
+          setIsBuyFlow(isBuy);
+          
+          let nextPoNoVal = '';
+          if (isBuy) {
+            try {
+              const savedToken = localStorage.getItem('dm_token');
+              const headers = { 'Authorization': `Bearer ${savedToken}` };
+              const nextNoRes = await fetch(`${API_BASE_URL}/purchase-orders/next-no`, { headers });
+              if (nextNoRes.ok) {
+                const nextNoData = await nextNoRes.json();
+                nextPoNoVal = nextNoData.next_no;
+              }
+            } catch (err) {
+              console.error('Error fetching next PO number:', err);
+            }
+          }
 
+          setEditingNo(null);
+          setFormData({
+            ...EMPTY_FORM,
+            po_no: nextPoNoVal || '',
+            quotation_no: qtnNo,
+            po_date: new Date().toISOString().slice(0, 10)
+          });
+          setQtnInput(qtnNo);
+          setSelectedQuotation(matchedQtn);
+
+          if (Array.isArray(matchedQtn.items)) {
+            const qtnGstType = matchedQtn.gst_type || '';
+            const qtnGstRate = matchedQtn.gst_rate !== undefined && matchedQtn.gst_rate !== null ? parseFloat(matchedQtn.gst_rate).toString() : '0.00';
+            
+            const initializedItems = matchedQtn.items.map((i) => ({
+              item_code: i.item_code,
+              description: i.description || '',
+              drawing_number: i.drawing_number || '',
+              quantity: i.quantity || 1,
+              unit_price: i.unit_price || '0.00',
+              shipping_address: '',
+              showShipping: false,
+              delivery_date: '',
+              showDeliveryDate: false,
+              gst_type: qtnGstType,
+              gst_rate: qtnGstRate,
+              checked: true
+            }));
+            setPoItems(initializedItems);
+            
+            const total = initializedItems
+              .filter((i) => i.checked)
+              .reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0), 0);
+            const gstTotal = initializedItems
+              .filter((i) => i.checked)
+              .reduce((sum, i) => sum + (i.quantity || 0) * (parseFloat(i.unit_price) || 0) * (parseFloat(i.gst_rate) / 100), 0);
+            setFormData((prev) => ({ 
+              ...prev, 
+              po_no: nextPoNoVal || prev.po_no,
+              quotation_no: qtnNo,
+              po_date: new Date().toISOString().slice(0, 10),
+              basic_value: total.toFixed(2),
+              gst: gstTotal.toFixed(2)
+            }));
+          }
+          setViewMode('form');
+        }
+        navigate(location.pathname, { replace: true, state: {} });
+      };
+
+      loadAndPrefill();
+    } else if (location.state && location.state.editPoNo) {
+      const poNo = location.state.editPoNo;
+      const matchedPo = purchaseOrders.find((p) => p.po_no === poNo);
+      if (matchedPo) {
+        handleEditClick(matchedPo);
         // Clear location state immediately
         navigate(location.pathname, { replace: true, state: {} });
       }
     }
-  }, [location.state, quotations]);
+  }, [location.state, quotations, purchaseOrders]);
 
   // Selected Quotation details and its items
   const [selectedQuotation, setSelectedQuotation] = useState(null);
@@ -188,6 +245,7 @@ export default function PurchaseOrderView({
     setFormData((prev) => ({ ...prev, quotation_no: val }));
     setSelectedQuotation(null);
     setPoItems([]);
+    setIsBuyFlow(false);
 
     if (!val.trim()) {
       setQtnSuggestions([]);
@@ -197,11 +255,29 @@ export default function PurchaseOrderView({
 
     try {
       const savedToken = localStorage.getItem('dm_token');
-      const res = await fetch(`${API_BASE_URL}/quotations?search=${encodeURIComponent(val)}&limit=5`, {
+      let url = `${API_BASE_URL}/quotations?search=${encodeURIComponent(val)}&limit=5`;
+      if (val.toUpperCase().startsWith('RQTN-')) {
+        url = `${API_BASE_URL}/received-quotations?search=${encodeURIComponent(val)}&limit=5`;
+      }
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${savedToken}` }
       });
       const data = await res.json();
-      setQtnSuggestions(data);
+      
+      const formatted = data.map(d => {
+        if (d.received_quotation_no) {
+          return {
+            quotation_no: d.received_quotation_no,
+            gst_type: '',
+            gst_rate: '0.00',
+            items: d.items.map(i => ({ ...i, unit: 'Piece' })),
+            isReceived: true
+          };
+        }
+        return d;
+      });
+      
+      setQtnSuggestions(formatted);
       setShowQtnDropdown(true);
     } catch (e) {
       console.error(e);
@@ -246,6 +322,26 @@ export default function PurchaseOrderView({
     if (qtnStatus === 'rejected') {
       alert('This quotation has been rejected and cannot be used to create a Purchase Order.');
       return;
+    }
+
+    const isBuy = qtn.quotation_no.startsWith('RQTN-') || qtn.isReceived;
+    setIsBuyFlow(isBuy);
+
+    if (isBuy && !editingNo) {
+      const fetchNextPoNo = async () => {
+        try {
+          const savedToken = localStorage.getItem('dm_token');
+          const headers = { 'Authorization': `Bearer ${savedToken}` };
+          const nextNoRes = await fetch(`${API_BASE_URL}/purchase-orders/next-no`, { headers });
+          if (nextNoRes.ok) {
+            const nextNoData = await nextNoRes.json();
+            setFormData(prev => ({ ...prev, po_no: nextNoData.next_no }));
+          }
+        } catch (err) {
+          console.error('Error fetching next PO number:', err);
+        }
+      };
+      fetchNextPoNo();
     }
 
     setQtnInput(qtn.quotation_no);
@@ -352,6 +448,7 @@ export default function PurchaseOrderView({
 
   const handleOpenAddForm = () => {
     setEditingNo(null);
+    setIsBuyFlow(false);
     setFormData({
       ...EMPTY_FORM,
       po_date: new Date().toISOString().slice(0, 10)
@@ -364,6 +461,7 @@ export default function PurchaseOrderView({
 
   const handleEditClick = (po) => {
     setEditingNo(po.po_no);
+    setIsBuyFlow(po.quotation_no?.startsWith('RQTN-') || false);
     setFormData({
       po_no: po.po_no,
       contract_ref: po.contract_ref || '',
@@ -433,7 +531,11 @@ export default function PurchaseOrderView({
     setQtnInput('');
     setSelectedQuotation(null);
     setPoItems([]);
-    setViewMode('list');
+    if (onCancel) {
+      onCancel(() => setViewMode('list'));
+    } else {
+      setViewMode('list');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -553,13 +655,7 @@ export default function PurchaseOrderView({
                 Record and manage purchase orders linked directly to commercial quotations.
               </p>
             </div>
-            <button
-              onClick={handleOpenAddForm}
-              className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm self-start sm:self-auto"
-            >
-              <Plus size={20} />
-              New Purchase Order
-            </button>
+            
           </div>
 
           {/* {error && (
@@ -634,12 +730,14 @@ export default function PurchaseOrderView({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => handleEditClick(po)}
-                        className="px-4 py-2 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Edit2 size={14} /> Edit
-                      </button>
+                      {!po.has_grn && (
+                        <button
+                          onClick={() => handleEditClick(po)}
+                          className="px-4 py-2 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Edit2 size={14} /> Edit
+                        </button>
+                      )}
                       <Link
                         to={`/purchase-order/${encodeURIComponent(po.po_no)}`}
                         className="px-4 py-2 text-sm border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-slate-700 font-bold bg-white transition-colors flex items-center gap-1.5 justify-center"
@@ -680,28 +778,28 @@ export default function PurchaseOrderView({
               Back to Directory
             </button>
             <h1 className="text-3xl font-extrabold text-slate-900 m-0">
-              {editingNo ? 'Modify Purchase Order' : 'Create Purchase Order'}
+              {editingNo ? 'Modify Purchase Order' : isBuyFlow ? 'Create Supplier Purchase Order (Buy Product)' : 'Create Purchase Order'}
             </h1>
             <p className="text-base text-slate-500 mt-1 font-medium">
               Formulate a Purchase Order by importing quotation rates and adding tax/commercial structures.
             </p>
           </div>
-
+ 
           <div className="bg-white border-2 border-slate-200 rounded-xl p-5 sm:p-8 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Header Fields */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-extrabold text-slate-500 uppercase mb-2 tracking-wider">
-                    PO No. <b className="text-red-500">*</b>
+                    PO No. {isBuyFlow ? '(System Generated)' : ''} <b className="text-red-500">*</b>
                   </label>
                   <input
                     type="text"
                     required
-                    disabled={!!editingNo}
+                    disabled={!!editingNo || isBuyFlow}
                     value={formData.po_no}
                     onChange={set('po_no')}
-                    placeholder="Enter PO Number"
+                    placeholder={isBuyFlow ? "Generating PO number..." : "Enter PO Number"}
                     className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-base text-slate-900 focus:outline-none focus:border-blue-600 font-mono font-bold disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                 </div>

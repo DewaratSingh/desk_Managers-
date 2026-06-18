@@ -2,7 +2,7 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 
-export default function ReceivedQuotationDetailView({ receivedQuotations, buyers }) {
+export default function ReceivedQuotationDetailView({ receivedQuotations, buyers, customers }) {
   const { received_quotation_no } = useParams();
   const navigate = useNavigate();
 
@@ -75,6 +75,19 @@ export default function ReceivedQuotationDetailView({ receivedQuotations, buyers
               {quotation.received_quotation_no}
             </span>
           </p>
+          {quotation.customer_id && (
+            <p className="mb-1">
+              <span className="font-semibold">Customer ID:</span>{' '}
+              <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-bold">
+                {quotation.customer_id}
+              </span>
+              {customers && customers.find(c => c.id === quotation.customer_id) && (
+                <span className="text-slate-500 text-xs ml-2">
+                  ({customers.find(c => c.id === quotation.customer_id)?.name})
+                </span>
+              )}
+            </p>
+          )}
           <p>
             <span className="font-semibold">Quotation Date:</span> {fmtDate(quotation.quotation_date)}
           </p>
