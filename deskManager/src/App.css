@@ -1,0 +1,9 @@
+@import "tailwindcss";
+.root {
+	/* placeholder to keep specificity if needed */
+}
+
+:root {
+	--theme-color: #D9352D; /* blue-600 */
+	--logo-size: 64px;
+}

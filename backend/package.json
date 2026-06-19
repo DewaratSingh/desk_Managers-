@@ -1,0 +1,17 @@
+{
+  "name": "deskmanager-backend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.3.1",
+    "express": "^5.2.1",
+    "lucide-react": "^1.21.0",
+    "nodemon": "^3.1.14",
+    "pg": "^8.11.0"
+  }
+}
