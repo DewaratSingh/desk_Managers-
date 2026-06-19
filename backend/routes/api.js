@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const authMiddleware = require('../middleware/auth');
+const authRouter = require('./auth');
 
 const customerRouter = require('./customer');
 const buyerRouter = require('./buyer');
@@ -15,11 +17,20 @@ const releaseOrderRouter = require('./release-order');
 const deliveryNoteRouter = require('./delivery-note');
 const invoiceRouter = require('./invoice');
 const statusRouter = require('./status');
+const inventoryRouter = require('./inventory');
+const grnRouter = require('./grn');
+const paymentRouter = require('./payment');
 
 // Simple health check for API
 router.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
+
+// Authentication endpoints
+router.use('/auth', authRouter);
+
+// Apply JWT authentication middleware to all routes registered below
+router.use(authMiddleware);
 
 router.use('/customers', customerRouter);
 router.use('/buyers', buyerRouter);
@@ -35,5 +46,8 @@ router.use('/release-orders', releaseOrderRouter);
 router.use('/delivery-notes', deliveryNoteRouter);
 router.use('/invoices', invoiceRouter);
 router.use('/statuses', statusRouter);
+router.use('/inventory', inventoryRouter);
+router.use('/grns', grnRouter);
+router.use('/payments', paymentRouter);
 
 module.exports = router;

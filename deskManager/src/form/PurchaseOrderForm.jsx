@@ -531,7 +531,7 @@ export default function PurchaseOrderForm() {
                         className={`px-4 py-3 bg-white transition-colors ${!item.selected ? 'opacity-50' : ''}`}
                       >
                         {/* Row 1: checkbox + item info + price */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div className="flex items-center gap-3 min-w-0 flex-1 mr-4">
                             <button
                               type="button"

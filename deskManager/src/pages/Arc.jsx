@@ -22,6 +22,8 @@ export default function ArcView() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Form states
   const [editingItemCode, setEditingItemCode] = useState(null);
@@ -34,8 +36,12 @@ export default function ArcView() {
   const dropdownRef = useRef(null);
 
   useEffect(() => {
-    fetchArcItems();
-  }, []);
+    const delayDebounceFn = setTimeout(() => {
+      fetchArcItems(false, searchQuery);
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   // Handle click outside autocomplete suggestions
   useEffect(() => {
@@ -48,14 +54,28 @@ export default function ArcView() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchArcItems = async () => {
-    setIsLoading(true);
+  const fetchArcItems = async (isLoadMore = false, searchVal = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
     try {
-      const res = await fetch('/api/arc-items');
+      const currentOffset = isLoadMore ? arcItems.length : 0;
+      const res = await fetch(`/api/arc-items?limit=20&offset=${currentOffset}&q=${encodeURIComponent(searchVal || '')}`);
       if (res.ok) {
         const data = await res.json();
-        setArcItems(data);
+        if (isLoadMore) {
+          setArcItems(prev => [...prev, ...data]);
+        } else {
+          setArcItems(data);
+        }
+        if (data.length < 20) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
       } else {
         setError('Failed to load ARC items');
       }
@@ -64,6 +84,7 @@ export default function ArcView() {
       setError('Connection error');
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -199,11 +220,7 @@ export default function ArcView() {
     }
   };
 
-  const filteredArcItems = arcItems.filter(a =>
-    a.item_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    a.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (a.drawing_number && a.drawing_number.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredArcItems = arcItems;
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900">
@@ -331,6 +348,24 @@ export default function ArcView() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {hasMore && arcItems.length > 0 && (
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+                <button
+                  onClick={() => fetchArcItems(true)}
+                  disabled={loadingMore}
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? (
+                    <>
+                      <RefreshCw size={12} className="animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    'Show More'
+                  )}
+                </button>
               </div>
             )}
           </div>

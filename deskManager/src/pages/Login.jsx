@@ -1,25 +1,52 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 // Inline SVGs are used for icons to avoid adding peer-dependent packages
 import logoImg from '../assets/image.jpeg'
 
 // Theme variables
 const LOGO_SIZE = 64 // px - compact size for standard form
 
-export default function LoginView({ onLogin = () => {}, isLoading = false, error = null }) {
+export default function LoginView({ onLogin = () => {} }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [validationError, setValidationError] = useState('')
+  const [apiError, setApiError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const navigate = useNavigate()
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setValidationError('')
+    setApiError('')
 
     if (!username.trim() || !password.trim()) {
       setValidationError('Please enter both username and password.')
       return
     }
 
-    onLogin(username, password)
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to sign in')
+      }
+      
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('loginTime', Date.now().toString())
+      
+      onLogin(data.user)
+      navigate('/')
+    } catch (err) {
+      setApiError(err.message)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -35,6 +62,11 @@ export default function LoginView({ onLogin = () => {}, isLoading = false, error
             <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--theme-color)' }}>DeskManager</p>
           </div>
 
+          {(validationError || apiError) && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-600 text-center animate-fade-in">
+              {validationError || apiError}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">

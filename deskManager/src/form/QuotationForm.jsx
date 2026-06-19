@@ -540,7 +540,7 @@ export default function QuotationForm({ activeTab }) {
 
             {/* Items and Amounts */}
             {quotationItems.length > 0 && (
-              <div className="border border-slate-200 rounded-lg overflow-hidden mt-2">
+              <div className="border border-slate-200 rounded-lg overflow-x-auto mt-2">
                 <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex justify-between items-center rounded-t-lg">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Select items to quote from RFQ

@@ -103,13 +103,14 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
             <List size={11} /> Release Items ({(releaseOrder.items || []).length})
           </p>
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
+          <div className="border border-slate-200 rounded-lg overflow-x-auto">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="px-4 py-2.5">Item Code</th>
                   <th className="px-4 py-2.5">Description</th>
                   <th className="px-4 py-2.5 text-right">Qty</th>
+                  <th className="px-4 py-2.5 text-right">Pending Qty</th>
                   <th className="px-4 py-2.5 text-right">Unit Price</th>
                   <th className="px-4 py-2.5 text-right">GST</th>
                   <th className="px-4 py-2.5 text-right">Line Total</th>
@@ -132,6 +133,9 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
                       </td>
                       <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.description || '—'}</td>
                       <td className="px-4 py-3 text-right font-bold text-slate-800">{item.quantity}</td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-800">
+                        {Math.max(0, (parseInt(item.quantity) || 0) - (parseInt(item.delivered_qty) || 0))}
+                      </td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(item.unit_price)}</td>
                       <td className="px-4 py-3 text-right">
                         {item.gst_rate ? (
@@ -150,7 +154,7 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
                 })}
                 {(releaseOrder.items || []).length === 0 && (
                   <tr>
-                    <td colSpan="8" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No items.</td>
+                    <td colSpan="9" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No items.</td>
                   </tr>
                 )}
               </tbody>

@@ -5,13 +5,32 @@ const { pool } = require('../db');
 // Get ARC items
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query(`
+    const { q } = req.query || {};
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+    
+    let query = `
       SELECT ai.id, ai.item_code, ai.price, i.description, i.drawing_number, i.long_description, ai.created_at
       FROM arc_items ai
       JOIN items i ON ai.item_code = i.item_code
-      ORDER BY ai.created_at DESC
-      LIMIT 100
-    `);
+    `;
+    const params = [];
+    
+    if (q) {
+      query += ' WHERE ai.item_code ILIKE $1 OR i.description ILIKE $1 OR i.drawing_number ILIKE $1';
+      params.push(`%${q}%`);
+    }
+    
+    query += ' ORDER BY ai.created_at DESC';
+    
+    if (limit !== null) {
+      const limitParamIdx = params.length + 1;
+      const offsetParamIdx = params.length + 2;
+      query += ` LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}`;
+      params.push(limit, offset);
+    }
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching arc_items:', err.message);

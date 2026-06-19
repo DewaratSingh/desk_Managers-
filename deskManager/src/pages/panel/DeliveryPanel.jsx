@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Truck, Plus, List, Edit2, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Truck, Plus, List, Edit2, FileText, CheckCircle2, AlertCircle,
+  ClipboardCheck, XCircle, ChevronDown, ChevronUp, Loader2, DollarSign
+} from 'lucide-react';
 
 const fmtDate = (d) => {
   if (!d) return '—';
@@ -9,7 +12,689 @@ const fmtDate = (d) => {
 
 const fmt = (v) => (parseFloat(v) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = [], onRefresh }) {
+// ── Inline GRN Form ────────────────────────────────────────────────────────────
+function GrnForm({ tradeId, deliveryNoteNo, dnItems, existingGrn, onSaved }) {
+  const today = new Date().toISOString().split('T')[0];
+
+  const initialRejections = (existingGrn?.rejection_items || []).length > 0
+    ? existingGrn.rejection_items
+    : [{ item_code: '', quantity: '', reason: '' }];
+
+  const [grnNo, setGrnNo] = useState(existingGrn?.grn_no || '');
+  const [grnDate, setGrnDate] = useState(
+    existingGrn?.grn_date ? existingGrn.grn_date.split('T')[0] : today
+  );
+  const [hasRejection, setHasRejection] = useState(existingGrn?.has_rejection || false);
+  const [rejections, setRejections] = useState(initialRejections);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const isEdit = !!existingGrn;
+
+  const addRejectionRow = () =>
+    setRejections(prev => [...prev, { item_code: '', quantity: '', reason: '' }]);
+
+  const removeRejectionRow = (i) =>
+    setRejections(prev => prev.filter((_, idx) => idx !== i));
+
+  const updateRejection = (i, field, value) =>
+    setRejections(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    if (!grnNo.trim()) { setError('GRN No is required'); return; }
+    if (!grnDate) { setError('GRN Date is required'); return; }
+
+    const validRejections = hasRejection
+      ? rejections.filter(r => r.item_code && r.quantity)
+      : [];
+
+    if (hasRejection && validRejections.length === 0) {
+      setError('Please add at least one rejection item with item code and quantity');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        grn_no: grnNo.trim(),
+        delivery_note_no: deliveryNoteNo,
+        trade_id: tradeId,
+        grn_date: grnDate,
+        has_rejection: hasRejection,
+        rejection_items: validRejections
+      };
+
+      const url = isEdit ? `/api/grns/${encodeURIComponent(grnNo)}` : '/api/grns';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || 'Failed to save GRN');
+      }
+
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* GRN No + Date */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
+            GRN No <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={grnNo}
+            onChange={e => setGrnNo(e.target.value)}
+            disabled={isEdit}
+            placeholder={`GRN-${deliveryNoteNo}`}
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] disabled:bg-slate-50 disabled:text-slate-500 font-mono font-bold"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
+            GRN Date <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="date"
+            value={grnDate}
+            onChange={e => setGrnDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)]"
+          />
+        </div>
+      </div>
+
+      {/* Rejection Checkbox */}
+      <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer"
+        onClick={() => setHasRejection(v => !v)}>
+        <div className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-colors ${hasRejection ? 'bg-amber-500 border-amber-500' : 'border-slate-400 bg-white'}`}>
+          {hasRejection && <span className="text-white text-[10px] font-black">✓</span>}
+        </div>
+        <span className="text-xs font-bold text-amber-800">Is there any rejection?</span>
+        <span className="text-[10px] text-amber-600 font-medium ml-auto">Tick to log rejected items</span>
+      </div>
+
+      {/* Rejection Items Form */}
+      {hasRejection && (
+        <div className="space-y-3 border border-red-200 rounded-xl p-4 bg-red-50/30">
+          <p className="text-[10px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
+            <XCircle size={11} /> Rejection Note
+          </p>
+
+          {rejections.map((row, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+              {/* Item Code */}
+              <div className="col-span-4">
+                {idx === 0 && (
+                  <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                    Item Code
+                  </label>
+                )}
+                <select
+                  value={row.item_code}
+                  onChange={e => updateRejection(idx, 'item_code', e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400 bg-white font-mono"
+                >
+                  <option value="">Select Item</option>
+                  {dnItems.map(item => (
+                    <option key={item.item_code} value={item.item_code}>
+                      {item.item_code}{item.description ? ` – ${item.description}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quantity */}
+              <div className="col-span-3">
+                {idx === 0 && (
+                  <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                    Qty
+                  </label>
+                )}
+                <input
+                  type="number"
+                  min="1"
+                  value={row.quantity}
+                  onChange={e => updateRejection(idx, 'quantity', e.target.value)}
+                  placeholder="0"
+                  className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400 font-bold"
+                />
+              </div>
+
+              {/* Reason */}
+              <div className="col-span-4">
+                {idx === 0 && (
+                  <label className="block text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                    Reason
+                  </label>
+                )}
+                <input
+                  type="text"
+                  value={row.reason}
+                  onChange={e => updateRejection(idx, 'reason', e.target.value)}
+                  placeholder="e.g. Damaged"
+                  className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400"
+                />
+              </div>
+
+              {/* Remove Row */}
+              <div className="col-span-1 flex items-center justify-center">
+                {rejections.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeRejectionRow(idx)}
+                    className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-100 transition-colors cursor-pointer"
+                  >
+                    <XCircle size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={addRejectionRow}
+            className="flex items-center gap-1.5 text-[10px] font-bold text-red-600 hover:text-red-800 transition-colors cursor-pointer mt-1"
+          >
+            <Plus size={11} /> Add Another Rejection Item
+          </button>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+          <AlertCircle size={13} className="shrink-0" /> {error}
+        </div>
+      )}
+
+      {/* Submit */}
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          disabled={saving}
+          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-white font-bold text-xs rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-sm disabled:opacity-60"
+          style={{ backgroundColor: 'var(--theme-color)' }}
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <ClipboardCheck size={13} />}
+          {saving ? 'Saving…' : isEdit ? 'Update GRN' : 'Submit GRN'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ── GRN Panel Section (for a single delivery note) ─────────────────────────────
+function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
+  const noteGrn = grns.find(g => g.delivery_note_no === deliveryNoteNo);
+  const [showForm, setShowForm] = useState(!noteGrn);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [items, setItems] = useState(dnItems || []);
+
+  const loadItems = async () => {
+    if (items.length > 0) return; // already loaded
+    setLoadingItems(true);
+    try {
+      const res = await fetch(`/api/grns/items-lookup/${encodeURIComponent(deliveryNoteNo)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setItems(data.items || []);
+      }
+    } catch (e) { console.error(e); }
+    finally { setLoadingItems(false); }
+  };
+
+  const handleShowForm = () => {
+    setShowForm(true);
+    loadItems();
+  };
+
+  const handleSaved = () => {
+    setShowForm(false);
+    onRefresh();
+  };
+
+  // ── Already submitted GRN view ──
+  if (noteGrn && !showForm) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        {/* Header */}
+        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+            <ClipboardCheck size={14} style={{ color: 'var(--theme-color)' }} />
+            Goods Received Note
+          </span>
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-xs font-bold text-slate-800 bg-white border border-slate-200 px-2 py-0.5 rounded">
+              {noteGrn.grn_no}
+            </span>
+            <button
+              onClick={handleShowForm}
+              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              <Edit2 size={10} /> Edit GRN
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Meta */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-slate-100">
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">GRN Date</p>
+              <p className="text-sm font-semibold text-slate-800">{fmtDate(noteGrn.grn_date)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Has Rejection</p>
+              <p className={`text-sm font-bold ${noteGrn.has_rejection ? 'text-red-600' : 'text-emerald-600'}`}>
+                {noteGrn.has_rejection ? 'Yes' : 'No'}
+              </p>
+            </div>
+          </div>
+
+          {/* Rejection Items Table */}
+          {noteGrn.has_rejection && (noteGrn.rejection_items || []).length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-red-500 uppercase tracking-wider flex items-center gap-1 mb-2">
+                <XCircle size={11} /> Rejection Items ({noteGrn.rejection_items.length})
+              </p>
+              <div className="border border-red-200 rounded-lg overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="bg-red-50 border-b border-red-200 text-[10px] font-bold text-red-600 uppercase tracking-wider">
+                      <th className="px-4 py-2.5">Item Code</th>
+                      <th className="px-4 py-2.5 text-right">Qty Rejected</th>
+                      <th className="px-4 py-2.5">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-red-100 bg-white">
+                    {noteGrn.rejection_items.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-red-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border border-red-300 text-red-700 bg-red-50">
+                            {item.item_code}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-slate-800">{item.quantity}</td>
+                        <td className="px-4 py-3 text-slate-600 font-medium">{item.reason || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Fully accepted badge */}
+          {!noteGrn.has_rejection && (
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-4 shadow-xs">
+              <CheckCircle2 size={16} className="shrink-0" />
+              <span className="text-xs font-bold">All goods received and accepted — no rejections.</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── GRN not yet submitted ──
+  if (!noteGrn) {
+    if (showForm) {
+      return (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <ClipboardCheck size={14} style={{ color: 'var(--theme-color)' }} />
+              Create Goods Received Note
+            </span>
+          </div>
+          <div className="p-6">
+            {loadingItems ? (
+              <div className="flex items-center justify-center py-8 gap-2 text-slate-400">
+                <Loader2 size={16} className="animate-spin" />
+                <span className="text-xs font-semibold">Loading items…</span>
+              </div>
+            ) : (
+              <GrnForm
+                tradeId={tradeId}
+                deliveryNoteNo={deliveryNoteNo}
+                dnItems={items}
+                existingGrn={null}
+                onSaved={handleSaved}
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm space-y-4">
+        <div className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center mx-auto" style={{ color: 'var(--theme-color)' }}>
+          <ClipboardCheck size={20} />
+        </div>
+        <div className="max-w-sm mx-auto space-y-1">
+          <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Next Step: GRN</h4>
+          <p className="text-[11px] text-slate-500 font-semibold text-center">
+            No Goods Received Note has been raised for this dispatch. Raise a GRN to confirm receipt and log any rejections.
+          </p>
+        </div>
+        <button
+          onClick={handleShowForm}
+          className="inline-flex items-center gap-1.5 px-4.5 py-2 text-white font-bold text-xs rounded hover:opacity-90 transition-opacity cursor-pointer shadow-sm"
+          style={{ backgroundColor: 'var(--theme-color)' }}
+        >
+          <Plus size={12} /> Raise GRN for {deliveryNoteNo}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Edit mode ──
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+          <ClipboardCheck size={14} style={{ color: 'var(--theme-color)' }} />
+          Edit GRN — {noteGrn.grn_no}
+        </span>
+        <button
+          type="button"
+          onClick={() => setShowForm(false)}
+          className="text-[10px] font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
+        >
+          Cancel
+        </button>
+      </div>
+      <div className="p-6">
+        {loadingItems ? (
+          <div className="flex items-center justify-center py-8 gap-2 text-slate-400">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-xs font-semibold">Loading items…</span>
+          </div>
+        ) : (
+          <GrnForm
+            tradeId={tradeId}
+            deliveryNoteNo={deliveryNoteNo}
+            dnItems={items}
+            existingGrn={noteGrn}
+            onSaved={handleSaved}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Payment Section ───────────────────────────────────────────────────────────
+function PaymentSection({ tradeId, deliveryNoteNo, payments, onRefresh }) {
+  const today = new Date().toISOString().split('T')[0];
+  const notePayments = payments.filter(p => p.delivery_note_no === deliveryNoteNo);
+  const [showForm, setShowForm] = useState(false);
+  const [paymentNo, setPaymentNo] = useState('');
+  const [paymentDate, setPaymentDate] = useState(today);
+  const [amount, setAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [editMode, setEditMode] = useState(null); // payment_no being edited
+
+  const totalPaid = notePayments.reduce((s, p) => s + (parseFloat(p.total_amount) || 0), 0);
+
+  const resetForm = () => {
+    setPaymentNo('');
+    setPaymentDate(today);
+    setAmount('');
+    setError(null);
+    setEditMode(null);
+  };
+
+  const handleEdit = (pmt) => {
+    setEditMode(pmt.payment_no);
+    setPaymentNo(pmt.payment_no);
+    setPaymentDate(pmt.payment_date ? pmt.payment_date.split('T')[0] : today);
+    setAmount(pmt.total_amount || '');
+    setShowForm(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    if (!paymentNo.trim()) { setError('Payment No is required'); return; }
+    if (!paymentDate) { setError('Payment Date is required'); return; }
+    if (!amount || parseFloat(amount) <= 0) { setError('Amount must be greater than 0'); return; }
+
+    setSaving(true);
+    try {
+      let res;
+      if (editMode) {
+        res = await fetch(`/api/payments/${encodeURIComponent(editMode)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_date: paymentDate, total_amount: parseFloat(amount) })
+        });
+      } else {
+        res = await fetch('/api/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            payment_no: paymentNo.trim(),
+            delivery_note_no: deliveryNoteNo,
+            trade_id: tradeId,
+            payment_date: paymentDate,
+            total_amount: parseFloat(amount)
+          })
+        });
+      }
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || 'Failed to save payment');
+      }
+      resetForm();
+      setShowForm(false);
+      onRefresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const form = (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Payment No */}
+        <div>
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
+            Payment No <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={paymentNo}
+            onChange={e => setPaymentNo(e.target.value)}
+            disabled={!!editMode}
+            placeholder={`PMT-${deliveryNoteNo}`}
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] disabled:bg-slate-50 disabled:text-slate-500 font-mono font-bold"
+          />
+        </div>
+        {/* Payment Date */}
+        <div>
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
+            Payment Date <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="date"
+            value={paymentDate}
+            onChange={e => setPaymentDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)]"
+          />
+        </div>
+        {/* Amount */}
+        <div>
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
+            Amount (₹) <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            placeholder="0.00"
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] font-mono font-bold"
+          />
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+          <AlertCircle size={13} className="shrink-0" /> {error}
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2">
+        {(editMode || notePayments.length > 0) && (
+          <button type="button" onClick={() => { resetForm(); setShowForm(false); }}
+            className="px-4 py-2 text-xs font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer">
+            Cancel
+          </button>
+        )}
+        <button
+          type="submit"
+          disabled={saving}
+          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-white font-bold text-xs rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-sm disabled:opacity-60"
+          style={{ backgroundColor: 'var(--theme-color)' }}
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <DollarSign size={13} />}
+          {saving ? 'Saving…' : editMode ? 'Update Payment' : 'Record Payment'}
+        </button>
+      </div>
+    </form>
+  );
+
+  // ── No payments yet — show CTA or form ──
+  if (notePayments.length === 0) {
+    if (!showForm) {
+      return (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm space-y-4">
+          <div className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center mx-auto" style={{ color: 'var(--theme-color)' }}>
+            <DollarSign size={20} />
+          </div>
+          <div className="max-w-sm mx-auto space-y-1">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Next Step: Payment</h4>
+            <p className="text-[11px] text-slate-500 font-semibold text-center">
+              GRN submitted. Record the payment received against this delivery.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-1.5 px-4.5 py-2 text-white font-bold text-xs rounded hover:opacity-90 transition-opacity cursor-pointer shadow-sm"
+            style={{ backgroundColor: 'var(--theme-color)' }}
+          >
+            <Plus size={12} /> Record Payment
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+            <DollarSign size={14} style={{ color: 'var(--theme-color)' }} />
+            Record Payment
+          </span>
+        </div>
+        <div className="p-6">{form}</div>
+      </div>
+    );
+  }
+
+  // ── Existing payments list ──
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+          <DollarSign size={14} style={{ color: 'var(--theme-color)' }} />
+          Payment Records
+        </span>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold text-white rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-sm"
+            style={{ backgroundColor: 'var(--theme-color)' }}
+          >
+            <Plus size={10} /> Add Payment
+          </button>
+        )}
+      </div>
+
+      <div className="p-6 space-y-4">
+        {/* Payments table */}
+        <div className="border border-slate-200 rounded-lg overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-2.5">Payment No</th>
+                <th className="px-4 py-2.5">Date</th>
+                <th className="px-4 py-2.5 text-right">Amount</th>
+                <th className="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {notePayments.map(pmt => (
+                <tr key={pmt.payment_no} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 font-mono font-bold text-slate-800">{pmt.payment_no}</td>
+                  <td className="px-4 py-3 text-slate-600 font-medium">{fmtDate(pmt.payment_date)}</td>
+                  <td className="px-4 py-3 text-right font-mono font-black text-emerald-700">₹{fmt(pmt.total_amount)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => handleEdit(pmt)}
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-slate-600 border border-slate-300 rounded hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <Edit2 size={9} /> Edit
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Total */}
+        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3">
+          <span className="text-xs font-bold text-emerald-800">Total Payments Received</span>
+          <span className="font-mono font-black text-emerald-800 text-sm">₹{fmt(totalPaid)}</span>
+        </div>
+
+        {/* Add / Edit form */}
+        {showForm && (
+          <div className="border border-slate-200 rounded-xl p-5 bg-slate-50/50 space-y-3">
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+              {editMode ? `Editing ${editMode}` : 'New Payment Entry'}
+            </p>
+            {form}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = [], grns = [], payments = [], onRefresh }) {
   const navigate = useNavigate();
   const [selectedDnNo, setSelectedDnNo] = useState(null);
 
@@ -157,7 +842,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
                   <List size={11} /> Shipped Items ({activeItems.length})
                 </p>
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="border border-slate-200 rounded-lg overflow-x-auto">
                   <table className="w-full border-collapse text-left text-xs">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -201,13 +886,6 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
               </div>
             </div>
           </div>
-
-          {/* Connection / Progress line to next step */}
-          {/* <div className="flex flex-col items-center py-1">
-            <div className="w-0.5 h-5 bg-slate-200"></div>
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest my-1.5">Next Step</span>
-            <div className="w-0.5 h-5 bg-slate-200"></div>
-          </div> */}
 
           {/* Nested Invoices Section */}
           <div className="space-y-4">
@@ -265,7 +943,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
                             <List size={11} /> Billed Items ({invItems.length})
                           </p>
-                          <div className="border border-slate-200 rounded-lg overflow-hidden">
+                          <div className="border border-slate-200 rounded-lg overflow-x-auto">
                             <table className="w-full border-collapse text-left text-xs">
                               <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -357,6 +1035,27 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
               </div>
             )}
           </div>
+
+          {/* ── GRN Section (after invoices) ─────────────────────────────── */}
+          {noteInvoices.length > 0 && (
+            <GrnSection
+              tradeId={tradeId}
+              deliveryNoteNo={activeDnNo}
+              dnItems={activeItems}
+              grns={grns}
+              onRefresh={onRefresh}
+            />
+          )}
+
+          {/* ── Payment Section (after GRN) ──────────────────────────────── */}
+          {noteInvoices.length > 0 && grns.some(g => g.delivery_note_no === activeDnNo) && (
+            <PaymentSection
+              tradeId={tradeId}
+              deliveryNoteNo={activeDnNo}
+              payments={payments}
+              onRefresh={onRefresh}
+            />
+          )}
         </div>
       )}
     </div>

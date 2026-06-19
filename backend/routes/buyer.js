@@ -2,10 +2,31 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
-// Get buyers (limit 100)
+// Get buyers
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, email, phone, created_at FROM buyers ORDER BY created_at DESC LIMIT 100');
+    const { q } = req.query || {};
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+    
+    let query = 'SELECT id, name, email, phone, created_at FROM buyers';
+    const params = [];
+    
+    if (q) {
+      query += ' WHERE name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1';
+      params.push(`%${q}%`);
+    }
+    
+    query += ' ORDER BY created_at DESC';
+    
+    if (limit !== null) {
+      const limitParamIdx = params.length + 1;
+      const offsetParamIdx = params.length + 2;
+      query += ` LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}`;
+      params.push(limit, offset);
+    }
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching buyers:', err.message);

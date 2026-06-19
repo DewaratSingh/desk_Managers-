@@ -619,7 +619,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                       {selectedItems.map((item) => (
                         <div
                           key={item.item_code}
-                          className="flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors gap-3"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">

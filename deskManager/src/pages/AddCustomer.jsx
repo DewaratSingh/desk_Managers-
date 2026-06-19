@@ -22,23 +22,44 @@ export default function AddCustomerView() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [searchFocused, setSearchFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    fetchCustomers();
-  }, []);
+    const delayDebounceFn = setTimeout(() => {
+      fetchCustomers(false, searchQuery);
+    }, 300);
 
-  const fetchCustomers = async () => {
-    setIsLoading(true);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  const fetchCustomers = async (isLoadMore = false, searchVal = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     try {
-      const res = await fetch('/api/customers');
+      const currentOffset = isLoadMore ? customers.length : 0;
+      const res = await fetch(`/api/customers?limit=20&offset=${currentOffset}&q=${encodeURIComponent(searchVal || '')}`);
       if (res.ok) {
         const data = await res.json();
-        setCustomers(data);
+        if (isLoadMore) {
+          setCustomers(prev => [...prev, ...data]);
+        } else {
+          setCustomers(data);
+        }
+        if (data.length < 20) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch customers:', err);
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -114,11 +135,7 @@ export default function AddCustomerView() {
     setViewMode('list');
   };
 
-  const filteredCustomers = customers.filter(c =>
-    c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.address.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCustomers = customers;
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900">
@@ -183,7 +200,7 @@ export default function AddCustomerView() {
                 {filteredCustomers.map((customer) => (
                   <div
                     key={customer.id}
-                    className="p-5 flex justify-between items-center hover:bg-slate-50 transition-colors gap-6"
+                    className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-50 transition-colors gap-4"
                   >
                     {/* Info block */}
                     <div className="flex-1 min-w-0 flex flex-col gap-0.5">
@@ -212,6 +229,24 @@ export default function AddCustomerView() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+            {hasMore && customers.length > 0 && (
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+                <button
+                  onClick={() => fetchCustomers(true)}
+                  disabled={loadingMore}
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? (
+                    <>
+                      <RefreshCw size={12} className="animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    'Show More'
+                  )}
+                </button>
               </div>
             )}
           </div>

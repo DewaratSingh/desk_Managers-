@@ -78,7 +78,7 @@ export default function QuotationPanel({ quotation, rfq, tradeId }) {
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
             <List size={11} /> Quoted Items &amp; Pricing ({(quotation.items || []).length})
           </p>
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
+          <div className="border border-slate-200 rounded-lg overflow-x-auto">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">

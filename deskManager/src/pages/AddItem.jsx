@@ -30,6 +30,11 @@ export default function AddItemView({
   const items = propsItems || localItems;
   const [searchFocused, setSearchFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(propsIsLoading);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [editingCode, setEditingCode] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     setIsLoading(propsIsLoading);
@@ -37,22 +42,40 @@ export default function AddItemView({
 
   useEffect(() => {
     if (!propsItems) {
-      fetchItems();
+      const delayDebounceFn = setTimeout(() => {
+        fetchItems(false, searchQuery);
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
     }
-  }, [propsItems]);
+  }, [searchQuery, propsItems]);
 
-  const fetchItems = async () => {
-    setIsLoading(true);
+  const fetchItems = async (isLoadMore = false, searchVal = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     try {
-      const res = await fetch('/api/items');
+      const currentOffset = isLoadMore ? items.length : 0;
+      const res = await fetch(`/api/items?limit=20&offset=${currentOffset}&q=${encodeURIComponent(searchVal || '')}`);
       if (res.ok) {
         const data = await res.json();
-        setLocalItems(data);
+        if (isLoadMore) {
+          setLocalItems(prev => [...prev, ...data]);
+        } else {
+          setLocalItems(data);
+        }
+        if (data.length < 20) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch items:', err);
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -65,18 +88,7 @@ export default function AddItemView({
     }
   }, [forceFormOpen]);
 
-  const [formData, setFormData] = useState(EMPTY_FORM);
-  const [editingCode, setEditingCode] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  useEffect(() => {
-    if (searchResource) {
-      const delayDebounceFn = setTimeout(() => {
-        searchResource('items', searchQuery);
-      }, 300);
-      return () => clearTimeout(delayDebounceFn);
-    }
-  }, [searchQuery]);
+  // Controlled parent search ignored when using local state pagination
 
   const [expandedItems, setExpandedItems] = useState(new Set());
 
@@ -179,11 +191,7 @@ export default function AddItemView({
     }
   };
 
-  const filteredItems = items.filter(item =>
-    item.item_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.drawing_number && item.drawing_number.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredItems = items;
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900">
@@ -257,7 +265,7 @@ export default function AddItemView({
                   return (
                     <div
                       key={item.item_code}
-                      className="p-5 flex justify-between items-center hover:bg-slate-50 transition-colors gap-6"
+                      className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-50 transition-colors gap-4"
                     >
                       <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                         <div className="font-bold text-sm text-slate-900">
@@ -316,6 +324,24 @@ export default function AddItemView({
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {hasMore && items.length > 0 && (
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+                <button
+                  onClick={() => fetchItems(true)}
+                  disabled={loadingMore}
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? (
+                    <>
+                      <RefreshCw size={12} className="animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    'Show More'
+                  )}
+                </button>
               </div>
             )}
           </div>

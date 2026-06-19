@@ -14,6 +14,7 @@ import {
   MdClose,
   MdLogout,
   MdDescription,
+  MdStore,
 } from "react-icons/md";
 import logoImg from "../assets/image.jpeg";
 
@@ -28,7 +29,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
     { id: "add-customer", label: "Customer", icon: MdPersonAdd },
     { id: "add-buyer", label: "Buyer", icon: MdPeople },
     { id: "add-item", label: "Item", icon: MdInventory },
-    { id: "payment", label: "Payment", icon: MdCreditCard },
+    { id: "inventory", label: "Inventory", icon: MdStore },
     { id: "arc", label: "ARC", icon: MdTag },
     { id: "gst-category", label: "GST Categories", icon: MdPercent },
   ];
@@ -172,7 +173,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
       )}
 
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 h-screen bg-slate-50 border-r border-slate-200 shrink-0">
+      <aside className="hidden lg:flex flex-col w-64 h-screen bg-slate-50 border-r border-slate-200 shrink-0 sticky top-0">
         <NavContent />
       </aside>
 

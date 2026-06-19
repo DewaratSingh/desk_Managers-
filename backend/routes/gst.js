@@ -5,7 +5,28 @@ const { pool } = require('../db');
 // Get GST rates (ordered by rate)
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, type, rate, created_at FROM gst_rates ORDER BY rate ASC');
+    const { q } = req.query || {};
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+    
+    let query = 'SELECT id, type, rate, created_at FROM gst_rates';
+    const params = [];
+    
+    if (q) {
+      query += ' WHERE type ILIKE $1';
+      params.push(`%${q}%`);
+    }
+    
+    query += ' ORDER BY rate ASC';
+    
+    if (limit !== null) {
+      const limitParamIdx = params.length + 1;
+      const offsetParamIdx = params.length + 2;
+      query += ` LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}`;
+      params.push(limit, offset);
+    }
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching gst_rates:', err.message);

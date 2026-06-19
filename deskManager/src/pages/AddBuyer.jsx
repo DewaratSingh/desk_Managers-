@@ -22,23 +22,44 @@ export default function AddBuyerView() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [searchFocused, setSearchFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    fetchBuyers();
-  }, []);
+    const delayDebounceFn = setTimeout(() => {
+      fetchBuyers(false, searchQuery);
+    }, 300);
 
-  const fetchBuyers = async () => {
-    setIsLoading(true);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  const fetchBuyers = async (isLoadMore = false, searchVal = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     try {
-      const res = await fetch('/api/buyers');
+      const currentOffset = isLoadMore ? buyers.length : 0;
+      const res = await fetch(`/api/buyers?limit=20&offset=${currentOffset}&q=${encodeURIComponent(searchVal || '')}`);
       if (res.ok) {
         const data = await res.json();
-        setBuyers(data);
+        if (isLoadMore) {
+          setBuyers(prev => [...prev, ...data]);
+        } else {
+          setBuyers(data);
+        }
+        if (data.length < 20) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch buyers:', err);
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -111,11 +132,7 @@ export default function AddBuyerView() {
     setViewMode('list');
   };
 
-  const filteredBuyers = buyers.filter(b =>
-    b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    b.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    b.phone.includes(searchQuery)
-  );
+  const filteredBuyers = buyers;
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900">
@@ -180,7 +197,7 @@ export default function AddBuyerView() {
                 {filteredBuyers.map((buyer) => (
                   <div
                     key={buyer.id}
-                    className="p-5 flex justify-between items-center hover:bg-slate-50 transition-colors gap-6"
+                    className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-50 transition-colors gap-4"
                   >
                     {/* Info block */}
                     <div className="flex-1 min-w-0 flex flex-col gap-0.5">
@@ -209,6 +226,24 @@ export default function AddBuyerView() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+            {hasMore && buyers.length > 0 && (
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+                <button
+                  onClick={() => fetchBuyers(true)}
+                  disabled={loadingMore}
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? (
+                    <>
+                      <RefreshCw size={12} className="animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    'Show More'
+                  )}
+                </button>
               </div>
             )}
           </div>

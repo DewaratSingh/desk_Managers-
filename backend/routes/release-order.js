@@ -12,6 +12,7 @@ router.get('/', async (req, res) => {
         ro.trade_id, ro.buyer_id, ro.customer_id, ro.created_at,
         b.name as buyer_name,
         c.name as customer_name,
+        t.status AS trade_status,
         (
           SELECT COALESCE(json_agg(json_build_object(
             'item_code', roi.item_code,
@@ -30,6 +31,7 @@ router.get('/', async (req, res) => {
       FROM release_orders ro
       LEFT JOIN buyers b ON ro.buyer_id = b.id
       LEFT JOIN customers c ON ro.customer_id = c.id
+      LEFT JOIN trades t ON ro.trade_id = t.trade_id
       ORDER BY ro.created_at DESC
     `);
     res.json(result.rows);
@@ -75,7 +77,14 @@ router.get('/:ro_no', async (req, res) => {
             'status', roi.status,
             'vendor', roi.vendor,
             'description', i.description,
-            'drawing_number', i.drawing_number
+            'drawing_number', i.drawing_number,
+            'delivered_qty', COALESCE((
+              SELECT SUM(dni.quantity)
+              FROM delivery_note_items dni
+              JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no
+              WHERE dn.ro_no = ro.ro_no
+                AND dni.item_code = roi.item_code
+            ), 0)
           ) ORDER BY roi.id), '[]')
           FROM release_order_items roi
           LEFT JOIN items i ON roi.item_code = i.item_code
@@ -313,7 +322,14 @@ router.put('/:ro_no/items/:item_code', async (req, res) => {
     }
 
     const items = await pool.query(
-      `SELECT roi.*, i.description, i.drawing_number
+      `SELECT roi.*, i.description, i.drawing_number,
+              COALESCE((
+                SELECT SUM(dni.quantity)
+                FROM delivery_note_items dni
+                JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no
+                WHERE dn.ro_no = roi.ro_no
+                  AND dni.item_code = roi.item_code
+              ), 0) as delivered_qty
        FROM release_order_items roi
        LEFT JOIN items i ON roi.item_code = i.item_code
        WHERE roi.ro_no = $1

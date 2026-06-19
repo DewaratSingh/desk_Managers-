@@ -34,7 +34,14 @@ router.put('/:po_no/items/:item_code', async (req, res) => {
 
     // Return the full updated items list (with item description/drawing from items table)
     const items = await pool.query(
-      `SELECT poi.*, i.description, i.drawing_number
+      `SELECT poi.*, i.description, i.drawing_number,
+              COALESCE((
+                SELECT SUM(dni.quantity)
+                FROM delivery_note_items dni
+                JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no
+                WHERE dn.po_no = poi.po_no
+                  AND dni.item_code = poi.item_code
+              ), 0) as delivered_qty
        FROM purchase_order_items poi
        LEFT JOIN items i ON poi.item_code = i.item_code
        WHERE poi.po_no = $1
@@ -56,6 +63,8 @@ router.get('/', async (req, res) => {
         po.po_no, po.quotation_no, po.po_date, po.delivery_date,
         po.gst, po.transport, po.other, po.basic_value, po.packing_forward,
         po.trade_id, po.created_at,
+        t.trade_type,
+        t.status AS trade_status,
         (
           SELECT COALESCE(json_agg(json_build_object(
             'item_code', poi.item_code,
@@ -68,6 +77,7 @@ router.get('/', async (req, res) => {
           WHERE poi.po_no = po.po_no
         ) as items
       FROM purchase_orders po
+      LEFT JOIN trades t ON po.trade_id = t.trade_id
       ORDER BY po.created_at DESC
     `);
     res.json(result.rows);
@@ -111,7 +121,14 @@ router.get('/:po_no', async (req, res) => {
             'status', poi.status,
             'vendor', poi.vendor,
             'description', i.description,
-            'drawing_number', i.drawing_number
+            'drawing_number', i.drawing_number,
+            'delivered_qty', COALESCE((
+              SELECT SUM(dni.quantity)
+              FROM delivery_note_items dni
+              JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no
+              WHERE dn.po_no = po.po_no
+                AND dni.item_code = poi.item_code
+            ), 0)
           ) ORDER BY poi.id), '[]')
           FROM purchase_order_items poi
           LEFT JOIN items i ON poi.item_code = i.item_code

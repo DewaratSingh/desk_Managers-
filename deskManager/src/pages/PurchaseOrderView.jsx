@@ -306,6 +306,7 @@ export default function PurchaseOrderView() {
                   <th className="px-4 py-3">Item Code</th>
                   <th className="px-4 py-3">Description</th>
                   <th className="px-4 py-3 text-right">Qty</th>
+                  <th className="px-4 py-3 text-right">Pending Qty</th>
                   <th className="px-4 py-3 text-right">Unit Price</th>
                   <th className="px-4 py-3 text-right">GST</th>
                   <th className="px-4 py-3 text-right">Line Total</th>
@@ -347,6 +348,11 @@ export default function PurchaseOrderView() {
 
                       {/* Qty */}
                       <td className="px-4 py-3 text-right font-bold text-slate-800">{item.quantity}</td>
+
+                      {/* Pending Qty */}
+                      <td className="px-4 py-3 text-right font-bold text-slate-800">
+                        {Math.max(0, (parseInt(item.quantity) || 0) - (parseInt(item.delivered_qty) || 0))}
+                      </td>
 
                       {/* Unit Price */}
                       <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(item.unit_price)}</td>

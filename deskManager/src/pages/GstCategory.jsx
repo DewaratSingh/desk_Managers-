@@ -24,19 +24,39 @@ export default function GstCategoryView() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    fetchGstRates();
-  }, []);
+    const delayDebounceFn = setTimeout(() => {
+      fetchGstRates(false, searchQuery);
+    }, 300);
 
-  const fetchGstRates = async () => {
-    setIsLoading(true);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  const fetchGstRates = async (isLoadMore = false, searchVal = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
     try {
-      const res = await fetch('/api/gst-rates');
+      const currentOffset = isLoadMore ? gstRates.length : 0;
+      const res = await fetch(`/api/gst-rates?limit=20&offset=${currentOffset}&q=${encodeURIComponent(searchVal || '')}`);
       if (res.ok) {
         const data = await res.json();
-        setGstRates(data);
+        if (isLoadMore) {
+          setGstRates(prev => [...prev, ...data]);
+        } else {
+          setGstRates(data);
+        }
+        if (data.length < 20) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
       } else {
         setError('Failed to load GST categories');
       }
@@ -45,6 +65,7 @@ export default function GstCategoryView() {
       setError('Connection error');
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -151,9 +172,7 @@ export default function GstCategoryView() {
     }
   };
 
-  const filteredGstRates = gstRates.filter(g =>
-    g.type.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredGstRates = gstRates;
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900">
@@ -267,6 +286,24 @@ export default function GstCategoryView() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {hasMore && gstRates.length > 0 && (
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+                <button
+                  onClick={() => fetchGstRates(true)}
+                  disabled={loadingMore}
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? (
+                    <>
+                      <RefreshCw size={12} className="animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    'Show More'
+                  )}
+                </button>
               </div>
             )}
           </div>

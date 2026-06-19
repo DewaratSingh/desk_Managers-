@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, FileText, RefreshCw } from 'lucide-react';
+import { AlertCircle, ArrowLeft, FileText, RefreshCw, Tag, Check, Loader2 } from 'lucide-react';
 
 import RfqPanel       from './panel/RfqPanel';
 import QuotationPanel from './panel/QuotationPanel';
@@ -16,8 +16,170 @@ const statusStyle = (s) => {
   if (v === 'ordered')   return { color: '#4f46e5', borderColor: '#a5b4fc', backgroundColor: '#eef2ff' };
   if (v === 'quotation') return { color: '#0369a1', borderColor: '#7dd3fc', backgroundColor: '#f0f9ff' };
   if (v === 'payment')   return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'completed') return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'cancelled') return { color: '#9f1239', borderColor: '#fca5a5', backgroundColor: '#fff1f2' };
   return { color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' };
 };
+
+// ── Status Updater Component ──────────────────────────────────────────────────
+function StatusUpdater({ tradeId, currentStatus, onStatusChanged }) {
+  const [inputVal, setInputVal] = useState(currentStatus || '');
+  const [suggestions, setSuggestions] = useState([]);
+  const [allStatuses, setAllStatuses] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+  const inputRef = useRef(null);
+  const dropdownRef = useRef(null);
+
+  // Load all statuses from DB on mount
+  useEffect(() => {
+    fetch('/api/statuses')
+      .then(r => r.json())
+      .then(data => setAllStatuses(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, []);
+
+  // Sync input when currentStatus changes from parent
+  useEffect(() => {
+    setInputVal(currentStatus || '');
+  }, [currentStatus]);
+
+  const handleInput = (val) => {
+    setInputVal(val);
+    setSaved(false);
+    setError(null);
+    if (val.trim().length === 0) {
+      setSuggestions(allStatuses);
+    } else {
+      setSuggestions(
+        allStatuses.filter(s => s.toLowerCase().includes(val.trim().toLowerCase()))
+      );
+    }
+    setShowDropdown(true);
+  };
+
+  const handleFocus = () => {
+    setSuggestions(inputVal.trim() ? allStatuses.filter(s => s.toLowerCase().includes(inputVal.trim().toLowerCase())) : allStatuses);
+    setShowDropdown(true);
+  };
+
+  const pickSuggestion = (s) => {
+    setInputVal(s);
+    setShowDropdown(false);
+    inputRef.current?.blur();
+  };
+
+  const handleSave = async () => {
+    const newStatus = inputVal.trim();
+    if (!newStatus) { setError('Status cannot be empty'); return; }
+    if (newStatus === currentStatus) { setShowDropdown(false); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/trades/${encodeURIComponent(tradeId)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || 'Failed to update status');
+      }
+      const updated = await res.json();
+      setSaved(true);
+      setShowDropdown(false);
+      onStatusChanged(updated.status);
+      // Also refresh suggestion list to include new custom status
+      setAllStatuses(prev => prev.includes(updated.status) ? prev : [...prev, updated.status].sort());
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (!dropdownRef.current?.contains(e.target) && !inputRef.current?.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+        <Tag size={11} style={{ color: 'var(--theme-color)' }} /> Trade Status
+      </p>
+
+      <div className="flex items-center gap-2.5">
+        {/* Search input + dropdown */}
+        <div className="relative flex-1 max-w-xs">
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputVal}
+            onChange={e => handleInput(e.target.value)}
+            onFocus={handleFocus}
+            onKeyDown={e => { if (e.key === 'Enter') { setShowDropdown(false); handleSave(); } if (e.key === 'Escape') setShowDropdown(false); }}
+            placeholder="Search or type a status…"
+            className="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] bg-white"
+          />
+          {showDropdown && suggestions.length > 0 && (
+            <div
+              ref={dropdownRef}
+              className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto"
+            >
+              {suggestions.map(s => (
+                <button
+                  key={s}
+                  onMouseDown={() => pickSuggestion(s)}
+                  className={`w-full text-left px-3 py-2 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer flex items-center justify-between ${
+                    s === currentStatus ? 'text-[var(--theme-color)]' : 'text-slate-700'
+                  }`}
+                >
+                  <span className="capitalize">{s}</span>
+                  {s === currentStatus && <span className="text-[9px] font-black text-slate-400 uppercase">Current</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Current badge */}
+        <span
+          className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full border shrink-0"
+          style={statusStyle(currentStatus)}
+        >
+          {currentStatus || '—'}
+        </span>
+
+        {/* Save button */}
+        <button
+          onClick={handleSave}
+          disabled={saving || !inputVal.trim() || inputVal.trim() === currentStatus}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-white font-bold text-xs rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-sm disabled:opacity-40 shrink-0"
+          style={{ backgroundColor: saved ? '#15803d' : 'var(--theme-color)' }}
+        >
+          {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <Check size={12} /> : <Tag size={12} />}
+          {saving ? 'Saving…' : saved ? 'Saved!' : 'Update'}
+        </button>
+      </div>
+
+      {error && (
+        <p className="mt-2 text-[10px] font-bold text-red-600 flex items-center gap-1">
+          <AlertCircle size={10} /> {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function TradeView() {
   const { tradeid } = useParams();
@@ -31,6 +193,8 @@ export default function TradeView() {
   const [releaseOrder, setReleaseOrder]   = useState(null);
   const [deliveryNotes, setDeliveryNotes] = useState([]);
   const [invoices, setInvoices]           = useState([]);
+  const [grns, setGrns]                   = useState([]);
+  const [payments, setPayments]           = useState([]);
   const [isLoading, setIsLoading]       = useState(true);
   const [error, setError]               = useState(null);
 
@@ -56,6 +220,8 @@ export default function TradeView() {
       const roDoc  = docs.find(d => d.type?.toUpperCase() === 'RO');
       const dnDocs = docs.filter(d => d.type?.toUpperCase() === 'DN' || d.type?.toUpperCase() === 'DELIVERY_NOTE');
       const invDocs = docs.filter(d => d.type?.toUpperCase() === 'INVOICE');
+      const grnDocs = docs.filter(d => d.type?.toUpperCase() === 'GRN');
+      const paymentDocs = docs.filter(d => d.type?.toUpperCase() === 'PAYMENT');
 
       await Promise.all([
         rfqDoc?.id ? fetchRFQ(rfqDoc.id)   : Promise.resolve(setRfq(null)),
@@ -69,6 +235,12 @@ export default function TradeView() {
         invDocs.length > 0
           ? Promise.all(invDocs.map(d => fetchInvoice(d.id))).then(invs => setInvoices(invs.filter(Boolean)))
           : Promise.resolve(setInvoices([])),
+        grnDocs.length > 0
+          ? Promise.all(grnDocs.map(d => fetchGrn(d.id))).then(grns => setGrns(grns.filter(Boolean)))
+          : Promise.resolve(setGrns([])),
+        paymentDocs.length > 0
+          ? Promise.all(paymentDocs.map(d => fetchPayment(d.id))).then(pmts => setPayments(pmts.filter(Boolean)))
+          : Promise.resolve(setPayments([])),
       ]);
     } catch (err) {
       console.error(err);
@@ -124,6 +296,22 @@ export default function TradeView() {
   const fetchInvoice = async (id) => {
     try {
       const res = await fetch(`/api/invoices/${encodeURIComponent(id)}`);
+      if (res.ok) return await res.json();
+    } catch (err) { console.error(err); }
+    return null;
+  };
+
+  const fetchGrn = async (id) => {
+    try {
+      const res = await fetch(`/api/grns/${encodeURIComponent(id)}`);
+      if (res.ok) return await res.json();
+    } catch (err) { console.error(err); }
+    return null;
+  };
+
+  const fetchPayment = async (id) => {
+    try {
+      const res = await fetch(`/api/payments/${encodeURIComponent(id)}`);
       if (res.ok) return await res.json();
     } catch (err) { console.error(err); }
     return null;
@@ -232,9 +420,12 @@ export default function TradeView() {
     panels.push({
       key: 'delivery',
       label: deliveryLabel,
-      component: <DeliveryPanel tradeId={trade.trade_id} deliveryNotes={deliveryNotes} invoices={invoices} onRefresh={() => fetchTradeDetails(trade.trade_id)} />
+      component: <DeliveryPanel tradeId={trade.trade_id} deliveryNotes={deliveryNotes} invoices={invoices} grns={grns} payments={payments} onRefresh={() => fetchTradeDetails(trade.trade_id)} />
     });
   }
+
+  // Show status updater when PO or RO exists
+  const showStatusUpdater = hasPoDoc || hasRoDoc;
 
   // Map document types → labels for the pipeline tracker
   const DOC_LABELS = {
@@ -305,6 +496,15 @@ export default function TradeView() {
             </div>
           )}
         </div>
+
+        {/* ── Status Updater (after PO / RO) ──────────────────────────── */}
+        {showStatusUpdater && (
+          <StatusUpdater
+            tradeId={trade.trade_id}
+            currentStatus={trade.status}
+            onStatusChanged={(newStatus) => setTrade(prev => ({ ...prev, status: newStatus }))}
+          />
+        )}
 
         {/* ── Section labels + Panels ─────────────────────────────────────── */}
         {panels.map((panel) => (

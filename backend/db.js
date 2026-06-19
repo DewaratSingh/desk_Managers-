@@ -339,6 +339,20 @@ const initializeDatabase = async () => {
       await client.query('DROP TABLE IF EXISTS grns CASCADE;');
     }
 
+    // Also drop old minimal GRN schema (only grn_no, trade_id, created_at) and recreate full schema
+    const minimalGrnsCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'grns' AND column_name = 'delivery_note_no'
+    `);
+    if (minimalGrnsCheck.rows.length === 0) {
+      // delivery_note_no column missing — drop and recreate with full schema
+      const grnsExists = await client.query(`SELECT to_regclass('public.grns')`);
+      if (grnsExists.rows[0].to_regclass) {
+        console.log('GRNs table missing delivery_note_no column. Recreating...');
+        await client.query('DROP TABLE IF EXISTS grns CASCADE;');
+      }
+    }
+
     const oldPaymentsCheck = await client.query(`
       SELECT column_name FROM information_schema.columns
       WHERE table_name = 'payments' AND column_name = 'payment_mode'
@@ -348,11 +362,15 @@ const initializeDatabase = async () => {
       await client.query('DROP TABLE IF EXISTS payments CASCADE;');
     }
 
-    // GRNs Table
+    // GRNs Table (full schema)
     await client.query(`
       CREATE TABLE IF NOT EXISTS grns (
         grn_no VARCHAR(100) PRIMARY KEY,
+        delivery_note_no VARCHAR(100) REFERENCES delivery_notes(delivery_note_no) ON DELETE SET NULL,
         trade_id VARCHAR(100) REFERENCES trades(trade_id) ON DELETE SET NULL,
+        grn_date DATE,
+        has_rejection BOOLEAN DEFAULT FALSE,
+        rejection_items JSONB DEFAULT '[]'::jsonb,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -421,6 +439,28 @@ const initializeDatabase = async () => {
         ADD COLUMN ro_no VARCHAR(100) REFERENCES release_orders(ro_no) ON DELETE SET NULL;
       `);
       console.log('ro_no column added to payments successfully.');
+    }
+
+    // Add payment_date column to payments if it doesn't exist
+    const paymentsDateCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'payments' AND column_name = 'payment_date'
+    `);
+    if (paymentsDateCheck.rows.length === 0) {
+      console.log('Adding payment_date column to payments table...');
+      await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_date DATE;`);
+      console.log('payment_date column added to payments successfully.');
+    }
+
+    // Add delivery_note_no column to payments if it doesn't exist
+    const paymentsDnCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'payments' AND column_name = 'delivery_note_no'
+    `);
+    if (paymentsDnCheck.rows.length === 0) {
+      console.log('Adding delivery_note_no column to payments table...');
+      await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS delivery_note_no VARCHAR(100) REFERENCES delivery_notes(delivery_note_no) ON DELETE SET NULL;`);
+      console.log('delivery_note_no column added to payments successfully.');
     }
     
     // Add shipping_address column to purchase_order_items if it doesn't exist
@@ -860,13 +900,39 @@ const initializeDatabase = async () => {
       console.log('gst_rate column added to release_orders.');
     }
 
-    // Create grns table if not exists (migration)
+    // Create grns table if not exists (migration) — full schema
     await client.query(`
       CREATE TABLE IF NOT EXISTS grns (
         grn_no VARCHAR(100) PRIMARY KEY,
+        delivery_note_no VARCHAR(100) REFERENCES delivery_notes(delivery_note_no) ON DELETE SET NULL,
+        trade_id VARCHAR(100) REFERENCES trades(trade_id) ON DELETE SET NULL,
+        grn_date DATE,
+        has_rejection BOOLEAN DEFAULT FALSE,
+        rejection_items JSONB DEFAULT '[]'::jsonb,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // ALTER TABLE migrations — add missing columns to grns if they don't exist yet
+    const grnColMigrations = [
+      { col: 'delivery_note_no', ddl: `ALTER TABLE grns ADD COLUMN IF NOT EXISTS delivery_note_no VARCHAR(100) REFERENCES delivery_notes(delivery_note_no) ON DELETE SET NULL` },
+      { col: 'trade_id',         ddl: `ALTER TABLE grns ADD COLUMN IF NOT EXISTS trade_id VARCHAR(100) REFERENCES trades(trade_id) ON DELETE SET NULL` },
+      { col: 'grn_date',         ddl: `ALTER TABLE grns ADD COLUMN IF NOT EXISTS grn_date DATE` },
+      { col: 'has_rejection',    ddl: `ALTER TABLE grns ADD COLUMN IF NOT EXISTS has_rejection BOOLEAN DEFAULT FALSE` },
+      { col: 'rejection_items',  ddl: `ALTER TABLE grns ADD COLUMN IF NOT EXISTS rejection_items JSONB DEFAULT '[]'::jsonb` },
+    ];
+    for (const { col, ddl } of grnColMigrations) {
+      const check = await client.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'grns' AND column_name = $1`,
+        [col]
+      );
+      if (check.rows.length === 0) {
+        console.log(`grns: adding missing column "${col}"...`);
+        await client.query(ddl);
+        console.log(`grns: column "${col}" added.`);
+      }
+    }
+
 
     // Create payments table if not exists (migration)
     await client.query(`
@@ -876,6 +942,29 @@ const initializeDatabase = async () => {
         ro_no VARCHAR(100) REFERENCES release_orders(ro_no) ON DELETE SET NULL,
         total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Drop legacy inventory_items and inventory_item tables if they exist
+    console.log('Dropping legacy inventory_items and inventory_item tables...');
+    await client.query('DROP TABLE IF EXISTS inventory_items CASCADE;');
+    await client.query('DROP TABLE IF EXISTS inventory_item CASCADE;');
+
+    // Create inventory table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS inventory (
+        id SERIAL PRIMARY KEY,
+        item_code VARCHAR(100) NOT NULL REFERENCES items(item_code) ON DELETE CASCADE,
+        quantity_in_stock NUMERIC NOT NULL CHECK (quantity_in_stock >= 0),
+        rack VARCHAR(100),
+        shelf_number VARCHAR(100),
+        location VARCHAR(255),
+        unit VARCHAR(50) DEFAULT 'Piece',
+        allocated_quantity INTEGER DEFAULT 0 CHECK (allocated_quantity >= 0),
+        rfq_no VARCHAR(100) REFERENCES rfqs(rfq_no) ON DELETE SET NULL,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -1064,15 +1153,13 @@ const initializeDatabase = async () => {
         }
       }
 
-      // Convert map to array and check if we need to update
+      // Convert map to array and check if we need to update documents only
       const newDocsList = Array.from(updatedDocsMap.values());
-      
-      const calculatedStatus = calculateTradeStatus(newDocsList);
 
-      if (JSON.stringify(currentDocs) !== JSON.stringify(newDocsList) || trade.status !== calculatedStatus) {
+      if (JSON.stringify(currentDocs) !== JSON.stringify(newDocsList)) {
         await client.query(
-          'UPDATE trades SET documents = $1, status = $2 WHERE trade_id = $3',
-          [JSON.stringify(newDocsList), calculatedStatus, tradeId]
+          'UPDATE trades SET documents = $1 WHERE trade_id = $2',
+          [JSON.stringify(newDocsList), tradeId]
         );
       }
     }
@@ -1107,22 +1194,16 @@ const calculateTradeStatus = (documents = []) => {
 const appendDocToTrade = async (client, tradeId, docType, docId) => {
   if (!tradeId) return;
   try {
-    const res = await client.query('SELECT documents, status FROM trades WHERE trade_id = $1', [tradeId]);
+    const res = await client.query('SELECT documents FROM trades WHERE trade_id = $1', [tradeId]);
     if (res.rows.length > 0) {
-      const currentTrade = res.rows[0];
-      const documents = currentTrade.documents || [];
-      
-      let updatedDocs = [...documents];
+      const documents = res.rows[0].documents || [];
+
+      // Only append the new doc if not already present — never touch status
       if (!documents.some(d => d.type === docType && d.id === docId)) {
-        updatedDocs.push({ type: docType, id: docId });
-      }
-
-      const calculatedStatus = calculateTradeStatus(updatedDocs);
-
-      if (JSON.stringify(documents) !== JSON.stringify(updatedDocs) || currentTrade.status !== calculatedStatus) {
+        const updatedDocs = [...documents, { type: docType, id: docId }];
         await client.query(
-          'UPDATE trades SET documents = $1, status = $2 WHERE trade_id = $3',
-          [JSON.stringify(updatedDocs), calculatedStatus, tradeId]
+          'UPDATE trades SET documents = $1 WHERE trade_id = $2',
+          [JSON.stringify(updatedDocs), tradeId]
         );
       }
     }

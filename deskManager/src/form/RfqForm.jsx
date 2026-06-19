@@ -611,7 +611,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
 
               {/* Selected Items */}
               {selectedItems.length > 0 && (
-                <div className="mt-3 border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
+                <div className="mt-3 border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
                   <div className="bg-slate-100 px-4 py-2 border-b border-slate-300">
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                       Attached Items ({selectedItems.length})
@@ -619,7 +619,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                   </div>
                   <div className="divide-y divide-slate-200">
                     {selectedItems.map((item) => (
-                      <div key={item.item_code} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
+                      <div key={item.item_code} className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors gap-3">
                         <div className="min-w-0 flex-1 mr-4">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>

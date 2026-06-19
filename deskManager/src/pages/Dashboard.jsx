@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import { Search, RefreshCw, X } from 'lucide-react';
 import AddBuyerView from './AddBuyer';
 import AddCustomerView from './AddCustomer';
 import AddItemView from './AddItem';
@@ -8,20 +9,38 @@ import GstCategoryView from './GstCategory';
 import ArcView from './Arc';
 import RfqForm from '../form/RfqForm';
 import QuotationForm from '../form/QuotationForm';
+import InventoryView from './Inventory';
 
 export default function Dashboard({ activeTab: propActiveTab }) {
   const [activeTab, setActiveTab] = useState(propActiveTab || 'dashboard');
   const navigate = useNavigate();
   const location = useLocation();
-  const user = { username: 'operator', role: 'admin' };
+  
+  const user = JSON.parse(localStorage.getItem('user') || '{"username":"admin","role":"admin"}');
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('loginTime');
+    navigate('/login');
+  };
 
   const [trades, setTrades] = useState([]);
   const [tradesLoading, setTradesLoading] = useState(false);
+  const [tradeSearchQuery, setTradeSearchQuery] = useState('');
+  const [hasMoreTrades, setHasMoreTrades] = useState(true);
+  const [loadingMoreTrades, setLoadingMoreTrades] = useState(false);
+  const [allStatuses, setAllStatuses]       = useState([]);
+  const [filterInput, setFilterInput]       = useState('');
+  const [selectedFilter, setSelectedFilter] = useState(null); // { label, type, value }
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const filterRef = useRef(null);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [posLoading, setPosLoading]         = useState(false);
   const [releaseOrders, setReleaseOrders]   = useState([]);
   const [rosLoading, setRosLoading]         = useState(false);
-  const [orderFilter, setOrderFilter]       = useState('ALL'); // 'ALL', 'PO', 'RO'
+  const [orderFilter, setOrderFilter]       = useState('ALL'); // 'ALL', 'PO', 'RO', 'PO_BUY'
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
 
   useEffect(() => {
     if (propActiveTab) {
@@ -36,20 +55,71 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   }, [location.state]);
 
   useEffect(() => {
-    if (activeTab === 'dashboard') fetchTrades();
     if (activeTab === 'purchase-order') {
       fetchPurchaseOrders();
       fetchReleaseOrders();
     }
   }, [activeTab]);
 
-  const fetchTrades = async () => {
-    setTradesLoading(true);
+  useEffect(() => {
+    // Load all statuses from DB on mount
+    fetch('/api/statuses')
+      .then(r => r.json())
+      .then(data => setAllStatuses(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (filterRef.current && !filterRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'dashboard') {
+      const delayDebounceFn = setTimeout(() => {
+        fetchTrades(false, tradeSearchQuery, selectedFilter);
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [tradeSearchQuery, selectedFilter, activeTab]);
+
+  const fetchTrades = async (isLoadMore = false, searchVal = tradeSearchQuery, filterObj = selectedFilter) => {
+    if (isLoadMore) {
+      setLoadingMoreTrades(true);
+    } else {
+      setTradesLoading(true);
+    }
     try {
-      const res = await fetch('/api/trades');
-      if (res.ok) setTrades(await res.json());
-    } catch (err) { console.error('Failed to fetch trades:', err); }
-    finally { setTradesLoading(false); }
+      const currentOffset = isLoadMore ? trades.length : 0;
+      let url = `/api/trades?limit=20&offset=${currentOffset}&q=${encodeURIComponent(searchVal || '')}`;
+      if (filterObj) {
+        url += `&${filterObj.type}=${encodeURIComponent(filterObj.value)}`;
+      }
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (isLoadMore) {
+          setTrades(prev => [...prev, ...data]);
+        } else {
+          setTrades(data);
+        }
+        if (data.length < 20) {
+          setHasMoreTrades(false);
+        } else {
+          setHasMoreTrades(true);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch trades:', err);
+    } finally {
+      setTradesLoading(false);
+      setLoadingMoreTrades(false);
+    }
   };
 
   const fetchPurchaseOrders = async () => {
@@ -82,7 +152,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           <div className="space-y-6 text-slate-900">
             {/* Header */}
             <div>
-              <h2 className="text-2xl font-bold text-slate-900">Overview</h2>
+              <h2 className="text-2xl font-bold text-slate-900">Trade</h2>
               <p className="text-xs text-slate-500 mt-1">Quick stats and recent activity.</p>
             </div>
 
@@ -114,66 +184,161 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             </div>
 
             {/* List all trade at bottom */}
-            <div className="space-y-3 pt-4 border-t border-slate-200">
-              <div>
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Trades Directory</h3>
-                <p className="text-xs text-slate-400 font-medium">Browse active client and purchase pipeline trades.</p>
-              </div>
+            {(() => {
+              const staticTypes = ['Sell', 'Buy', 'ARC'];
+              const filterOptions = [
+                ...staticTypes.map(t => ({ label: `Type: ${t}`, type: 'trade_type', value: t })),
+                ...allStatuses.map(s => ({ label: `Status: ${s.toUpperCase()}`, type: 'status', value: s }))
+              ];
+              const suggestions = filterInput.trim()
+                ? filterOptions.filter(opt => opt.label.toLowerCase().includes(filterInput.toLowerCase()))
+                : filterOptions;
 
-              {tradesLoading && trades.length === 0 ? (
-                <p className="text-center text-xs font-bold text-slate-400 py-8 animate-pulse">Loading Trades...</p>
-              ) : trades.length === 0 ? (
-                <p className="text-center text-xs font-bold text-slate-400 py-8">No trade records found. Click "SELL" to get started.</p>
-              ) : (
-                <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-sm">
-                  <table className="w-full border-collapse text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="px-4 py-2.5">Trade ID</th>
-                        <th className="px-4 py-2.5">Type</th>
-                        <th className="px-4 py-2.5">Pipeline Status</th>
-                        <th className="px-4 py-2.5">Created Date</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                      {trades.map((trade) => (
-                        <tr 
-                          key={trade.trade_id} 
-                          onClick={() => navigate(`/trade/${trade.trade_id}`)}
-                          className="hover:bg-slate-50 transition-colors cursor-pointer group"
-                        >
-                          <td className="px-4 py-3 font-mono font-bold text-slate-900 group-hover:text-[var(--theme-color)]">
-                            {trade.trade_id}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="font-semibold text-slate-600 capitalize">{trade.trade_type}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span 
-                              className="px-2 py-0.5 text-[10px] font-bold uppercase rounded border"
-                              style={{
-                                color: 'var(--theme-color)',
-                                borderColor: 'var(--theme-color)',
-                                backgroundColor: 'rgba(217, 53, 45, 0.05)'
+              return (
+                <div className="space-y-3 pt-4 border-t border-slate-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Trades Directory</h3>
+                      <p className="text-xs text-slate-400 font-medium">Browse active client and purchase pipeline trades.</p>
+                    </div>
+
+                    {/* Controls: bigger search + filter suggestions */}
+                    <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-stretch sm:items-center shrink-0">
+                      {/* Search Bar (Bigger) */}
+                      <div className="flex items-center gap-2.5 border border-slate-300 rounded-xl px-3.5 py-2 bg-white shadow-sm transition-all focus-within:border-[var(--theme-color)] focus-within:ring-2 focus-within:ring-[var(--theme-color)]/10 w-full sm:w-64 md:w-80 animate-fade-in">
+                        <Search size={16} className="text-slate-400 shrink-0" />
+                        <input
+                          type="text"
+                          placeholder="Search by ID, item code..."
+                          value={tradeSearchQuery}
+                          onChange={(e) => setTradeSearchQuery(e.target.value)}
+                          className="w-full bg-transparent focus:outline-none text-xs text-slate-900 placeholder:text-slate-400 font-semibold"
+                        />
+                      </div>
+
+                      {/* Filter Option Input (Suggests type/status) */}
+                      <div className="relative w-full sm:w-56" ref={filterRef}>
+                        <div className="flex items-center gap-2 border border-slate-300 rounded-xl px-3 py-2 bg-white shadow-sm transition-colors focus-within:border-[var(--theme-color)]">
+                          <input
+                            type="text"
+                            placeholder="Filter by type or status..."
+                            value={filterInput}
+                            onChange={(e) => {
+                              setFilterInput(e.target.value);
+                              setShowSuggestions(true);
+                              if (!e.target.value.trim()) {
+                                setSelectedFilter(null);
+                              }
+                            }}
+                            onFocus={() => setShowSuggestions(true)}
+                            className="w-full bg-transparent focus:outline-none text-xs text-slate-900 placeholder:text-slate-400 font-semibold"
+                          />
+                          {filterInput && (
+                            <button
+                              onClick={() => {
+                                setFilterInput('');
+                                setSelectedFilter(null);
+                                setShowSuggestions(false);
                               }}
+                              className="text-slate-400 hover:text-red-500 cursor-pointer transition-colors"
                             >
-                              {trade.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 font-semibold">
-                            {new Date(trade.created_at).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric'
-                            })}
-                          </td>
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                        {showSuggestions && suggestions.length > 0 && (
+                          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto animate-fade-in">
+                            {suggestions.map((opt) => (
+                              <button
+                                key={opt.label}
+                                onMouseDown={() => {
+                                  setSelectedFilter(opt);
+                                  setFilterInput(opt.label);
+                                  setShowSuggestions(false);
+                                }}
+                                className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer flex items-center justify-between"
+                              >
+                                <span>{opt.label}</span>
+                                <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-wider">{opt.type === 'trade_type' ? 'Type' : 'Status'}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {tradesLoading && trades.length === 0 ? (
+                    <p className="text-center text-xs font-bold text-slate-400 py-8 animate-pulse">Loading Trades...</p>
+                  ) : trades.length === 0 ? (
+                    <p className="text-center text-xs font-bold text-slate-400 py-8">No trade records found. Click "SELL" to get started.</p>
+                  ) : (
+                    <>
+                  <div className="border border-slate-300 rounded-lg overflow-x-auto bg-white shadow-sm">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                          <th className="px-4 py-2.5">Trade ID</th>
+                          <th className="px-4 py-2.5">Type</th>
+                          <th className="px-4 py-2.5">Pipeline Status</th>
+                          <th className="px-4 py-2.5">Created Date</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 bg-white">
+                        {trades.map((trade) => (
+                          <tr 
+                            key={trade.trade_id} 
+                            onClick={() => navigate(`/trade/${trade.trade_id}`)}
+                            className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                          >
+                            <td className="px-4 py-3 font-mono font-bold text-slate-900 group-hover:text-[var(--theme-color)]">
+                              {trade.trade_id}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-semibold text-slate-600 capitalize">{trade.trade_type}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span 
+                                className="px-2 py-0.5 text-[10px] font-bold uppercase rounded border"
+                                style={{
+                                  color: 'var(--theme-color)',
+                                  borderColor: 'var(--theme-color)',
+                                  backgroundColor: 'rgba(217, 53, 45, 0.05)'
+                                }}
+                              >
+                                {trade.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 font-semibold">
+                              {new Date(trade.created_at).toLocaleDateString('en-IN', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {hasMoreTrades && (
+                    <div className="flex justify-center pt-1 animate-fade-in">
+                      <button
+                        onClick={() => fetchTrades(true)}
+                        disabled={loadingMoreTrades}
+                        className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm disabled:opacity-50 inline-flex items-center gap-1.5"
+                      >
+                        {loadingMoreTrades && <RefreshCw size={12} className="animate-spin" />}
+                        Show More
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
+          );
+        })()}
           </div>
         );
       case 'add-buyer':
@@ -186,6 +351,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         return <GstCategoryView />;
       case 'arc':
         return <ArcView />;
+      case 'inventory':
+        return <InventoryView />;
       case 'addRfq':
       case 'updateRfq':
         return <RfqForm onNavigateAndOpenForm={handleNavigateAndOpenForm} />;
@@ -202,13 +369,15 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         };
         const fmt = (v) => (parseFloat(v)||0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-        const showPOs = orderFilter === 'ALL' || orderFilter === 'PO';
+        const showPOs = orderFilter === 'ALL' || orderFilter === 'PO' || orderFilter === 'PO_BUY';
         const showROs = orderFilter === 'ALL' || orderFilter === 'RO';
 
-        const displayOrders = [];
+        let displayOrders = [];
 
         if (showPOs) {
           purchaseOrders.forEach(po => {
+            if (orderFilter === 'PO_BUY' && po.trade_type !== 'buy') return;
+            if (po.trade_status && (po.trade_status.trim().toLowerCase() === 'completed' || po.trade_status.trim().toLowerCase() === 'complete')) return;
             displayOrders.push({
               id: po.po_no,
               type: 'PO',
@@ -231,6 +400,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
         if (showROs) {
           releaseOrders.forEach(ro => {
+            if (ro.trade_status && (ro.trade_status.trim().toLowerCase() === 'completed' || ro.trade_status.trim().toLowerCase() === 'complete')) return;
             displayOrders.push({
               id: ro.ro_no,
               type: 'RO',
@@ -251,6 +421,17 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           });
         }
 
+        // Apply Search Filter
+        if (orderSearchQuery.trim() !== '') {
+          const q = orderSearchQuery.toLowerCase();
+          displayOrders = displayOrders.filter(ord => 
+            ord.number.toLowerCase().includes(q) ||
+            (ord.linkedDoc && ord.linkedDoc.toLowerCase().includes(q)) ||
+            (ord.tradeId && ord.tradeId.toLowerCase().includes(q)) ||
+            (ord.items || []).some(item => item.item_code.toLowerCase().includes(q))
+          );
+        }
+
         displayOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         const isLoadingAll = posLoading || rosLoading;
@@ -264,11 +445,24 @@ export default function Dashboard({ activeTab: propActiveTab }) {
               </div>
             </div>
 
+            {/* Search Bar */}
+            <div className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors focus-within:border-[var(--theme-color)]">
+              <Search size={18} className="text-slate-400 shrink-0" />
+              <input
+                type="text"
+                placeholder="Search orders by number, trade reference, linked doc, or item code..."
+                value={orderSearchQuery}
+                onChange={(e) => setOrderSearchQuery(e.target.value)}
+                className="w-full bg-transparent focus:outline-none text-sm text-slate-900 placeholder:text-slate-400 font-medium"
+              />
+            </div>
+
             {/* Filter Pills */}
             <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
               {[
                 { id: 'ALL', label: 'All Orders' },
                 { id: 'PO',  label: 'Purchase Orders (PO)' },
+                { id: 'PO_BUY', label: 'Buy POs' },
                 { id: 'RO',  label: 'Release Orders (RO)' }
               ].map(tab => (
                 <button
@@ -285,7 +479,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             {isLoadingAll && displayOrders.length === 0 ? (
               <p className="text-center text-xs font-bold text-slate-400 py-10 animate-pulse">Loading Orders...</p>
             ) : displayOrders.length === 0 ? (
-              <p className="text-center text-xs font-bold text-slate-400 py-10">No orders found.</p>
+              <p className="text-center text-xs font-bold text-slate-400 py-10">No orders match filter or search.</p>
             ) : (
               <div className="space-y-3">
                 {displayOrders.map((ord) => {
@@ -365,8 +559,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={() => alert('Logged out')} />
+    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50">
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={handleLogout} />
 
       <main className="flex-1">
         {activeTab === 'add-buyer' || 
@@ -374,6 +568,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
          activeTab === 'add-item' || 
          activeTab === 'gst-category' || 
          activeTab === 'arc' || 
+         activeTab === 'inventory' || 
          activeTab === 'addRfq' || 
          activeTab === 'updateRfq' ||
          activeTab === 'quotation' ||

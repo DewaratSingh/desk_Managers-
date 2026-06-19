@@ -13,33 +13,40 @@ import DeliveryNoteForm from './form/DeliveryNoteForm'
 import InvoiceForm from './form/InvoiceForm'
 import PurchaseOrderView from './pages/PurchaseOrderView'
 import ReleaseOrderView from './pages/ReleaseOrderView'
+import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/addRfq" element={<RfqForm />} />
-        <Route path="/updateRfq/:id" element={<RfqForm />} />
-        <Route path="/addQuotation" element={<QuotationForm />} />
-        <Route path="/updateQuotation/:id" element={<QuotationForm />} />
-        <Route path="/addReceivedQuotation" element={<ReceivedQuotationForm />} />
-        <Route path="/updateReceivedQuotation/:id" element={<ReceivedQuotationForm />} />
-        <Route path="/addPurchaseOrder" element={<PurchaseOrderForm />} />
-        <Route path="/updatePurchaseOrder/:id" element={<PurchaseOrderForm />} />
-        <Route path="/addReceivedPurchaseOrder" element={<ReceivedPurchaseOrderForm />} />
-        <Route path="/updateReceivedPurchaseOrder/:id" element={<ReceivedPurchaseOrderForm />} />
-        <Route path="/addReleaseOrder" element={<ReleaseOrderForm />} />
-        <Route path="/updateReleaseOrder/:id" element={<ReleaseOrderForm />} />
-        <Route path="/addDeliveryNote" element={<DeliveryNoteForm />} />
-        <Route path="/updateDeliveryNote/:id" element={<DeliveryNoteForm />} />
-        <Route path="/addInvoice" element={<InvoiceForm />} />
-        <Route path="/updateInvoice/:id" element={<InvoiceForm />} />
-        <Route path="/order/:po_no" element={<PurchaseOrderView />} />
-        <Route path="/release-order/:ro_no" element={<ReleaseOrderView />} />
-        <Route path="/trade/:tradeid" element={<TradeView />} />
-        <Route path="/login" element={<LoginView onLogin={() => {}} />} />
+        {/* Public Routes */}
+        <Route path="/login" element={<LoginView />} />
+        
+        {/* Protected Routes */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/addRfq" element={<RfqForm />} />
+          <Route path="/updateRfq/:id" element={<RfqForm />} />
+          <Route path="/addQuotation" element={<QuotationForm />} />
+          <Route path="/updateQuotation/:id" element={<QuotationForm />} />
+          <Route path="/addReceivedQuotation" element={<ReceivedQuotationForm />} />
+          <Route path="/updateReceivedQuotation/:id" element={<ReceivedQuotationForm />} />
+          <Route path="/addPurchaseOrder" element={<PurchaseOrderForm />} />
+          <Route path="/updatePurchaseOrder/:id" element={<PurchaseOrderForm />} />
+          <Route path="/addReceivedPurchaseOrder" element={<ReceivedPurchaseOrderForm />} />
+          <Route path="/updateReceivedPurchaseOrder/:id" element={<ReceivedPurchaseOrderForm />} />
+          <Route path="/addReleaseOrder" element={<ReleaseOrderForm />} />
+          <Route path="/updateReleaseOrder/:id" element={<ReleaseOrderForm />} />
+          <Route path="/addDeliveryNote" element={<DeliveryNoteForm />} />
+          <Route path="/updateDeliveryNote/:id" element={<DeliveryNoteForm />} />
+          <Route path="/addInvoice" element={<InvoiceForm />} />
+          <Route path="/updateInvoice/:id" element={<InvoiceForm />} />
+          <Route path="/order/:po_no" element={<PurchaseOrderView />} />
+          <Route path="/release-order/:ro_no" element={<ReleaseOrderView />} />
+          <Route path="/trade/:tradeid" element={<TradeView />} />
+        </Route>
+
         <Route
           path="*"
           element={
