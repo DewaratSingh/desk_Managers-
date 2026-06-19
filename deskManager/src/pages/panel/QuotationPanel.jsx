@@ -1,5 +1,6 @@
 import { FileText, List, Edit2, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 const fmtDate = (d) => {
   if (!d) return '—';
@@ -8,7 +9,7 @@ const fmtDate = (d) => {
 
 const fmt = (v) => (parseFloat(v) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-export default function QuotationPanel({ quotation, rfq, tradeId }) {
+export default function QuotationPanel({ quotation, rfq, tradeId, tradeType, onRefresh, hasSubsequentDocs }) {
   // Prompt card when RFQ exists but no quotation yet
   if (!quotation) {
     if (!rfq) return null;
@@ -33,6 +34,25 @@ export default function QuotationPanel({ quotation, rfq, tradeId }) {
     );
   }
 
+  const handleReject = async () => {
+    if (!window.confirm('Are you sure you want to reject this quotation? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`/api/quotations/${encodeURIComponent(quotation.quotation_no)}/reject`, {
+        method: 'PUT'
+      });
+      if (res.ok) {
+        toast.success('Quotation rejected successfully');
+        if (onRefresh) onRefresh();
+      } else {
+        const d = await res.json();
+        toast.error(d.error || 'Failed to reject quotation');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('An error occurred while rejecting the quotation');
+    }
+  };
+
   const itemsTotal = (quotation.items || []).reduce(
     (a, i) => a + (parseFloat(i.unit_price) || 0) * (parseInt(i.quantity) || 0), 0
   );
@@ -46,15 +66,22 @@ export default function QuotationPanel({ quotation, rfq, tradeId }) {
           Commercial Quotation
         </span>
         <div className="flex items-center gap-2">
+          {quotation.status === 'rejected' && (
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded border text-red-700 bg-red-50 border-red-200 shadow-sm shrink-0">
+              Rejected
+            </span>
+          )}
           <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
             {quotation.quotation_no}
           </span>
-          <Link
-            to={`/updateQuotation/${quotation.quotation_no}?trade_id=${tradeId}`}
-            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
-          >
-            <Edit2 size={10} /> Edit
-          </Link>
+          {quotation.status !== 'rejected' && (
+            <Link
+              to={`/updateQuotation/${quotation.quotation_no}?trade_id=${tradeId}`}
+              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              <Edit2 size={10} /> Edit
+            </Link>
+          )}
         </div>
       </div>
 
@@ -147,6 +174,18 @@ export default function QuotationPanel({ quotation, rfq, tradeId }) {
           </div>
         )}
       </div>
+
+      {/* Reject Button in Footer */}
+      {quotation.status !== 'rejected' && tradeType === 'sell' && !hasSubsequentDocs && (
+        <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex justify-end">
+          <button
+            onClick={handleReject}
+            className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-sm hover:shadow-md active:scale-[0.98] duration-150"
+          >
+            Reject Quotation
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -218,6 +218,9 @@ router.post('/', async (req, res) => {
     // 5. Append to trade documents (which calculates trade status to 'dn')
     await appendDocToTrade(client, trade_id, 'DN', delivery_note_no);
 
+    // Update trade delivery status based on delivered %
+    await updateTradeDeliveryStatus(client, trade_id);
+
     await client.query('COMMIT');
     res.status(201).json({ delivery_note_no, trade_id });
   } catch (err) {
@@ -282,6 +285,12 @@ router.put('/:delivery_note_no', async (req, res) => {
       );
     }
 
+    // Resolve trade_id and update trade delivery status based on delivered %
+    const dnRes = await client.query('SELECT trade_id FROM delivery_notes WHERE delivery_note_no = $1', [delivery_note_no]);
+    if (dnRes.rows.length > 0) {
+      await updateTradeDeliveryStatus(client, dnRes.rows[0].trade_id);
+    }
+
     await client.query('COMMIT');
     res.json({ delivery_note_no });
   } catch (err) {
@@ -293,4 +302,39 @@ router.put('/:delivery_note_no', async (req, res) => {
   }
 });
 
+async function updateTradeDeliveryStatus(client, trade_id) {
+  if (!trade_id) return;
+
+  const pctRes = await client.query(`
+    SELECT 
+      CASE WHEN ordered_val > 0 THEN (delivered_val / ordered_val) * 100 ELSE 0.0 END AS pct
+    FROM (
+      SELECT
+        COALESCE(
+          (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.po_no = poi.po_no WHERE po.trade_id = $1),
+          (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.ro_no = roi.ro_no WHERE ro.trade_id = $1),
+          0
+        )::numeric AS ordered_val,
+        COALESCE(
+          (SELECT SUM(dni.quantity * poi.unit_price) FROM delivery_notes dn JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no JOIN purchase_order_items poi ON dn.po_no = poi.po_no AND dni.item_code = poi.item_code WHERE dn.trade_id = $1),
+          (SELECT SUM(dni.quantity * roi.unit_price) FROM delivery_notes dn JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no JOIN release_order_items roi ON dn.ro_no = roi.ro_no AND dni.item_code = roi.item_code WHERE dn.trade_id = $1),
+          0
+        )::numeric AS delivered_val
+    ) val_sub
+  `, [trade_id]);
+
+  const pct = pctRes.rows.length > 0 ? parseFloat(pctRes.rows[0].pct) : 0;
+  const statusName = pct >= 99.9 ? 'delivered' : 'partially delivered';
+
+  await client.query(
+    "INSERT INTO status (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+    [statusName]
+  );
+  await client.query(
+    "UPDATE trades SET status = $1 WHERE trade_id = $2",
+    [statusName, trade_id]
+  );
+}
+
 module.exports = router;
+module.exports.updateTradeDeliveryStatus = updateTradeDeliveryStatus;

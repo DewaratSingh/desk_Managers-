@@ -243,49 +243,59 @@ export default function GstCategoryView() {
                 No GST categories found. Click "New Category" to configure one.
               </div>
             ) : (
-              <div className="divide-y divide-slate-200">
-                {filteredGstRates.map((g) => (
-                  <div
-                    key={g.id}
-                    className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-sm text-slate-900">{g.type}</span>
-                        <span 
-                          className="px-2.5 py-0.5 border text-xs font-bold rounded-full"
-                          style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}
-                        >
-                          Rate: {g.rate}%
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <button
-                        onClick={() => handleEditClick(g)}
-                        className="px-3 py-1.5 text-xs border rounded font-semibold bg-white transition-all flex items-center gap-1 cursor-pointer"
-                        style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
-                        onMouseEnter={(e) => {
-                          e.target.style.backgroundColor = 'var(--theme-color)';
-                          e.target.style.color = 'white';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.backgroundColor = 'transparent';
-                          e.target.style.color = 'var(--theme-color)';
-                        }}
+              <div className="overflow-x-auto bg-white">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-5 py-3">GST Slab Type</th>
+                      <th className="px-5 py-3">GST Rate %</th>
+                      <th className="px-5 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {filteredGstRates.map((g) => (
+                      <tr 
+                        key={g.id}
+                        className="hover:bg-slate-50 transition-colors"
                       >
-                        <Edit2 size={12} /> Update
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(g.id)}
-                        className="px-3 py-1.5 text-xs border rounded font-semibold bg-white hover:bg-red-600 hover:text-white border-red-600 text-red-600 transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 size={12} /> Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                        <td className="px-5 py-3.5 font-bold text-slate-900">
+                          {g.type}
+                        </td>
+                        <td className="px-5 py-3.5 font-semibold text-slate-700">
+                          <span 
+                            className="px-2.5 py-0.5 border text-xs font-bold rounded-full"
+                            style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}
+                          >
+                            {g.rate}%
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-right space-x-2">
+                          <button
+                            onClick={() => handleEditClick(g)}
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white transition-all inline-flex items-center gap-1 cursor-pointer"
+                            style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = 'var(--theme-color)';
+                              e.currentTarget.style.color = 'white';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                              e.currentTarget.style.color = 'var(--theme-color)';
+                            }}
+                          >
+                            <Edit2 size={11} /> Update
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick(g.id)}
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white hover:bg-red-600 hover:text-white border-red-600 text-red-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 size={11} /> Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
             {hasMore && gstRates.length > 0 && (

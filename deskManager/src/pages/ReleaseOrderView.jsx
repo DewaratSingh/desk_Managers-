@@ -200,7 +200,7 @@ export default function ReleaseOrderView() {
 
       {/* ── Sticky Top Bar ──────────────────────────────────────────────────── */}
       <div className="print:hidden sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+        <div className="w-full px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => navigate(-1)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer shrink-0">
@@ -237,7 +237,7 @@ export default function ReleaseOrderView() {
       </div>
 
       {/* ── Content ─────────────────────────────────────────────────────────── */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <div className="w-full px-4 sm:px-8 py-8 space-y-6">
 
         {/* Title row */}
         <div className="flex items-start justify-between gap-4">

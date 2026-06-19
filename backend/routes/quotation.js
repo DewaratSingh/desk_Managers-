@@ -6,7 +6,7 @@ const { pool, appendDocToTrade } = require('../db');
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT q.quotation_no, q.rfq_no, q.quotation_date, q.trade_id,
+      SELECT q.quotation_no, q.rfq_no, q.quotation_date, q.trade_id, q.status,
              r.customer_id,
              (
                SELECT COALESCE(json_agg(json_build_object(
@@ -37,7 +37,7 @@ router.get('/:quotation_no', async (req, res) => {
   const { quotation_no } = req.params;
   try {
     const result = await pool.query(`
-      SELECT q.quotation_no, q.rfq_no, q.quotation_date, q.terms_and_conditions, q.trade_id, r.customer_id, c.name as customer_name, b.name as buyer_name, r.status as rfq_status,
+      SELECT q.quotation_no, q.rfq_no, q.quotation_date, q.terms_and_conditions, q.trade_id, q.status, r.customer_id, c.name as customer_name, b.name as buyer_name, r.status as rfq_status,
              (
                SELECT COALESCE(json_agg(json_build_object(
                  'item_code', qi.item_code,
@@ -147,6 +147,13 @@ router.post('/', async (req, res) => {
     // Append document reference to Trade history
     if (trade_id) {
       await appendDocToTrade(client, trade_id, 'QUOTATION', final_q_no);
+      await client.query(
+        "INSERT INTO status (name) VALUES ('quotation') ON CONFLICT (name) DO NOTHING"
+      );
+      await client.query(
+        "UPDATE trades SET status = 'quotation' WHERE trade_id = $1",
+        [trade_id]
+      );
     }
 
     await client.query('COMMIT');
@@ -209,6 +216,41 @@ router.put('/:quotation_no', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error updating quotation:', err.message);
     res.status(500).json({ error: err.message || 'Failed to update quotation' });
+  } finally {
+    client.release();
+  }
+});
+
+// Reject a quotation
+router.put('/:quotation_no/reject', async (req, res) => {
+  const { quotation_no } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      "UPDATE quotations SET status = 'rejected' WHERE quotation_no = $1 RETURNING *",
+      [quotation_no]
+    );
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const quotation = result.rows[0];
+    if (quotation.trade_id) {
+      await client.query(
+        "INSERT INTO status (name) VALUES ('rejected') ON CONFLICT (name) DO NOTHING"
+      );
+      await client.query(
+        "UPDATE trades SET status = 'rejected' WHERE trade_id = $1",
+        [quotation.trade_id]
+      );
+    }
+    await client.query('COMMIT');
+    res.json(quotation);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error rejecting quotation:', err.message);
+    res.status(500).json({ error: 'Failed to reject quotation' });
   } finally {
     client.release();
   }

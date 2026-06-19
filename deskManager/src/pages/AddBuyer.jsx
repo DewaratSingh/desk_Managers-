@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ListFilter
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const EMPTY_FORM = {
   name: '',
@@ -81,9 +82,10 @@ export default function AddBuyerView() {
           setFormData(EMPTY_FORM);
           setEditingId(null);
           setViewMode('list');
+          toast.success('Contact updated successfully!');
         } else {
           const errData = await res.json();
-          alert(errData.error || 'Failed to update buyer');
+          toast.error(errData.error || 'Failed to update contact');
         }
       } else {
         const res = await fetch('/api/buyers', {
@@ -97,14 +99,15 @@ export default function AddBuyerView() {
           setFormData(EMPTY_FORM);
           setEditingId(null);
           setViewMode('list');
+          toast.success('Contact created successfully!');
         } else {
           const errData = await res.json();
-          alert(errData.error || 'Failed to create buyer');
+          toast.error(errData.error || 'Failed to create contact');
         }
       }
     } catch (err) {
       console.error(err);
-      alert('An error occurred while saving buyer');
+      toast.error('An error occurred while saving contact');
     } finally {
       setIsLoading(false);
     }
@@ -141,9 +144,9 @@ export default function AddBuyerView() {
           {/* Header */}
           <div className="flex justify-between items-center pb-4 border-b border-slate-300">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 m-0">Buyers Directory</h1>
+              <h1 className="text-2xl font-bold text-slate-900 m-0">Contacts Directory</h1>
               <p className="text-xs text-slate-500 mt-1">
-                Browse and manage buyer contacts.
+                Browse and manage contacts.
               </p>
             </div>
             <button
@@ -154,7 +157,7 @@ export default function AddBuyerView() {
               onMouseLeave={(e) => e.target.style.filter = 'none'}
             >
               <Plus size={16} />
-              Add Buyer
+              Add Contact
             </button>
           </div>
 
@@ -180,52 +183,65 @@ export default function AddBuyerView() {
             <div className="bg-slate-100 px-5 py-3 border-b border-slate-300">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <ListFilter size={14} style={{ color: 'var(--theme-color)' }} />
-                Buyers ({filteredBuyers.length})
+                Contacts ({filteredBuyers.length})
               </span>
             </div>
 
             {isLoading && buyers.length === 0 ? (
               <div className="p-12 text-center text-slate-400 text-sm font-medium">
-                Loading buyers...
+                Loading contacts...
               </div>
             ) : filteredBuyers.length === 0 ? (
               <div className="p-12 text-center text-slate-400 text-sm font-medium">
-                No buyers found. Click "+ Add Buyer" to get started.
+                No contacts found. Click "+ Add Contact" to get started.
               </div>
             ) : (
-              <div className="divide-y divide-slate-200">
-                {filteredBuyers.map((buyer) => (
-                  <div
-                    key={buyer.id}
-                    className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-50 transition-colors gap-4"
-                  >
-                    {/* Info block */}
-                    <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                      <div className="font-bold text-sm text-slate-900">{buyer.name}</div>
-                      <div className="text-xs text-slate-600 mt-1 space-y-0.5">
-                        <div><strong className="text-slate-400 font-bold">Email:</strong> {buyer.email}</div>
-                        <div><strong className="text-slate-400 font-bold">Phone:</strong> {buyer.phone}</div>
-                      </div>
-                    </div>
-
-                    {/* Update button */}
-                    <button
-                      onClick={() => handleEditClick(buyer)}
-                      className="px-3 py-1.5 text-xs border border-slate-300 rounded font-semibold bg-white transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                      style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
-                      onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = 'var(--theme-color)';
-                        e.target.style.color = 'white';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = 'transparent';
-                        e.target.style.color = 'var(--theme-color)';
-                      }}
-                    >
-                      <Edit2 size={12} /> Edit
-                    </button>
-                  </div>
-                ))}
+              <div className="overflow-x-auto bg-white">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-5 py-3">Name</th>
+                      <th className="px-5 py-3">Email</th>
+                      <th className="px-5 py-3">Phone</th>
+                      <th className="px-5 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {filteredBuyers.map((buyer) => (
+                      <tr 
+                        key={buyer.id}
+                        className="hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-5 py-3.5 font-semibold text-slate-900">
+                          {buyer.name}
+                        </td>
+                        <td className="px-5 py-3.5 text-slate-600 font-semibold font-mono">
+                          {buyer.email}
+                        </td>
+                        <td className="px-5 py-3.5 text-slate-600 font-semibold">
+                          {buyer.phone}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <button
+                            onClick={() => handleEditClick(buyer)}
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white transition-all inline-flex items-center gap-1 cursor-pointer"
+                            style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = 'var(--theme-color)';
+                              e.currentTarget.style.color = 'white';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                              e.currentTarget.style.color = 'var(--theme-color)';
+                            }}
+                          >
+                            <Edit2 size={11} /> Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
             {hasMore && buyers.length > 0 && (
@@ -262,7 +278,7 @@ export default function AddBuyerView() {
             Back to Directory
           </button>
           <h1 className="text-2xl font-bold text-slate-900 m-0">
-            {editingId ? 'Update Buyer' : 'Add New Buyer'}
+            {editingId ? 'Update Contact' : 'Add New Contact'}
           </h1>
 
           <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">

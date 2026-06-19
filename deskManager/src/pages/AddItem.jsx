@@ -5,8 +5,10 @@ import {
   Plus,
   RefreshCw,
   ArrowLeft,
-  ListFilter
+  ListFilter,
+  Eye
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const EMPTY_FORM = {
   item_code: '',
@@ -35,6 +37,7 @@ export default function AddItemView({
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingCode, setEditingCode] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewingItem, setViewingItem] = useState(null);
 
   useEffect(() => {
     setIsLoading(propsIsLoading);
@@ -90,14 +93,7 @@ export default function AddItemView({
 
   // Controlled parent search ignored when using local state pagination
 
-  const [expandedItems, setExpandedItems] = useState(new Set());
-
-  const toggleExpand = (item_code) =>
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      next.has(item_code) ? next.delete(item_code) : next.add(item_code);
-      return next;
-    });
+  // Collapsible toggle helpers removed in favor of detailed View modal.
 
   const set = (field) => (e) =>
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
@@ -157,15 +153,19 @@ export default function AddItemView({
             const updated = await res.json();
             setLocalItems(localItems.map(item => item.item_code === editingCode ? updated : item));
             handleBackToDirectory();
+            toast.success('Item updated successfully!');
           } else {
             const errData = await res.json();
-            alert(errData.error || 'Failed to update item');
+            toast.error(errData.error || 'Failed to update item');
           }
         }
       } else {
         if (onAddItem) {
           const success = await onAddItem(formData);
-          if (success) setFormData(EMPTY_FORM);
+          if (success) {
+            setFormData(EMPTY_FORM);
+            toast.success('Item created successfully!');
+          }
         } else {
           const res = await fetch('/api/items', {
             method: 'POST',
@@ -177,15 +177,16 @@ export default function AddItemView({
             setLocalItems([created, ...localItems]);
             setFormData(EMPTY_FORM);
             setViewMode('list');
+            toast.success('Item created successfully!');
           } else {
             const errData = await res.json();
-            alert(errData.error || 'Failed to create item');
+            toast.error(errData.error || 'Failed to create item');
           }
         }
       }
     } catch (err) {
       console.error(err);
-      alert('An error occurred while saving item');
+      toast.error('An error occurred while saving item');
     } finally {
       setIsLoading(false);
     }
@@ -252,78 +253,64 @@ export default function AddItemView({
                 No items in catalog. Click "+ Add Item" to get started.
               </div>
             ) : (
-              <div className="divide-y divide-slate-200">
-                {filteredItems.map((item) => {
-                  const isExpanded = expandedItems.has(item.item_code);
-                  const longLines = item.long_description
-                    ? item.long_description.split(/\n/)
-                    : [];
-                  const visibleText = isExpanded
-                    ? longLines.join('\n')
-                    : longLines.slice(0, 2).join('\n') + (longLines.length > 2 ? '…' : '');
-
-                  return (
-                    <div
-                      key={item.item_code}
-                      className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-50 transition-colors gap-4"
-                    >
-                      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                        <div className="font-bold text-sm text-slate-900">
-                          <span className="text-slate-400 font-medium">Code:</span> {item.item_code}
-                        </div>
-                        <div className="text-xs text-slate-600 mt-1 space-y-0.5">
-                          {item.drawing_number && (
-                            <div>
-                              <strong className="text-slate-400 font-bold">Drawing:</strong> {item.drawing_number}
-                            </div>
-                          )}
-                          <div>
-                            <strong className="text-slate-400 font-bold">Desc:</strong> {item.description}
-                          </div>
-                          {longLines.length > 0 && (
-                            <div>
-                              <strong className="text-slate-400 font-bold">Details:</strong>{' '}
-                              <span style={{ whiteSpace: 'pre-wrap' }}>{visibleText}</span>
-                              {longLines.length > 2 && (
-                                <button
-                                  onClick={() => toggleExpand(item.item_code)}
-                                  style={{
-                                    marginLeft: '6px',
-                                    fontSize: '11px',
-                                    color: 'var(--theme-color)',
-                                    background: 'none',
-                                    border: 'none',
-                                    padding: 0,
-                                    cursor: 'pointer',
-                                    textDecoration: 'underline',
-                                  }}
-                                >
-                                  {isExpanded ? 'less' : 'more'}
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => handleEditClick(item)}
-                        className="px-3 py-1.5 text-xs border border-slate-300 rounded font-semibold bg-white transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                        style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
-                        onMouseEnter={(e) => {
-                          e.target.style.backgroundColor = 'var(--theme-color)';
-                          e.target.style.color = 'white';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.backgroundColor = 'transparent';
-                          e.target.style.color = 'var(--theme-color)';
-                        }}
-                      >
-                        <Edit2 size={12} /> Edit
-                      </button>
-                    </div>
-                  );
-                })}
+              <div className="overflow-x-auto bg-white">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-5 py-3">Item Code</th>
+                      <th className="px-5 py-3">Drawing No</th>
+                      <th className="px-5 py-3">Description</th>
+                      <th className="px-5 py-3">Long Details</th>
+                      <th className="px-5 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {filteredItems.map((item) => {
+                      return (
+                        <tr 
+                          key={item.item_code}
+                          className="hover:bg-slate-50 transition-colors"
+                        >
+                          <td className="px-5 py-3.5 font-mono font-bold text-slate-900">
+                            {item.item_code}
+                          </td>
+                          <td className="px-5 py-3.5 font-semibold text-slate-600">
+                            {item.drawing_number || '—'}
+                          </td>
+                          <td className="px-5 py-3.5 font-semibold text-slate-700 max-w-xs truncate" title={item.description}>
+                            {item.description}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-500 font-semibold max-w-xs truncate" title={item.long_description}>
+                            {item.long_description ? (item.long_description.length > 60 ? item.long_description.substring(0, 60) + '...' : item.long_description) : '—'}
+                          </td>
+                          <td className="px-5 py-3.5 text-right space-x-2">
+                            <button
+                              onClick={() => setViewingItem(item)}
+                              className="px-2.5 py-1.5 text-[11px] border border-slate-300 rounded font-semibold bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400 transition-all inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye size={11} /> View
+                            </button>
+                            <button
+                              onClick={() => handleEditClick(item)}
+                              className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white transition-all inline-flex items-center gap-1 cursor-pointer"
+                              style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = 'var(--theme-color)';
+                                e.currentTarget.style.color = 'white';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = 'transparent';
+                                e.currentTarget.style.color = 'var(--theme-color)';
+                              }}
+                            >
+                              <Edit2 size={11} /> Edit
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
             {hasMore && items.length > 0 && (
@@ -459,6 +446,52 @@ export default function AddItemView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {viewingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col transform scale-100 transition-all">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Item Details</h3>
+              <button 
+                onClick={() => setViewingItem(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg bg-transparent border-0 cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-xs font-semibold text-slate-700 max-h-[70vh] overflow-y-auto">
+              <div>
+                <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">Item Code</span>
+                <span className="font-mono text-sm text-slate-900 font-bold bg-slate-50 px-2.5 py-1 rounded border border-slate-200 inline-block">{viewingItem.item_code}</span>
+              </div>
+              {viewingItem.drawing_number && (
+                <div>
+                  <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">Drawing Number</span>
+                  <span className="font-mono text-sm text-slate-900 font-bold bg-slate-50 px-2.5 py-1 rounded border border-slate-200 inline-block">{viewingItem.drawing_number}</span>
+                </div>
+              )}
+              <div>
+                <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">Description</span>
+                <span className="text-sm text-slate-900 font-bold bg-slate-50 px-2.5 py-1 rounded border border-slate-200 block">{viewingItem.description}</span>
+              </div>
+              {viewingItem.long_description && (
+                <div>
+                  <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">Long Description</span>
+                  <div className="text-sm text-slate-900 font-medium bg-slate-50 px-2.5 py-2.5 rounded border border-slate-200 whitespace-pre-wrap leading-relaxed">{viewingItem.long_description}</div>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button
+                onClick={() => setViewingItem(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

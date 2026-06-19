@@ -1,4 +1,6 @@
 import { NavLink, Routes, Route } from 'react-router-dom'
+import { ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 import LoginView from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import TradeView from './pages/Trade'
@@ -17,7 +19,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen text-slate-100">
       
       <Routes>
         {/* Public Routes */}
@@ -61,6 +63,7 @@ function App() {
           }
         />
       </Routes>
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover theme="colored" />
     </div>
   )
 }

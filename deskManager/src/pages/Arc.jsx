@@ -288,66 +288,68 @@ export default function ArcView() {
                 {searchQuery ? 'No ARC items match your search.' : 'No ARC items added yet. Click "+ New ARC Item" to add one.'}
               </div>
             ) : (
-              <div className="divide-y divide-slate-200">
-                {filteredArcItems.map((arc) => (
-                  <div
-                    key={arc.item_code}
-                    className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span 
-                          className="text-xs font-mono font-bold border px-2 py-0.5 rounded tracking-wider"
-                          style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}
-                        >
-                          {arc.item_code}
-                        </span>
-                        {arc.drawing_number && (
-                          <span className="text-[10px] text-slate-400 font-bold bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
-                            DRW: {arc.drawing_number}
+              <div className="overflow-x-auto bg-white">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-5 py-3">Item Code</th>
+                      <th className="px-5 py-3">Drawing No</th>
+                      <th className="px-5 py-3">Description</th>
+                      <th className="px-5 py-3 text-right">Price</th>
+                      <th className="px-5 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {filteredArcItems.map((arc) => (
+                      <tr 
+                        key={arc.item_code}
+                        className="hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-5 py-3.5 font-mono font-bold text-slate-900">
+                          <span 
+                            className="text-xs font-mono font-bold border px-2 py-0.5 rounded tracking-wider"
+                            style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}
+                          >
+                            {arc.item_code}
                           </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-slate-600 mt-1">
-                        {arc.description}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-5 shrink-0">
-                      <div className="text-right">
-                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Price</div>
-                        <div className="font-extrabold text-sm text-slate-800">
+                        </td>
+                        <td className="px-5 py-3.5 font-semibold text-slate-500 font-mono">
+                          {arc.drawing_number ? `DRW: ${arc.drawing_number}` : '—'}
+                        </td>
+                        <td className="px-5 py-3.5 font-semibold text-slate-700 max-w-xs truncate" title={arc.description}>
+                          {arc.description}
+                        </td>
+                        <td className="px-5 py-3.5 text-right font-bold text-slate-900">
                           ₹{parseFloat(arc.price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleEdit(arc)}
-                          className="px-3 py-1.5 text-xs border border-slate-300 rounded font-semibold bg-white transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                          style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
-                          onMouseEnter={(e) => {
-                            e.target.style.backgroundColor = 'var(--theme-color)';
-                            e.target.style.color = 'white';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.backgroundColor = 'transparent';
-                            e.target.style.color = 'var(--theme-color)';
-                          }}
-                        >
-                          <Edit2 size={12} /> Update
-                        </button>
-                        <button
-                          onClick={() => handleDelete(arc.item_code)}
-                          className="px-3 py-1.5 text-xs border rounded font-semibold bg-white hover:bg-red-600 hover:text-white border-red-650 text-red-650 transition-colors flex items-center gap-1 cursor-pointer"
-                          style={{ color: '#dc2626', borderColor: '#fca5a5' }}
-                        >
-                          <Trash2 size={12} /> Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                        </td>
+                        <td className="px-5 py-3.5 text-right space-x-2">
+                          <button
+                            onClick={() => handleEdit(arc)}
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white transition-all inline-flex items-center gap-1 cursor-pointer"
+                            style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = 'var(--theme-color)';
+                              e.currentTarget.style.color = 'white';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                              e.currentTarget.style.color = 'var(--theme-color)';
+                            }}
+                          >
+                            <Edit2 size={11} /> Update
+                          </button>
+                          <button
+                            onClick={() => handleDelete(arc.item_code)}
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white hover:bg-red-600 hover:text-white border-red-655 text-red-655 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                          >
+                            <Trash2 size={11} /> Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
             {hasMore && arcItems.length > 0 && (

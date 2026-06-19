@@ -19,6 +19,20 @@ const statusColor = (s) => {
 };
 
 export default function PoPanel({ purchaseOrder, quotation, tradeId, isBuySide }) {
+  // Check if quotation was rejected
+  if (quotation && quotation.status === 'rejected') {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
+        <div className="max-w-sm mx-auto space-y-1">
+          <h3 className="text-sm font-bold text-red-600">Quotation Rejected</h3>
+          <p className="text-xs text-slate-500 font-semibold">
+            This commercial quotation has been rejected. No Purchase Order needs to be raised.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Prompt card when quotation exists but no PO yet
   if (!purchaseOrder) {
     if (!quotation) return null;

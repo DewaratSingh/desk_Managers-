@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { pool, appendDocToTrade } = require('../db');
+const { updateTradeDeliveryStatus } = require('./delivery-note');
+const { updateTradePaymentStatus } = require('./payment');
+
 
 // List all ROs
 router.get('/', async (req, res) => {
@@ -9,7 +12,7 @@ router.get('/', async (req, res) => {
       SELECT
         ro.ro_no, ro.contract_ref, ro.ro_date, ro.delivery_date,
         ro.gst, ro.transport, ro.other, ro.basic_value, ro.packing_forward,
-        ro.trade_id, ro.buyer_id, ro.customer_id, ro.created_at,
+        ro.trade_id, ro.buyer_id, ro.customer_id AS party_id, ro.created_at,
         b.name as buyer_name,
         c.name as customer_name,
         t.status AS trade_status,
@@ -23,7 +26,14 @@ router.get('/', async (req, res) => {
             'shipping_address', roi.shipping_address,
             'delivery_date', roi.delivery_date,
             'status', roi.status,
-            'vendor', roi.vendor
+            'vendor', roi.vendor,
+            'delivered_qty', COALESCE((
+              SELECT SUM(dni.quantity)
+              FROM delivery_note_items dni
+              JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no
+              WHERE dn.ro_no = ro.ro_no
+                AND dni.item_code = roi.item_code
+            ), 0)
           )), '[]')
           FROM release_order_items roi
           WHERE roi.ro_no = ro.ro_no
@@ -279,6 +289,17 @@ router.put('/:ro_no', async (req, res) => {
           ]
         );
       }
+    }
+
+    // After updating items, recalculate delivery and payment statuses
+    const tradeRes = await client.query(
+      'SELECT trade_id FROM release_orders WHERE ro_no = $1',
+      [ro_no]
+    );
+    const trade_id = tradeRes.rows.length > 0 ? tradeRes.rows[0].trade_id : null;
+    if (trade_id) {
+      await updateTradeDeliveryStatus(client, trade_id);
+      await updateTradePaymentStatus(client, trade_id);
     }
 
     await client.query('COMMIT');

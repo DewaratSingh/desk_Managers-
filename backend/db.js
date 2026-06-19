@@ -140,6 +140,7 @@ const initializeDatabase = async () => {
         quotation_date DATE NOT NULL,
         terms_and_conditions TEXT,
         trade_id VARCHAR(100) REFERENCES trades(trade_id) ON DELETE SET NULL,
+        status VARCHAR(50) DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -844,6 +845,20 @@ const initializeDatabase = async () => {
         ADD COLUMN gst_rate DECIMAL(5, 2) DEFAULT 0.00;
       `);
       console.log('gst_rate column added to quotations.');
+    }
+
+    // Add status column to quotations if it doesn't exist
+    const qtnStatusCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'quotations' AND column_name = 'status'
+    `);
+    if (qtnStatusCheck.rows.length === 0) {
+      console.log('Adding status column to quotations table...');
+      await client.query(`
+        ALTER TABLE quotations 
+        ADD COLUMN status VARCHAR(50) DEFAULT 'active';
+      `);
+      console.log('status column added to quotations.');
     }
 
     // Add gst_type and gst_rate to purchase_orders

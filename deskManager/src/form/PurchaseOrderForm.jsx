@@ -1,14 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import {
-  AlertCircle,
-  ArrowLeft,
-  Plus,
-  RefreshCw,
-  X,
-  CheckSquare,
-  Square
-} from 'lucide-react';
+import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
 const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
@@ -364,7 +357,7 @@ export default function PurchaseOrderForm() {
       });
 
       if (res.ok) {
-        alert(`Purchase Order ${editingNo ? 'updated' : 'created'} successfully!`);
+        toast.success(`Purchase Order ${editingNo ? 'updated' : 'created'} successfully!`);
         const destTradeId = queryTradeId || selectedQuotation?.trade_id;
         navigate(destTradeId ? `/trade/${destTradeId}` : '/');
       } else {
@@ -554,9 +547,16 @@ export default function PurchaseOrderForm() {
                                     DRW: {item.drawing_number}
                                   </span>
                                 )}
-                                <span className="text-[10px] text-slate-400 font-bold bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
-                                  Qty: {item.quantity}
-                                </span>
+                                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 shrink-0">
+                                  <span className="text-[10px] text-slate-400 font-bold">Qty:</span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.quantity}
+                                    onChange={(e) => updateItem(item.item_code, 'quantity', parseInt(e.target.value) || 0)}
+                                    className="w-12 text-[10px] font-bold text-slate-700 bg-white border border-slate-300 rounded text-center focus:outline-none focus:border-[var(--theme-color)]"
+                                  />
+                                </div>
                               </div>
                               {item.description && <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>}
                             </div>

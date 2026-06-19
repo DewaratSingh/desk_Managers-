@@ -1,16 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import {
-  AlertCircle,
-  ArrowLeft,
-  Plus,
-  RefreshCw,
-  X,
-  CheckSquare,
-  Square,
-  Search,
-  Trash2
-} from 'lucide-react';
+import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square, Search, Trash2 } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
 const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
@@ -358,7 +349,7 @@ export default function ReleaseOrderForm() {
   const addRoItem = (item) => {
     // Check if already added
     if (roItems.some(i => i.item_code === item.item_code)) {
-      alert('Item already added.');
+      toast.warn('Item already added.');
       return;
     }
     setRoItems(prev => [
@@ -535,7 +526,7 @@ export default function ReleaseOrderForm() {
 
       if (res.ok) {
         const data = await res.json();
-        alert(`Release Order ${editingNo ? 'updated' : 'created'} successfully!`);
+        toast.success(`Release Order ${editingNo ? 'updated' : 'created'} successfully!`);
         const finalTradeId = queryTradeId || data.trade_id || formData.trade_id;
         navigate(finalTradeId ? `/trade/${finalTradeId}` : '/');
       } else {

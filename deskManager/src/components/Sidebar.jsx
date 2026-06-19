@@ -1,21 +1,19 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  MdDashboard,
-  MdPersonAdd,
-  MdPeople,
-  MdInventory,
-  MdReceipt,
-  MdFileUpload,
-  MdCreditCard,
-  MdTag,
-  MdPercent,
-  MdMenu,
-  MdClose,
-  MdLogout,
-  MdDescription,
-  MdStore,
-} from "react-icons/md";
+  LayoutDashboard,
+  ClipboardList,
+  UserPlus,
+  Users,
+  Package,
+  Warehouse,
+  FileSignature,
+  Percent,
+  Menu,
+  X,
+  LogOut,
+  Building2
+} from "lucide-react";
 import logoImg from "../assets/image.jpeg";
 
 export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
@@ -24,14 +22,14 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
   const location = useLocation();
 
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: MdDashboard },
-    { id: "purchase-order", label: "Order", icon: MdReceipt },
-    { id: "add-customer", label: "Customer", icon: MdPersonAdd },
-    { id: "add-buyer", label: "Buyer", icon: MdPeople },
-    { id: "add-item", label: "Item", icon: MdInventory },
-    { id: "inventory", label: "Inventory", icon: MdStore },
-    { id: "arc", label: "ARC", icon: MdTag },
-    { id: "gst-category", label: "GST Categories", icon: MdPercent },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "purchase-order", label: "Order", icon: ClipboardList },
+    { id: "add-customer", label: "Party", icon: Building2 },
+    { id: "add-buyer", label: "Contact", icon: UserPlus },
+    { id: "add-item", label: "Item", icon: Package },
+    { id: "inventory", label: "Inventory", icon: Warehouse },
+    { id: "arc", label: "ARC", icon: FileSignature },
+    { id: "gst-category", label: "GST Categories", icon: Percent },
   ];
 
   const NavContent = () => (
@@ -86,7 +84,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
                 }
                 setIsOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 mb-0.5 rounded-lg font-semibold text-sm transition-all duration-150 text-left cursor-pointer ${isActive ? "text-white" : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"}`}
+              className={`group w-full flex items-center gap-3 px-3 py-1.5 mb-1 rounded-lg font-semibold text-sm transition-all duration-150 text-left cursor-pointer ${isActive ? "text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"}`}
               style={
                 isActive ? { backgroundColor: "var(--theme-color)" } : undefined
               }
@@ -94,10 +92,17 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
               {(() => {
                 const Icon = item.icon;
                 return (
-                  <Icon
-                    size={18}
-                    className={`shrink-0 ${isActive ? "text-white" : "text-slate-400"}`}
-                  />
+                  <div className={`p-1.5 rounded-md transition-all duration-200 flex items-center justify-center shrink-0 ${
+                    isActive 
+                      ? "bg-white/20 text-white shadow-sm" 
+                      : "bg-slate-200/60 text-slate-500 group-hover:bg-slate-300/40 group-hover:text-slate-700"
+                  }`}>
+                    <Icon
+                      size={16}
+                      strokeWidth={isActive ? 2.25 : 1.75}
+                      className="transition-transform duration-200 group-hover:scale-110"
+                    />
+                  </div>
                 );
               })()}
               <span className="truncate">{item.label}</span>
@@ -124,9 +129,11 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
           </div>
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 font-bold text-xs rounded-lg transition-all border border-red-100 hover:border-red-200 cursor-pointer"
+            className="group w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 font-bold text-xs rounded-lg transition-all duration-150 border border-red-100 hover:border-red-200 cursor-pointer"
           >
-            <MdLogout size={14} className="text-red-600" />
+            <div className="p-1 rounded-md bg-red-100/50 group-hover:bg-red-200/50 flex items-center justify-center shrink-0 transition-colors">
+              <LogOut size={13} strokeWidth={2} className="text-red-600 transition-transform duration-200 group-hover:translate-x-0.5" />
+            </div>
             <span>Sign Out</span>
           </button>
         </div>
@@ -160,7 +167,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
           onClick={() => setIsOpen(!isOpen)}
           className="p-2 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
         >
-          {isOpen ? <MdClose size={24} /> : <MdMenu size={24} />}
+          {isOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
 

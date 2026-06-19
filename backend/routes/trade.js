@@ -9,7 +9,44 @@ router.get('/', async (req, res) => {
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
 
   try {
-    let query = `SELECT t.trade_id, t.status, t.trade_type, t.created_at, t.documents FROM trades t`;
+    let query = `
+      SELECT t.trade_id, t.status, t.trade_type, t.created_at, t.documents,
+        COALESCE(
+          (SELECT r.rfq_no FROM rfqs r WHERE r.trade_id = t.trade_id LIMIT 1),
+          (SELECT rq.received_quotation_no FROM received_quotations rq WHERE rq.trade_id = t.trade_id LIMIT 1),
+          (SELECT ro.ro_no FROM release_orders ro WHERE ro.trade_id = t.trade_id LIMIT 1),
+          '—'
+        ) AS ref_id,
+        COALESCE(
+          (SELECT r.customer_id FROM rfqs r WHERE r.trade_id = t.trade_id LIMIT 1),
+          (SELECT rq.customer_id FROM received_quotations rq WHERE rq.trade_id = t.trade_id LIMIT 1),
+          (SELECT ro.customer_id FROM release_orders ro WHERE ro.trade_id = t.trade_id LIMIT 1),
+          '—'
+        ) AS party_id,
+        COALESCE(
+          (SELECT b.name FROM rfqs r JOIN buyers b ON r.buyer_id = b.id WHERE r.trade_id = t.trade_id LIMIT 1),
+          (SELECT b.name FROM received_quotations rq JOIN buyers b ON rq.buyer_id = b.id WHERE rq.trade_id = t.trade_id LIMIT 1),
+          (SELECT b.name FROM release_orders ro JOIN buyers b ON ro.buyer_id = b.id WHERE ro.trade_id = t.trade_id LIMIT 1),
+          '—'
+        ) AS contact_name,
+        (
+          SELECT CASE WHEN ordered_val > 0 THEN ROUND((delivered_val / ordered_val) * 100, 1) ELSE 0.0 END
+          FROM (
+            SELECT
+              COALESCE(
+                (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.po_no = poi.po_no WHERE po.trade_id = t.trade_id),
+                (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.ro_no = roi.ro_no WHERE ro.trade_id = t.trade_id),
+                0
+              ) AS ordered_val,
+              COALESCE(
+                (SELECT SUM(dni.quantity * poi.unit_price) FROM delivery_notes dn JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no JOIN purchase_order_items poi ON dn.po_no = poi.po_no AND dni.item_code = poi.item_code WHERE dn.trade_id = t.trade_id),
+                (SELECT SUM(dni.quantity * roi.unit_price) FROM delivery_notes dn JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no JOIN release_order_items roi ON dn.ro_no = roi.ro_no AND dni.item_code = roi.item_code WHERE dn.trade_id = t.trade_id),
+                0
+              ) AS delivered_val
+          ) val_sub
+        ) AS delivered_pct
+      FROM trades t
+    `;
     const conditions = [];
     const params = [];
 

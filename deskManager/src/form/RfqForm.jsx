@@ -1,13 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  AlertCircle,
-  ArrowLeft,
-  Plus,
-  RefreshCw,
-  Search,
-  X
-} from 'lucide-react';
+import { AlertCircle, ArrowLeft, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const EMPTY_FORM = {
   rfq_no: '',
@@ -332,9 +326,9 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
         const finalTradeId = editingRFQ ? tradeId : resData.trade_id;
 
         if (isQuotateRedirectRef.current) {
-          alert('RFQ saved successfully! Redirecting (placeholder)...');
+          toast.success('RFQ saved successfully!');
         } else {
-          alert(`RFQ ${editingRFQ ? 'updated' : 'created'} successfully!`);
+          toast.success(`RFQ ${editingRFQ ? 'updated' : 'created'} successfully!`);
         }
         
         if (finalTradeId) {
@@ -683,16 +677,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
 
             {/* Action Buttons */}
             <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
-              {!editingRFQ && (
-                <button
-                  type="submit"
-                  onClick={() => { isQuotateRedirectRef.current = true; }}
-                  disabled={isLoading}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg font-semibold text-sm text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Save &amp; Quotate
-                </button>
-              )}
+              
               <button
                 type="submit"
                 onClick={() => { isQuotateRedirectRef.current = false; }}

@@ -12,6 +12,7 @@ import {
   Tag,
   AlertCircle
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const EMPTY_FORM = {
   item_code: '',
@@ -115,13 +116,14 @@ export default function InventoryView() {
       });
       if (res.ok) {
         setInventoryList(prev => prev.filter(item => item.id !== id));
+        toast.success('Inventory record deleted successfully!');
       } else {
         const errData = await res.json();
-        alert(errData.error || 'Failed to delete inventory record');
+        toast.error(errData.error || 'Failed to delete inventory record');
       }
     } catch (err) {
       console.error('Delete error:', err);
-      alert('An error occurred while deleting the record');
+      toast.error('An error occurred while deleting the record');
     } finally {
       setIsLoading(false);
     }
@@ -136,11 +138,11 @@ export default function InventoryView() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.item_code) {
-      alert('Please select an item');
+      toast.warn('Please select an item');
       return;
     }
     if (formData.quantity_in_stock === '' || isNaN(parseFloat(formData.quantity_in_stock))) {
-      alert('Please enter a valid quantity in stock');
+      toast.warn('Please enter a valid quantity in stock');
       return;
     }
 
@@ -159,17 +161,19 @@ export default function InventoryView() {
         const saved = await res.json();
         if (editingId) {
           setInventoryList(prev => prev.map(item => item.id === editingId ? saved : item));
+          toast.success('Inventory record updated successfully!');
         } else {
           setInventoryList(prev => [saved, ...prev]);
+          toast.success('Inventory record added successfully!');
         }
         handleBackToDirectory();
       } else {
         const errData = await res.json();
-        alert(errData.error || 'Failed to save inventory record');
+        toast.error(errData.error || 'Failed to save inventory record');
       }
     } catch (err) {
       console.error(err);
-      alert('An error occurred while saving inventory record');
+      toast.error('An error occurred while saving inventory record');
     } finally {
       setIsSaving(false);
     }

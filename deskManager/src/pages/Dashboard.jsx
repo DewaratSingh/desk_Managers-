@@ -11,6 +11,19 @@ import RfqForm from '../form/RfqForm';
 import QuotationForm from '../form/QuotationForm';
 import InventoryView from './Inventory';
 
+const statusStyle = (s) => {
+  const v = (s || '').toLowerCase();
+  if (v === 'ordered')             return { color: '#4f46e5', borderColor: '#a5b4fc', backgroundColor: '#eef2ff' };
+  if (v === 'quotation')           return { color: '#0369a1', borderColor: '#7dd3fc', backgroundColor: '#f0f9ff' };
+  if (v === 'payment')             return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'completed')           return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'delivered')           return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'payed')               return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'partially delivered') return { color: '#d97706', borderColor: '#fcd34d', backgroundColor: '#fef3c7' };
+  if (v === 'cancelled')           return { color: '#9f1239', borderColor: '#fca5a5', backgroundColor: '#fff1f2' };
+  return { color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' };
+};
+
 export default function Dashboard({ activeTab: propActiveTab }) {
   const [activeTab, setActiveTab] = useState(propActiveTab || 'dashboard');
   const navigate = useNavigate();
@@ -279,7 +292,11 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
                           <th className="px-4 py-2.5">Trade ID</th>
+                          <th className="px-4 py-2.5">Ref ID</th>
                           <th className="px-4 py-2.5">Type</th>
+                          <th className="px-4 py-2.5">Party</th>
+                          <th className="px-4 py-2.5">Contact name</th>
+                          <th className="px-4 py-2.5 text-right">Delivered %</th>
                           <th className="px-4 py-2.5">Pipeline Status</th>
                           <th className="px-4 py-2.5">Created Date</th>
                         </tr>
@@ -294,17 +311,35 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                             <td className="px-4 py-3 font-mono font-bold text-slate-900 group-hover:text-[var(--theme-color)]">
                               {trade.trade_id}
                             </td>
+                            <td className="px-4 py-3 font-mono text-slate-700">
+                              {trade.ref_id}
+                            </td>
                             <td className="px-4 py-3">
                               <span className="font-semibold text-slate-600 capitalize">{trade.trade_type}</span>
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-slate-700">
+                              {trade.party_id}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 font-semibold">
+                              {trade.contact_name}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold">
+                              <span 
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  parseFloat(trade.delivered_pct) === 100 
+                                    ? 'text-green-700 bg-green-50 border border-green-200' 
+                                    : parseFloat(trade.delivered_pct) === 0
+                                    ? 'text-slate-500 bg-slate-50 border border-slate-200'
+                                    : 'text-amber-700 bg-amber-50 border border-amber-200'
+                                }`}
+                              >
+                                {parseFloat(trade.delivered_pct || 0).toFixed(1)}%
+                              </span>
                             </td>
                             <td className="px-4 py-3">
                               <span 
                                 className="px-2 py-0.5 text-[10px] font-bold uppercase rounded border"
-                                style={{
-                                  color: 'var(--theme-color)',
-                                  borderColor: 'var(--theme-color)',
-                                  backgroundColor: 'rgba(217, 53, 45, 0.05)'
-                                }}
+                                style={statusStyle(trade.status)}
                               >
                                 {trade.status}
                               </span>
@@ -378,11 +413,19 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           purchaseOrders.forEach(po => {
             if (orderFilter === 'PO_BUY' && po.trade_type !== 'buy') return;
             if (po.trade_status && (po.trade_status.trim().toLowerCase() === 'completed' || po.trade_status.trim().toLowerCase() === 'complete')) return;
+            
+            // Calculate delivered percentage to skip if fully delivered
+            const totalQty = (po.items || []).reduce((s, i) => s + (parseInt(i.quantity) || 0), 0);
+            const deliveredQty = (po.items || []).reduce((s, i) => s + (parseInt(i.delivered_qty) || 0), 0);
+            const deliveredPct = totalQty > 0 ? (deliveredQty / totalQty) * 100 : 0;
+            if (totalQty > 0 && deliveredPct >= 99.9) return;
+
             displayOrders.push({
               id: po.po_no,
               type: 'PO',
               number: po.po_no,
               date: po.po_date,
+              partyId: po.party_id || '—',
               deliveryDate: po.delivery_date,
               tradeId: po.trade_id,
               linkedDoc: po.quotation_no ? `QTN: ${po.quotation_no}` : null,
@@ -401,11 +444,19 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         if (showROs) {
           releaseOrders.forEach(ro => {
             if (ro.trade_status && (ro.trade_status.trim().toLowerCase() === 'completed' || ro.trade_status.trim().toLowerCase() === 'complete')) return;
+            
+            // Calculate delivered percentage to skip if fully delivered
+            const totalQty = (ro.items || []).reduce((s, i) => s + (parseInt(i.quantity) || 0), 0);
+            const deliveredQty = (ro.items || []).reduce((s, i) => s + (parseInt(i.delivered_qty) || 0), 0);
+            const deliveredPct = totalQty > 0 ? (deliveredQty / totalQty) * 100 : 0;
+            if (totalQty > 0 && deliveredPct >= 99.9) return;
+
             displayOrders.push({
               id: ro.ro_no,
               type: 'RO',
               number: ro.ro_no,
               date: ro.ro_date,
+              partyId: ro.party_id || '—',
               deliveryDate: ro.delivery_date,
               tradeId: ro.trade_id,
               linkedDoc: ro.contract_ref ? `Ref: ${ro.contract_ref}` : null,
@@ -437,110 +488,113 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         const isLoadingAll = posLoading || rosLoading;
 
         return (
-          <div className="space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Orders &amp; Releases</h2>
-                <p className="text-xs text-slate-500 mt-1">Manage purchase orders and release orders.</p>
+          <div className="flex-1 p-6 bg-slate-100 text-slate-900 min-h-screen">
+            <div className="max-w-4xl mx-auto space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Orders &amp; Releases</h2>
+                  <p className="text-xs text-slate-500 mt-1">Manage purchase orders and release orders.</p>
+                </div>
               </div>
-            </div>
 
-            {/* Search Bar */}
-            <div className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors focus-within:border-[var(--theme-color)]">
-              <Search size={18} className="text-slate-400 shrink-0" />
-              <input
-                type="text"
-                placeholder="Search orders by number, trade reference, linked doc, or item code..."
-                value={orderSearchQuery}
-                onChange={(e) => setOrderSearchQuery(e.target.value)}
-                className="w-full bg-transparent focus:outline-none text-sm text-slate-900 placeholder:text-slate-400 font-medium"
-              />
-            </div>
-
-            {/* Filter Pills */}
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
-              {[
-                { id: 'ALL', label: 'All Orders' },
-                { id: 'PO',  label: 'Purchase Orders (PO)' },
-                { id: 'PO_BUY', label: 'Buy POs' },
-                { id: 'RO',  label: 'Release Orders (RO)' }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setOrderFilter(tab.id)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${orderFilter === tab.id ? 'text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`}
-                  style={orderFilter === tab.id ? { backgroundColor: 'var(--theme-color)' } : undefined}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {isLoadingAll && displayOrders.length === 0 ? (
-              <p className="text-center text-xs font-bold text-slate-400 py-10 animate-pulse">Loading Orders...</p>
-            ) : displayOrders.length === 0 ? (
-              <p className="text-center text-xs font-bold text-slate-400 py-10">No orders match filter or search.</p>
-            ) : (
-              <div className="space-y-3">
-                {displayOrders.map((ord) => {
-                  const total = calcTotal(ord);
-                  const itemCount = (ord.items || []).length;
-                  return (
-                    <div
-                      key={ord.id}
-                      className="bg-white border border-slate-200 rounded-lg px-5 py-4 shadow-sm flex flex-col sm:flex-row sm:items-center gap-3 hover:border-[var(--theme-color)] hover:shadow-md cursor-pointer transition-all"
-                      onClick={() => navigate(ord.navigatePath)}
-                    >
-                      {/* Left: Order No + meta */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono font-black text-sm text-slate-900">{ord.number}</span>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border ${ord.type === 'PO' ? 'text-blue-700 bg-blue-50 border-blue-200' : 'text-purple-700 bg-purple-50 border-purple-200'}`}>
-                            {ord.type}
-                          </span>
-                          {ord.linkedDoc && (
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                              {ord.linkedDoc}
-                            </span>
-                          )}
-                          {ord.tradeId && (
-                            <span
-                              className="text-[10px] font-bold px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-75 transition-opacity"
-                              style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' }}
-                              onClick={(e) => { e.stopPropagation(); navigate(`/trade/${ord.tradeId}`); }}
-                              title="Open Trade"
-                            >
-                              {ord.tradeId}
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] font-semibold text-slate-500">
-                          <span>Date: {fmtDate(ord.date)}</span>
-                          {ord.deliveryDate && <span>Delivery: {fmtDate(ord.deliveryDate)}</span>}
-                          <span>{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
-                        </div>
-                      </div>
-
-                      {/* Right: total + status badge */}
-                      <div className="flex items-center gap-4 shrink-0">
-                        <div className="text-right">
-                          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Grand Total</div>
-                          <div className="font-black text-base text-slate-900">₹{fmt(total)}</div>
-                        </div>
-                        <span className="px-2.5 py-1 text-[10px] font-black uppercase rounded-lg border"
-                          style={{
-                            color: ord.type === 'PO' ? '#4f46e5' : '#8b5cf6',
-                            borderColor: ord.type === 'PO' ? '#a5b4fc' : '#c084fc',
-                            backgroundColor: ord.type === 'PO' ? '#eef2ff' : '#f5f3ff'
-                          }}>
-                          {ord.status}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+              {/* Search Bar */}
+              <div className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors focus-within:border-[var(--theme-color)]">
+                <Search size={18} className="text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Search orders by number, trade reference, linked doc, or item code..."
+                  value={orderSearchQuery}
+                  onChange={(e) => setOrderSearchQuery(e.target.value)}
+                  className="w-full bg-transparent focus:outline-none text-sm text-slate-900 placeholder:text-slate-400 font-medium"
+                />
               </div>
-            )}
+
+              {/* Filter Pills */}
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                {[
+                  { id: 'ALL', label: 'All Orders' },
+                  { id: 'PO',  label: 'Purchase Orders (PO)' },
+                  { id: 'PO_BUY', label: 'Buy POs' },
+                  { id: 'RO',  label: 'Release Orders (RO)' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setOrderFilter(tab.id)}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${orderFilter === tab.id ? 'text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`}
+                    style={orderFilter === tab.id ? { backgroundColor: 'var(--theme-color)' } : undefined}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {isLoadingAll && displayOrders.length === 0 ? (
+                <p className="text-center text-xs font-bold text-slate-400 py-10 animate-pulse">Loading Orders...</p>
+              ) : displayOrders.length === 0 ? (
+                <p className="text-center text-xs font-bold text-slate-400 py-10">No orders match filter or search.</p>
+              ) : (
+                <div className="border border-slate-300 rounded-lg overflow-x-auto bg-white shadow-sm animate-fade-in">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                        <th className="px-4 py-2.5">PO/RO Number</th>
+                        <th className="px-4 py-2.5">PO/RO Date</th>
+                        <th className="px-4 py-2.5">Party ID</th>
+                        <th className="px-4 py-2.5 text-right">Total Rate</th>
+                        <th className="px-4 py-2.5 text-right">% Delivered</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {displayOrders.map((ord) => {
+                        const total = calcTotal(ord);
+                        const totalQty = ord.items.reduce((s, i) => s + (parseInt(i.quantity) || 0), 0);
+                        const deliveredQty = ord.items.reduce((s, i) => s + (parseInt(i.delivered_qty) || 0), 0);
+                        const deliveredPct = totalQty > 0 ? ((deliveredQty / totalQty) * 100).toFixed(1) : '0.0';
+
+                        return (
+                          <tr 
+                            key={ord.id} 
+                            onClick={() => navigate(ord.navigatePath)}
+                            className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                          >
+                            <td className="px-4 py-3 font-mono font-bold text-slate-900 group-hover:text-[var(--theme-color)]">
+                              <div className="flex items-center gap-1.5">
+                                <span>{ord.number}</span>
+                                <span className={`text-[9px] font-black uppercase px-1 py-0.5 rounded border ${ord.type === 'PO' ? 'text-blue-700 bg-blue-50 border-blue-200' : 'text-purple-700 bg-purple-50 border-purple-200'}`}>
+                                  {ord.type}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 font-semibold">
+                              {fmtDate(ord.date)}
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-slate-700 font-mono">
+                              {ord.partyId}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-slate-900">
+                              ₹{fmt(total)}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold">
+                              <span 
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  parseFloat(deliveredPct) === 100 
+                                    ? 'text-green-700 bg-green-50 border border-green-200' 
+                                    : parseFloat(deliveredPct) === 0
+                                    ? 'text-slate-500 bg-slate-50 border border-slate-200'
+                                    : 'text-amber-700 bg-amber-50 border border-amber-200'
+                                }`}
+                              >
+                                {deliveredPct}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         );
       }

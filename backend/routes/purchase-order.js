@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { pool, appendDocToTrade } = require('../db');
+const { updateTradeDeliveryStatus } = require('./delivery-note');
+const { updateTradePaymentStatus } = require('./payment');
+
 
 // Update a single PO item's status and vendor (inline edit)
 router.put('/:po_no/items/:item_code', async (req, res) => {
@@ -65,13 +68,25 @@ router.get('/', async (req, res) => {
         po.trade_id, po.created_at,
         t.trade_type,
         t.status AS trade_status,
+        COALESCE(
+          (SELECT r.customer_id FROM rfqs r WHERE r.trade_id = po.trade_id LIMIT 1),
+          (SELECT rq.customer_id FROM received_quotations rq WHERE rq.trade_id = po.trade_id LIMIT 1),
+          '—'
+        ) AS party_id,
         (
           SELECT COALESCE(json_agg(json_build_object(
             'item_code', poi.item_code,
             'quantity', poi.quantity,
             'unit_price', poi.unit_price,
             'gst_rate', poi.gst_rate,
-            'gst_type', poi.gst_type
+            'gst_type', poi.gst_type,
+            'delivered_qty', COALESCE((
+              SELECT SUM(dni.quantity)
+              FROM delivery_note_items dni
+              JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no
+              WHERE dn.po_no = po.po_no
+                AND dni.item_code = poi.item_code
+            ), 0)
           )), '[]')
           FROM purchase_order_items poi
           WHERE poi.po_no = po.po_no
@@ -232,6 +247,13 @@ router.post('/', async (req, res) => {
     // Append to trade documents
     if (trade_id) {
       await appendDocToTrade(client, trade_id, 'PO', po_no);
+      await client.query(
+        "INSERT INTO status (name) VALUES ('ordered') ON CONFLICT (name) DO NOTHING"
+      );
+      await client.query(
+        "UPDATE trades SET status = 'ordered' WHERE trade_id = $1",
+        [trade_id]
+      );
     }
 
     await client.query('COMMIT');
@@ -309,6 +331,17 @@ router.put('/:po_no', async (req, res) => {
           ]
         );
       }
+    }
+
+    // After updating items, recalculate delivery and payment statuses
+    const tradeRes = await client.query(
+      'SELECT trade_id FROM purchase_orders WHERE po_no = $1',
+      [po_no]
+    );
+    const trade_id = tradeRes.rows.length > 0 ? tradeRes.rows[0].trade_id : null;
+    if (trade_id) {
+      await updateTradeDeliveryStatus(client, trade_id);
+      await updateTradePaymentStatus(client, trade_id);
     }
 
     await client.query('COMMIT');

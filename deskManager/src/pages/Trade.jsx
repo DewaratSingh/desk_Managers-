@@ -13,12 +13,23 @@ import InvoicePanel   from './panel/InvoicePanel';
 // Status pill colours
 const statusStyle = (s) => {
   const v = (s || '').toLowerCase();
-  if (v === 'ordered')   return { color: '#4f46e5', borderColor: '#a5b4fc', backgroundColor: '#eef2ff' };
-  if (v === 'quotation') return { color: '#0369a1', borderColor: '#7dd3fc', backgroundColor: '#f0f9ff' };
-  if (v === 'payment')   return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
-  if (v === 'completed') return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
-  if (v === 'cancelled') return { color: '#9f1239', borderColor: '#fca5a5', backgroundColor: '#fff1f2' };
+  if (v === 'ordered')             return { color: '#4f46e5', borderColor: '#a5b4fc', backgroundColor: '#eef2ff' };
+  if (v === 'quotation')           return { color: '#0369a1', borderColor: '#7dd3fc', backgroundColor: '#f0f9ff' };
+  if (v === 'payment')             return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'completed')           return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'delivered')           return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'payed')               return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
+  if (v === 'partially delivered') return { color: '#d97706', borderColor: '#fcd34d', backgroundColor: '#fef3c7' };
+  if (v === 'cancelled')           return { color: '#9f1239', borderColor: '#fca5a5', backgroundColor: '#fff1f2' };
   return { color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' };
+};
+
+const tradeTypeStyle = (type) => {
+  const t = (type || '').toUpperCase();
+  if (t === 'SELL') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
+  if (t === 'BUY')  return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
+  if (t === 'ARC')  return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
+  return { color: '#475569', borderColor: '#cbd5e1', backgroundColor: '#f8fafc' };
 };
 
 // ── Status Updater Component ──────────────────────────────────────────────────
@@ -374,11 +385,23 @@ export default function TradeView() {
     });
   }
 
+  const quotationIdx = docs.findIndex(d => d.type?.toUpperCase() === 'QUOTATION');
+  const hasSubsequentDocs = hasPoDoc || (quotationIdx !== -1 && quotationIdx < docs.length - 1);
+
   if (hasQuotationDoc || (rfq && !hasPoDoc)) {
     panels.push({
       key: 'quotation',
       label: '② Quotation',
-      component: <QuotationPanel quotation={quotation} rfq={rfq} tradeId={trade.trade_id} />
+      component: (
+        <QuotationPanel
+          quotation={quotation}
+          rfq={rfq}
+          tradeId={trade.trade_id}
+          tradeType={trade.trade_type}
+          onRefresh={() => fetchTradeDetails(trade.trade_id)}
+          hasSubsequentDocs={hasSubsequentDocs}
+        />
+      )
     });
   }
 
@@ -454,6 +477,10 @@ export default function TradeView() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Trade Record</span>
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded border"
+                  style={tradeTypeStyle(trade.trade_type)}>
+                  {trade.trade_type}
+                </span>
                 <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full border"
                   style={statusStyle(trade.status)}>
                   {trade.status}

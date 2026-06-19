@@ -58,6 +58,9 @@ router.post('/', async (req, res) => {
     // Append to trade documents
     await appendDocToTrade(client, trade_id, 'PAYMENT', payment_no);
 
+    // Update trade payment status based on whether it is fully paid
+    await updateTradePaymentStatus(client, trade_id);
+
     await client.query('COMMIT');
     res.status(201).json({ payment_no, trade_id });
   } catch (err) {
@@ -86,6 +89,13 @@ router.put('/:payment_no', async (req, res) => {
       [payment_date, parseFloat(total_amount) || 0, payment_no]
     );
     if (result.rows.length === 0) throw new Error('Payment not found');
+
+    // Update trade payment status based on whether it is fully paid
+    const updatedPayment = result.rows[0];
+    if (updatedPayment.trade_id) {
+      await updateTradePaymentStatus(client, updatedPayment.trade_id);
+    }
+
     await client.query('COMMIT');
     res.json({ payment_no });
   } catch (err) {
@@ -97,4 +107,37 @@ router.put('/:payment_no', async (req, res) => {
   }
 });
 
+async function updateTradePaymentStatus(client, trade_id) {
+  if (!trade_id) return;
+
+  const res = await client.query(`
+    SELECT 
+      COALESCE(
+        (SELECT (basic_value + packing_forward + transport + other + gst) FROM purchase_orders WHERE trade_id = $1 LIMIT 1),
+        (SELECT (basic_value + packing_forward + transport + other + gst) FROM release_orders WHERE trade_id = $1 LIMIT 1),
+        0
+      )::numeric AS expected_total,
+      COALESCE(
+        (SELECT SUM(total_amount) FROM payments WHERE trade_id = $1),
+        0
+      )::numeric AS paid_total
+  `, [trade_id]);
+
+  if (res.rows.length > 0) {
+    const expected = parseFloat(res.rows[0].expected_total) || 0;
+    const paid = parseFloat(res.rows[0].paid_total) || 0;
+
+    if (expected > 0 && paid >= expected - 0.01) {
+      await client.query(
+        "INSERT INTO status (name) VALUES ('payed') ON CONFLICT (name) DO NOTHING"
+      );
+      await client.query(
+        "UPDATE trades SET status = 'payed' WHERE trade_id = $1",
+        [trade_id]
+      );
+    }
+  }
+}
+
 module.exports = router;
+module.exports.updateTradePaymentStatus = updateTradePaymentStatus;
