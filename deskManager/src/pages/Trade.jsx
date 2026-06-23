@@ -343,10 +343,18 @@ export default function TradeView() {
           <h2 className="text-base font-bold text-slate-900">Error Loading Trade</h2>
           <p className="text-xs text-slate-500 mt-1">{error || 'Trade details could not be retrieved.'}</p>
         </div>
-        <button onClick={() => navigate('/')}
-          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer">
-          Go to Dashboard
-        </button>
+        <div className="flex gap-3">
+          <button onClick={() => navigate(-1)}
+            className="flex-1 px-4 py-2 border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-semibold text-slate-700 transition-colors cursor-pointer"
+          >
+            Go Back
+          </button>
+          <button onClick={() => navigate('/')}
+            className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 transition-colors cursor-pointer"
+          >
+            Dashboard
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -511,7 +519,7 @@ export default function TradeView() {
       <div className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <button onClick={() => navigate('/')}
+            <button onClick={() => navigate(-1)}
               className="p-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer shrink-0">
               <ArrowLeft size={15} />
             </button>

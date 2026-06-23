@@ -70,8 +70,8 @@ router.get('/next-no', async (req, res) => {
 });
 
 // Get a single RO
-router.get('/:ro_no', async (req, res) => {
-  const { ro_no } = req.params;
+router.get('/*ro_no', async (req, res) => {
+  const ro_no = Array.isArray(req.params.ro_no) ? req.params.ro_no.join('/') : req.params.ro_no;
   try {
     const result = await pool.query(`
       SELECT
@@ -152,7 +152,7 @@ router.post('/', async (req, res) => {
     // Resolve or generate trade_id
     let trade_id = req_trade_id || null;
     if (!trade_id) {
-      trade_id = 'TRD-' + ro_no.replace(/\s+/g, '-');
+      trade_id = 'TRD-' + ro_no.replace(/[\s/]+/g, '-');
       // Check duplicate trade_id
       const tradeDupCheck = await client.query('SELECT trade_id FROM trades WHERE trade_id = $1', [trade_id]);
       if (tradeDupCheck.rows.length > 0) {
@@ -234,8 +234,8 @@ router.post('/', async (req, res) => {
 });
 
 // Update a RO
-router.put('/:ro_no', async (req, res) => {
-  const { ro_no } = req.params;
+router.put('/*ro_no', async (req, res) => {
+  const ro_no = Array.isArray(req.params.ro_no) ? req.params.ro_no.join('/') : req.params.ro_no;
   const {
     contract_ref, ro_date, delivery_date,
     buyer_id, customer_id,
@@ -322,8 +322,9 @@ router.put('/:ro_no', async (req, res) => {
 });
 
 // Update a single RO item's status and vendor (inline edit)
-router.put('/:ro_no/items/:item_code', async (req, res) => {
-  const { ro_no, item_code } = req.params;
+router.put('/*ro_no/items/:item_code', async (req, res) => {
+  const ro_no = Array.isArray(req.params.ro_no) ? req.params.ro_no.join('/') : req.params.ro_no;
+  const { item_code } = req.params;
   const { status, vendor } = req.body || {};
 
   if (status === undefined && vendor === undefined) {

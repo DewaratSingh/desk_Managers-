@@ -77,7 +77,7 @@ router.post('/', async (req, res) => {
     }
 
     // Generate trade_id
-    const trade_id = 'TRD-' + rfq_no.replace(/\s+/g, '-');
+    const trade_id = 'TRD-' + rfq_no.replace(/[\s/]+/g, '-');
 
     // Check duplicate trade_id
     const tradeDupCheck = await client.query('SELECT trade_id FROM trades WHERE trade_id = $1', [trade_id]);

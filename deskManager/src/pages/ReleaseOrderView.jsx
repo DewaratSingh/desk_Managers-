@@ -119,7 +119,8 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
 
 /* ── Main component ────────────────────────────────────────────────────────── */
 export default function ReleaseOrderView() {
-  const { ro_no: rawParam } = useParams();
+  const params = useParams();
+  const rawParam = params.ro_no || params['*'];
   const ro_no = decodeURIComponent(rawParam);
   const navigate = useNavigate();
 

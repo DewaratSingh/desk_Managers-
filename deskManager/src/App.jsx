@@ -46,7 +46,7 @@ function App() {
             <Route path="/updateInvoice/:id" element={<InvoiceForm />} />
             <Route path="/order" element={<Dashboard activeTab="purchase-order" />} />
             <Route path="/order/:po_no" element={<PurchaseOrderView />} />
-            <Route path="/release-order/:ro_no" element={<ReleaseOrderView />} />
+            <Route path="/release-order/*" element={<ReleaseOrderView />} />
             <Route path="/trade/:tradeid" element={<TradeView />} />
             <Route path="/trade/:tradeid/:deliveryId" element={<TradeView />} />
             <Route path="/party" element={<AddCustomerView />} />
@@ -61,7 +61,7 @@ function App() {
           <Route path="/addQuotation" element={<QuotationForm />} />
           <Route path="/updateQuotation/:id" element={<QuotationForm />} />
           <Route path="/addReleaseOrder" element={<ReleaseOrderForm />} />
-          <Route path="/updateReleaseOrder/:id" element={<ReleaseOrderForm />} />
+          <Route path="/updateReleaseOrder/*" element={<ReleaseOrderForm />} />
           <Route path="/addReceivedQuotation" element={<ReceivedQuotationForm />} />
           <Route path="/updateReceivedQuotation/:id" element={<ReceivedQuotationForm />} />
           <Route path="/party/form" element={<AddCustomerView />} />
