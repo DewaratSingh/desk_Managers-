@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -27,7 +28,10 @@ const EMPTY_FORM = {
 };
 
 export default function InventoryView() {
-  const [viewMode, setViewMode] = useState('list'); // 'list' or 'form'
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isFormRoute = location.pathname.endsWith('/form');
+  const [viewMode, setViewMode] = useState(isFormRoute ? 'form' : 'list');
   const [inventoryList, setInventoryList] = useState([]);
   const [items, setItems] = useState([]);
   const [rfqs, setRfqs] = useState([]);
@@ -47,6 +51,32 @@ export default function InventoryView() {
 
   const units = ['Piece', 'Kg', 'Meter', 'Box', 'Set', 'Liter', 'Ton', 'Nos'];
 
+  useEffect(() => {
+    if (isFormRoute) {
+      setViewMode('form');
+      if (location.state?.editingInventory) {
+        const item = location.state.editingInventory;
+        setEditingId(item.id);
+        setFormData({
+          item_code: item.item_code || '',
+          quantity_in_stock: item.quantity_in_stock || '',
+          unit: item.unit || 'Piece',
+          location: item.location || '',
+          rack: item.rack || '',
+          shelf_number: item.shelf_number || '',
+          allocated_quantity: item.allocated_quantity || '0',
+          rfq_no: item.rfq_no || '',
+          notes: item.notes || ''
+        });
+      } else {
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+      }
+    } else {
+      setViewMode('list');
+    }
+  }, [location.pathname, location.state, isFormRoute]);
+
   // Handle click outside autocomplete suggestions
   useEffect(() => {
     function handleClickOutside(event) {
@@ -63,11 +93,13 @@ export default function InventoryView() {
 
   // Debounced search for inventory list (offset-based)
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchInventory(false, searchQuery);
-    }, 200);
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+    if (!isFormRoute) {
+      const delayDebounceFn = setTimeout(() => {
+        fetchInventory(false, searchQuery);
+      }, 200);
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery, isFormRoute]);
 
   // Debounced search for items (form datalist, limit 5)
   useEffect(() => {
@@ -162,25 +194,11 @@ export default function InventoryView() {
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleOpenAddForm = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
-    setViewMode('form');
+    navigate('/inventory/form');
   };
 
   const handleEditClick = (item) => {
-    setEditingId(item.id);
-    setFormData({
-      item_code: item.item_code || '',
-      quantity_in_stock: item.quantity_in_stock || '',
-      unit: item.unit || 'Piece',
-      location: item.location || '',
-      rack: item.rack || '',
-      shelf_number: item.shelf_number || '',
-      allocated_quantity: item.allocated_quantity || '0',
-      rfq_no: item.rfq_no || '',
-      notes: item.notes || ''
-    });
-    setViewMode('form');
+    navigate('/inventory/form', { state: { editingInventory: item } });
   };
 
   const handleDeleteClick = async (id) => {
@@ -206,9 +224,7 @@ export default function InventoryView() {
   };
 
   const handleBackToDirectory = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
-    setViewMode('list');
+    navigate(-1);
   };
 
   const handleSubmit = async (e) => {

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Plus, RefreshCw, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, History } from 'lucide-react';
 import { toast } from 'react-toastify';
+import ItemQuoteHistory from '../components/ItemQuoteHistory.jsx';
+import { useReceivedQuotation } from '../context/ReceivedQuotationContext.jsx';
 
 const DEFAULT_TERMS = [
   "1. Price Validity: 30 days from date of quote.\n2. Delivery: 4-6 weeks after receipt of technically and commercially clear PO.\n3. Payment Terms: 30% advance with order, balance against delivery.\n4. Warranty: 12 months from dispatch.",
@@ -25,34 +27,37 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const [formData, setFormData] = useState({
-    received_quotation_no: '',
-    buyer_id: '',
-    buyer_email: '',
-    buyer_phone: '',
-    customer_id: '',
-    quotation_date: '',
-    terms_and_conditions: ''
-  });
+  const {
+    activeRqId,
+    setActiveRqId,
+    formData,
+    setFormData,
+    selectedItems,
+    setSelectedItems,
+    buyerInput,
+    setBuyerInput,
+    customerInput,
+    setCustomerInput,
+    itemInput,
+    setItemInput,
+    historyItem,
+    setHistoryItem,
+    resetRqState
+  } = useReceivedQuotation();
 
   // Buyer Autocomplete state
-  const [buyerInput, setBuyerInput] = useState('');
   const [buyerSuggestions, setBuyerSuggestions] = useState([]);
   const [showBuyerDropdown, setShowBuyerDropdown] = useState(false);
   const [buyerNotFound, setBuyerNotFound] = useState(false);
 
   // Customer Autocomplete state
-  const [customerInput, setCustomerInput] = useState('');
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [customerNotFound, setCustomerNotFound] = useState(false);
 
   // Item Autocomplete state
-  const [itemInput, setItemInput] = useState('');
   const [itemSuggestions, setItemSuggestions] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
-
-  const [selectedItems, setSelectedItems] = useState([]);
 
   const buyerRef = useRef(null);
   const customerRef = useRef(null);
@@ -77,24 +82,19 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
 
   // Edit or Create mode selection
   useEffect(() => {
-    if (editingNo) {
-      fetchQuotationDetails(editingNo);
-    } else {
-      const randomTerm = DEFAULT_TERMS[Math.floor(Math.random() * DEFAULT_TERMS.length)];
-      setFormData({
-        received_quotation_no: '',
-        buyer_id: '',
-        buyer_email: '',
-        buyer_phone: '',
-        customer_id: '',
-        quotation_date: new Date().toISOString().split('T')[0],
-        terms_and_conditions: randomTerm
-      });
-      setSelectedItems([]);
-      setBuyerInput('');
-      setCustomerInput('');
+    if (activeRqId !== editingNo) {
+      if (editingNo) {
+        fetchQuotationDetails(editingNo);
+      } else {
+        resetRqState(null);
+        const randomTerm = DEFAULT_TERMS[Math.floor(Math.random() * DEFAULT_TERMS.length)];
+        setFormData(prev => ({
+          ...prev,
+          terms_and_conditions: randomTerm
+        }));
+      }
     }
-  }, [editingNo]);
+  }, [editingNo, activeRqId]);
 
   // Debounced search for buyers (limit 5)
   useEffect(() => {
@@ -173,6 +173,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
       const res = await fetch(`/api/received-quotations/${encodeURIComponent(rqNo)}`);
       if (res.ok) {
         const data = await res.json();
+        setActiveRqId(rqNo);
         setFormData({
           received_quotation_no: data.received_quotation_no,
           buyer_id: data.buyer_id || '',
@@ -197,6 +198,15 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
   };
 
   const handleBackToDirectory = () => {
+    if (queryTradeId) {
+      navigate(`/trade/${queryTradeId}`);
+    } else {
+      navigate('/');
+    }
+  };
+
+  const handleCancel = () => {
+    resetRqState(undefined);
     if (queryTradeId) {
       navigate(`/trade/${queryTradeId}`);
     } else {
@@ -347,6 +357,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
 
       if (res.ok) {
         const data = await res.json();
+        resetRqState(undefined);
         toast.success(`Received Quotation ${editingNo ? 'updated' : 'created'} successfully!`);
         const destTradeId = queryTradeId || data.trade_id;
         if (destTradeId) {
@@ -368,7 +379,16 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900 font-sans">
-      <div className="max-w-2xl mx-auto space-y-5">
+      <div className={historyItem ? "max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6 items-start" : "max-w-2xl mx-auto space-y-5"}>
+        <div className={historyItem ? "lg:col-span-3 space-y-5 flex flex-col w-full" : "space-y-5 flex flex-col w-full"}>
+          <button
+            type="button"
+            onClick={handleBackToDirectory}
+            className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
+          >
+          <ArrowLeft size={14} />
+          Back
+        </button>
         
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg flex items-center gap-1.5">
@@ -464,20 +484,14 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                   <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
                     <div className="flex items-center gap-1.5">
                       <AlertCircle size={13} className="shrink-0" />
-                      <span>No buyer found for "{buyerInput}".</span>
+                      <span>No seller found for "{buyerInput}".</span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (onNavigateAndOpenForm) {
-                          onNavigateAndOpenForm('add-buyer');
-                        } else {
-                          navigate('/', { state: { openTab: 'add-buyer' } });
-                        }
-                      }}
+                      onClick={() => navigate('/buyer/form')}
                       className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
                     >
-                      Add Buyer
+                      Add SELLER
                     </button>
                   </div>
                 )}
@@ -528,20 +542,14 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                   <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
                     <div className="flex items-center gap-1.5">
                       <AlertCircle size={13} className="shrink-0" />
-                      <span>No customer found for "{customerInput}".</span>
+                      <span>No vendor found for "{customerInput}".</span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (onNavigateAndOpenForm) {
-                          onNavigateAndOpenForm('add-customer');
-                        } else {
-                          navigate('/', { state: { openTab: 'add-customer' } });
-                        }
-                      }}
+                      onClick={() => navigate('/party/form')}
                       className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
                     >
-                      Add Customer
+                      Add VENDOR
                     </button>
                   </div>
                 )}
@@ -600,13 +608,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (onNavigateAndOpenForm) {
-                            onNavigateAndOpenForm('add-item');
-                          } else {
-                            navigate('/', { state: { openTab: 'add-item' } });
-                          }
-                        }}
+                        onClick={() => navigate('/item/form')}
                         className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
                       >
                         Add Item
@@ -625,69 +627,86 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                     </div>
                     <div className="divide-y divide-slate-100">
                       {selectedItems.map((item) => (
-                        <div
-                          key={item.item_code}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors gap-3"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
-                                {item.item_code}
-                              </span>
-                              {item.drawing_number && (
-                                <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-                                  DRW: {item.drawing_number}
+                        <div key={item.item_code} className="px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                                  {item.item_code}
                                 </span>
-                              )}
+                                {item.drawing_number && (
+                                  <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                                    DRW: {item.drawing_number}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-600 font-semibold mt-1">{item.description}</p>
                             </div>
-                            <p className="text-xs text-slate-600 font-semibold mt-1">{item.description}</p>
+
+                            <div className="flex items-center gap-3 shrink-0">
+                              {/* Quantity input */}
+                              <div className="flex flex-col items-end">
+                                <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
+                                  Qty <b className="text-red-500">*</b>
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  required
+                                  value={item.quantity}
+                                  onChange={(e) => handleItemValueChange(item.item_code, 'quantity', e.target.value)}
+                                  className="w-20 px-2 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none"
+                                  onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                                />
+                              </div>
+
+                              {/* Price input */}
+                              <div className="flex flex-col items-end">
+                                <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
+                                  Price / Pc (₹) <b className="text-red-500">*</b>
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  required
+                                  value={item.unit_price}
+                                  onChange={(e) => handleItemValueChange(item.item_code, 'unit_price', e.target.value)}
+                                  className="w-24 px-2 py-1 text-right font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none"
+                                  onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                                />
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setHistoryItem(item.item_code)}
+                                className="p-1.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
+                                title="View Quote History"
+                              >
+                                <History size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeItem(item.item_code)}
+                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
+                                title="Remove item"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-3 shrink-0">
-                            {/* Quantity input */}
-                            <div className="flex flex-col items-end">
-                              <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                Qty <b className="text-red-500">*</b>
-                              </label>
-                              <input
-                                type="number"
-                                min="1"
-                                required
-                                value={item.quantity}
-                                onChange={(e) => handleItemValueChange(item.item_code, 'quantity', e.target.value)}
-                                className="w-20 px-2 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none"
-                                onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                                onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                          {/* Inline history panel for mobile/small screen */}
+                          {historyItem === item.item_code && (
+                            <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
+                              <ItemQuoteHistory
+                                code={historyItem}
+                                onClose={() => setHistoryItem(null)}
                               />
                             </div>
-
-                            {/* Price input */}
-                            <div className="flex flex-col items-end">
-                              <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                                Price / Pc (₹) <b className="text-red-500">*</b>
-                              </label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                required
-                                value={item.unit_price}
-                                onChange={(e) => handleItemValueChange(item.item_code, 'unit_price', e.target.value)}
-                                className="w-24 px-2 py-1 text-right font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none"
-                                onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                                onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                              />
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => removeItem(item.item_code)}
-                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
-                              title="Remove item"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -746,7 +765,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
               <button
                 type="button"
-                onClick={handleBackToDirectory}
+                onClick={handleCancel}
                 className="px-5 py-2 border border-slate-300 hover:bg-slate-50 rounded text-xs font-bold uppercase text-slate-700 transition-colors cursor-pointer"
               >
                 Cancel
@@ -774,6 +793,17 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
             </div>
           </form>
         </div>
+        </div>
+
+        {/* Right side history panel */}
+        {historyItem && (
+          <div className="hidden lg:block lg:col-span-2 bg-white border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
+            <ItemQuoteHistory
+              code={historyItem}
+              onClose={() => setHistoryItem(null)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

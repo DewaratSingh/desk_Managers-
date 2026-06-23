@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square, Search, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useReleaseOrder } from '../context/ReleaseOrderContext.jsx';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
 const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
@@ -18,72 +19,67 @@ export default function ReleaseOrderForm() {
   const [error, setError]         = useState(null);
   const [roNoError, setRoNoError] = useState('');
 
-  // Buyers search state
-  const [buyerInput, setBuyerInput]         = useState('');
+  const {
+    activeRoId,
+    setActiveRoId,
+    formData,
+    setFormData,
+    buyerInput,
+    setBuyerInput,
+    selectedBuyer,
+    setSelectedBuyer,
+    customerInput,
+    setCustomerInput,
+    selectedCustomer,
+    setSelectedCustomer,
+    itemSearchInput,
+    setItemSearchInput,
+    gstSearchInput,
+    setGstSearchInput,
+    shipInput,
+    setShipInput,
+    roItems,
+    setRoItems,
+    resetRoState
+  } = useReleaseOrder();
+
+  // Autocomplete suggestions and open state (ui-only, not cached)
   const [buyerSuggestions, setBuyerSuggestions] = useState([]);
   const [showBuyerDropdown, setShowBuyerDropdown] = useState(false);
   const [buyerNotFound, setBuyerNotFound]     = useState(false);
-  const [selectedBuyer, setSelectedBuyer]     = useState(null);
   const buyerRef = useRef(null);
 
-  // Customers search state (for Seller/Customer)
-  const [customerInput, setCustomerInput]       = useState('');
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [customerNotFound, setCustomerNotFound] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const customerRef = useRef(null);
 
-  // Items search (to add items to RO)
-  const [itemSearchInput, setItemSearchInput] = useState('');
   const [itemSuggestions, setItemSuggestions] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const itemSearchRef = useRef(null);
 
-  // Per-item GST search state keyed by item_code
-  const [gstSearchInput, setGstSearchInput]   = useState({});  // { item_code: string }
-  const [gstDropdownOpen, setGstDropdownOpen] = useState({});  // { item_code: bool }
-  const [gstSuggestions, setGstSuggestions]   = useState({});  // { item_code: array }
+  const [gstDropdownOpen, setGstDropdownOpen] = useState({});
+  const [gstSuggestions, setGstSuggestions]   = useState({});
   const gstItemRefs = useRef({});
   const gstTimeoutRefs = useRef({});
 
-  // Per-item shipping address search state
-  const [shipInput, setShipInput]           = useState({});  // { item_code: string (display) }
-  const [shipDropdownOpen, setShipDropdownOpen] = useState({});  // { item_code: bool }
-  const [shipSuggestions, setShipSuggestions]   = useState({});  // { item_code: array }
+  const [shipDropdownOpen, setShipDropdownOpen] = useState({});
+  const [shipSuggestions, setShipSuggestions]   = useState({});
   const shipItemRefs = useRef({});
   const shipTimeoutRefs = useRef({});
 
-  // RO items in form
-  const [roItems, setRoItems] = useState([]);
-
-  // Form data
-  const [formData, setFormData] = useState({
-    ro_no:           '',
-    contract_ref:    '',
-    ro_date:         new Date().toISOString().split('T')[0],
-    delivery_date:   '',
-    transport:       '0',
-    other:           '0',
-    basic_value:     '0',
-    packing_forward: '0',
-    trade_id:        '',
-  });
-
   useEffect(() => {
-    if (editingNo) {
-      fetchRoDetails(editingNo);
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        ro_date: new Date().toISOString().split('T')[0]
-      }));
-      if (queryTradeId) {
-        // Fetch RFQ items of this trade to prefill items if trade is active
-        fetchTradeRfqItems(queryTradeId);
+    if (activeRoId !== editingNo) {
+      if (editingNo) {
+        fetchRoDetails(editingNo);
+      } else {
+        resetRoState(null);
+        if (queryTradeId) {
+          fetchTradeRfqItems(queryTradeId);
+        }
       }
     }
-  }, [editingNo, queryTradeId]);
+  }, [editingNo, activeRoId, queryTradeId]);
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -290,7 +286,7 @@ export default function ReleaseOrderForm() {
       const res = await fetch(`/api/release-orders/${encodeURIComponent(roNo)}`);
       if (!res.ok) throw new Error('Failed to fetch release order details');
       const ro = await res.json();
-
+      setActiveRoId(roNo);
       setFormData({
         ro_no:           ro.ro_no,
         contract_ref:    ro.contract_ref || '',
@@ -513,7 +509,12 @@ export default function ReleaseOrderForm() {
 
   const fmt = (val) => (parseFloat(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-  const handleCancel = () => navigate(queryTradeId ? `/trade/${queryTradeId}` : '/');
+  const handleBack = () => navigate(queryTradeId ? `/trade/${queryTradeId}` : '/');
+
+  const handleCancel = () => {
+    resetRoState(undefined);
+    navigate(queryTradeId ? `/trade/${queryTradeId}` : '/');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -580,6 +581,7 @@ export default function ReleaseOrderForm() {
 
       if (res.ok) {
         const data = await res.json();
+        resetRoState(undefined);
         toast.success(`Release Order ${editingNo ? 'updated' : 'created'} successfully!`);
         const finalTradeId = queryTradeId || data.trade_id || formData.trade_id;
         navigate(finalTradeId ? `/trade/${finalTradeId}` : '/');
@@ -597,6 +599,14 @@ export default function ReleaseOrderForm() {
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900 min-h-screen">
       <div className="max-w-2xl mx-auto space-y-5">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
+        >
+          <ArrowLeft size={14} />
+          Back
+        </button>
 
         {/* Header */}
         <div>
@@ -688,9 +698,11 @@ export default function ReleaseOrderForm() {
                 placeholder="Search Buyer name or email..."
                 value={buyerInput}
                 onChange={(e) => handleBuyerInput(e.target.value)}
-                onFocus={() => buyerInput.trim() && setShowBuyerDropdown(true)}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--theme-color)';
+                  if (buyerInput.trim()) setShowBuyerDropdown(true);
+                }}
                 className={inputCls}
-                onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                 onBlur={(e)  => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 autoComplete="off"
               />
@@ -710,9 +722,18 @@ export default function ReleaseOrderForm() {
                 </div>
               )}
               {buyerNotFound && (
-                <div className="mt-2 flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                  <AlertCircle size={13} className="shrink-0" />
-                  No buyer found for "{buyerInput}".
+                <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                  <div className="flex items-center gap-1.5">
+                    <AlertCircle size={13} className="shrink-0" />
+                    <span>No buyer found for "{buyerInput}".</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/buyer/form')}
+                    className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                  >
+                    Add Buyer
+                  </button>
                 </div>
               )}
               {selectedBuyer && (
@@ -734,9 +755,11 @@ export default function ReleaseOrderForm() {
                 placeholder="Search Customer name or ID..."
                 value={customerInput}
                 onChange={(e) => handleCustomerInput(e.target.value)}
-                onFocus={() => customerInput.trim() && setShowCustomerDropdown(true)}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--theme-color)';
+                  if (customerInput.trim()) setShowCustomerDropdown(true);
+                }}
                 className={inputCls}
-                onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                 onBlur={(e)  => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 autoComplete="off"
               />
@@ -756,9 +779,18 @@ export default function ReleaseOrderForm() {
                 </div>
               )}
               {customerNotFound && (
-                <div className="mt-2 flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                  <AlertCircle size={13} className="shrink-0" />
-                  No customer found for "{customerInput}".
+                <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                  <div className="flex items-center gap-1.5">
+                    <AlertCircle size={13} className="shrink-0" />
+                    <span>No customer found for "{customerInput}".</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/party/form')}
+                    className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                  >
+                    Add Customer
+                  </button>
                 </div>
               )}
               {selectedCustomer && (

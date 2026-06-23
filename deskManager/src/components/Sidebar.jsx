@@ -16,20 +16,20 @@ import {
 } from "lucide-react";
 import logoImg from "../assets/image.jpeg";
 
-export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
+export default function Sidebar({ user, onLogout }) {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "purchase-order", label: "Order", icon: ClipboardList },
-    { id: "add-customer", label: "Party", icon: Building2 },
-    { id: "add-buyer", label: "Contact", icon: UserPlus },
-    { id: "add-item", label: "Item", icon: Package },
-    { id: "inventory", label: "Inventory", icon: Warehouse },
-    { id: "arc", label: "ARC", icon: FileSignature },
-    { id: "gst-category", label: "GST Categories", icon: Percent },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/" },
+    { id: "purchase-order", label: "Order", icon: ClipboardList, path: "/order" },
+    { id: "add-customer", label: "Party", icon: Building2, path: "/party" },
+    { id: "add-buyer", label: "Contact", icon: UserPlus, path: "/buyer" },
+    { id: "add-item", label: "Item", icon: Package, path: "/item" },
+    { id: "inventory", label: "Inventory", icon: Warehouse, path: "/inventory" },
+    { id: "arc", label: "ARC", icon: FileSignature, path: "/arc" },
+    { id: "gst-category", label: "GST Categories", icon: Percent, path: "/gst-category" },
   ];
 
   const NavContent = () => (
@@ -58,34 +58,35 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
       <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2">
         {menuItems.map((item) => {
           const isActive =
-            item.id === "addRfq"
-              ? location.pathname === "/addRfq" ||
-                location.pathname.startsWith("/updateRfq/")
+            item.id === "dashboard"
+              ? location.pathname === "/" ||
+                location.pathname.startsWith("/trade/") ||
+                location.pathname === "/addRfq" ||
+                location.pathname.startsWith("/updateRfq/") ||
+                location.pathname === "/addQuotation" ||
+                location.pathname.startsWith("/updateQuotation/") ||
+                location.pathname === "/addReceivedQuotation" ||
+                location.pathname.startsWith("/updateReceivedQuotation/")
               : item.id === "purchase-order"
-                ? location.pathname === "/order"
-                : item.id === "quotation"
-                  ? location.pathname === "/addQuotation" ||
-                    location.pathname.startsWith("/updateQuotation/") ||
-                    (location.pathname === "/" &&
-                      (activeTab === "quotation" ||
-                        activeTab === "addQuotation" ||
-                        activeTab === "updateQuotation"))
-                  : location.pathname === "/" && activeTab === item.id;
+                ? location.pathname.startsWith("/order") ||
+                  location.pathname.startsWith("/addPurchaseOrder") ||
+                  location.pathname.startsWith("/updatePurchaseOrder/") ||
+                  location.pathname.startsWith("/addReceivedPurchaseOrder") ||
+                  location.pathname.startsWith("/updateReceivedPurchaseOrder/") ||
+                  location.pathname.startsWith("/addReleaseOrder") ||
+                  location.pathname.startsWith("/updateReleaseOrder/") ||
+                  location.pathname.startsWith("/addDeliveryNote") ||
+                  location.pathname.startsWith("/updateDeliveryNote/") ||
+                  location.pathname.startsWith("/addInvoice") ||
+                  location.pathname.startsWith("/updateInvoice/") ||
+                  location.pathname.startsWith("/release-order/")
+                : location.pathname.startsWith(item.path);
+
           return (
             <button
               key={item.id}
               onClick={() => {
-                if (item.id === "addRfq") {
-                  navigate("/addRfq");
-                } else if (item.id === "quotation") {
-                  setActiveTab("quotation");
-                  navigate("/");
-                } else if (item.id === "purchase-order") {
-                  navigate("/order");
-                } else {
-                  setActiveTab(item.id);
-                  navigate("/");
-                }
+                navigate(item.path);
                 setIsOpen(false);
               }}
               className={`group w-full flex items-center gap-3 px-3 py-1.5 mb-1 rounded-lg font-semibold text-sm transition-all duration-150 text-left cursor-pointer ${isActive ? "text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"}`}

@@ -16,6 +16,13 @@ import InvoiceForm from './form/InvoiceForm'
 import PurchaseOrderView from './pages/PurchaseOrderView'
 import ReleaseOrderView from './pages/ReleaseOrderView'
 import ProtectedRoute from './components/ProtectedRoute'
+import Layout from './components/Layout'
+import AddCustomerView from './pages/AddCustomer'
+import AddBuyerView from './pages/AddBuyer'
+import AddItemView from './pages/AddItem'
+import InventoryView from './pages/Inventory'
+import ArcView from './pages/Arc'
+import GstCategoryView from './pages/GstCategory'
 
 function App() {
   return (
@@ -27,28 +34,42 @@ function App() {
         
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/addPurchaseOrder" element={<PurchaseOrderForm />} />
+            <Route path="/updatePurchaseOrder/:id" element={<PurchaseOrderForm />} />
+            <Route path="/addReceivedPurchaseOrder" element={<ReceivedPurchaseOrderForm />} />
+            <Route path="/updateReceivedPurchaseOrder/:id" element={<ReceivedPurchaseOrderForm />} />
+            <Route path="/addDeliveryNote" element={<DeliveryNoteForm />} />
+            <Route path="/updateDeliveryNote/:id" element={<DeliveryNoteForm />} />
+            <Route path="/addInvoice" element={<InvoiceForm />} />
+            <Route path="/updateInvoice/:id" element={<InvoiceForm />} />
+            <Route path="/order" element={<Dashboard activeTab="purchase-order" />} />
+            <Route path="/order/:po_no" element={<PurchaseOrderView />} />
+            <Route path="/release-order/:ro_no" element={<ReleaseOrderView />} />
+            <Route path="/trade/:tradeid" element={<TradeView />} />
+            <Route path="/trade/:tradeid/:deliveryId" element={<TradeView />} />
+            <Route path="/party" element={<AddCustomerView />} />
+            <Route path="/buyer" element={<AddBuyerView />} />
+            <Route path="/item" element={<AddItemView />} />
+            <Route path="/inventory" element={<InventoryView />} />
+            <Route path="/arc" element={<ArcView />} />
+            <Route path="/gst-category" element={<GstCategoryView />} />
+          </Route>
           <Route path="/addRfq" element={<RfqForm />} />
           <Route path="/updateRfq/:id" element={<RfqForm />} />
           <Route path="/addQuotation" element={<QuotationForm />} />
           <Route path="/updateQuotation/:id" element={<QuotationForm />} />
-          <Route path="/addReceivedQuotation" element={<ReceivedQuotationForm />} />
-          <Route path="/updateReceivedQuotation/:id" element={<ReceivedQuotationForm />} />
-          <Route path="/addPurchaseOrder" element={<PurchaseOrderForm />} />
-          <Route path="/updatePurchaseOrder/:id" element={<PurchaseOrderForm />} />
-          <Route path="/addReceivedPurchaseOrder" element={<ReceivedPurchaseOrderForm />} />
-          <Route path="/updateReceivedPurchaseOrder/:id" element={<ReceivedPurchaseOrderForm />} />
           <Route path="/addReleaseOrder" element={<ReleaseOrderForm />} />
           <Route path="/updateReleaseOrder/:id" element={<ReleaseOrderForm />} />
-          <Route path="/addDeliveryNote" element={<DeliveryNoteForm />} />
-          <Route path="/updateDeliveryNote/:id" element={<DeliveryNoteForm />} />
-          <Route path="/addInvoice" element={<InvoiceForm />} />
-          <Route path="/updateInvoice/:id" element={<InvoiceForm />} />
-          <Route path="/order" element={<Dashboard activeTab="purchase-order" />} />
-          <Route path="/order/:po_no" element={<PurchaseOrderView />} />
-          <Route path="/release-order/:ro_no" element={<ReleaseOrderView />} />
-          <Route path="/trade/:tradeid" element={<TradeView />} />
-          <Route path="/trade/:tradeid/:deliveryId" element={<TradeView />} />
+          <Route path="/addReceivedQuotation" element={<ReceivedQuotationForm />} />
+          <Route path="/updateReceivedQuotation/:id" element={<ReceivedQuotationForm />} />
+          <Route path="/party/form" element={<AddCustomerView />} />
+          <Route path="/buyer/form" element={<AddBuyerView />} />
+          <Route path="/item/form" element={<AddItemView />} />
+          <Route path="/gst-category/form" element={<GstCategoryView />} />
+          <Route path="/arc/form" element={<ArcView />} />
+          <Route path="/inventory/form" element={<InventoryView />} />
         </Route>
 
         <Route

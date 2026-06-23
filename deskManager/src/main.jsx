@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.jsx'
+import { RfqProvider } from './context/RfqContext.jsx'
+import { ReceivedQuotationProvider } from './context/ReceivedQuotationContext.jsx'
+import { ReleaseOrderProvider } from './context/ReleaseOrderContext.jsx'
 
 // Global window.fetch Interceptor for JWT injection and 401 redirect
 const originalFetch = window.fetch;
@@ -37,7 +40,13 @@ window.fetch = async function (url, options = {}) {
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <RfqProvider>
+        <ReceivedQuotationProvider>
+          <ReleaseOrderProvider>
+            <App />
+          </ReleaseOrderProvider>
+        </ReceivedQuotationProvider>
+      </RfqProvider>
     </BrowserRouter>
   </StrictMode>,
 )

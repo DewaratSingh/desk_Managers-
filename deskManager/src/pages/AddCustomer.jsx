@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -17,7 +18,10 @@ const EMPTY_FORM = {
 };
 
 export default function AddCustomerView() {
-  const [viewMode, setViewMode] = useState('list');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isFormRoute = location.pathname.endsWith('/form');
+  const [viewMode, setViewMode] = useState(isFormRoute ? 'form' : 'list');
   const [customers, setCustomers] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,12 +33,34 @@ export default function AddCustomerView() {
   const [viewingParty, setViewingParty] = useState(null);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchCustomers(false, searchQuery);
-    }, 300);
+    if (isFormRoute) {
+      setViewMode('form');
+      if (location.state?.editingCustomer) {
+        const customer = location.state.editingCustomer;
+        setEditingId(customer.id);
+        setFormData({
+          id: customer.id || '',
+          name: customer.name || '',
+          address: customer.address || ''
+        });
+      } else {
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+      }
+    } else {
+      setViewMode('list');
+    }
+  }, [location.pathname, location.state, isFormRoute]);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  useEffect(() => {
+    if (!isFormRoute) {
+      const delayDebounceFn = setTimeout(() => {
+        fetchCustomers(false, searchQuery);
+      }, 300);
+
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery, isFormRoute]);
 
   const fetchCustomers = async (isLoadMore = false, searchVal = searchQuery) => {
     if (isLoadMore) {
@@ -86,8 +112,8 @@ export default function AddCustomerView() {
           setCustomers(customers.map(c => c.id === editingId ? updated : c));
           setFormData(EMPTY_FORM);
           setEditingId(null);
-          setViewMode('list');
           toast.success('Party updated successfully!');
+          navigate(-1)
         } else {
           const errData = await res.json();
           toast.error(errData.error || 'Failed to update party');
@@ -103,8 +129,8 @@ export default function AddCustomerView() {
           setCustomers([created, ...customers]);
           setFormData(EMPTY_FORM);
           setEditingId(null);
-          setViewMode('list');
           toast.success('Party created successfully!');
+          navigate(-1)
         } else {
           const errData = await res.json();
           toast.error(errData.error || 'Failed to create party');
@@ -119,25 +145,15 @@ export default function AddCustomerView() {
   };
 
   const handleEditClick = (customer) => {
-    setEditingId(customer.id);
-    setFormData({
-      id: customer.id || '',
-      name: customer.name || '',
-      address: customer.address || ''
-    });
-    setViewMode('form');
+    navigate('/party/form', { state: { editingCustomer: customer } });
   };
 
   const handleOpenAddForm = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
-    setViewMode('form');
+    navigate('/party/form');
   };
 
   const handleBackToList = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
-    setViewMode('list');
+    navigate(-1)
   };
 
   const filteredCustomers = customers;
@@ -282,7 +298,7 @@ export default function AddCustomerView() {
         <div className="max-w-2xl mx-auto space-y-5">
           {/* Header with Back */}
           <button
-            onClick={handleBackToList}
+           onClick={() => navigate(-1)}
             className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
           >
             <ArrowLeft size={14} />
@@ -352,7 +368,7 @@ export default function AddCustomerView() {
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={handleBackToList}
+                  onClick={() => navigate(-1)}
                   className="px-5 py-2.5 border border-slate-300 rounded text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                 >
                   Cancel

@@ -15,6 +15,13 @@ router.get('/', async (req, res) => {
                      'item_code', ri.item_code,
                      'quantity', ri.quantity,
                      'unit', ri.unit,
+                     'unit_price', COALESCE((
+                       SELECT qi.unit_price 
+                       FROM quotations q 
+                       LEFT JOIN quotation_items qi ON q.quotation_no = qi.quotation_no 
+                       WHERE q.rfq_no = r.rfq_no AND qi.item_code = ri.item_code
+                       LIMIT 1
+                     ), 0),
                      'description', i.description,
                      'drawing_number', i.drawing_number
                    )
@@ -52,7 +59,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Create an RFQ
+// Create an RFQ and Quotation
 router.post('/', async (req, res) => {
   const { rfq_no, rfq_date, commercial_bid_due_date, technical_bid_due_date, buyer_id, customer_id, items } = req.body || {};
   if (!rfq_no || !rfq_date || !commercial_bid_due_date || !technical_bid_due_date || !buyer_id || !customer_id) {
@@ -78,16 +85,21 @@ router.post('/', async (req, res) => {
       throw new Error('Trade ID already exists for this RFQ');
     }
 
-    // Insert trade document
+    // Generate quotation_no
+    const qCountRes = await client.query('SELECT COUNT(*) FROM quotations');
+    const qCount = parseInt(qCountRes.rows[0].count) || 0;
+    const quotation_no = `QT-${String(qCount + 1).padStart(4, '0')}`;
+
+    // Insert trade document (status is 'quotation' since both RFQ and Quotation are made)
     await client.query(
-      "INSERT INTO trades (trade_id, status, trade_type, documents) VALUES ($1, 'rfq', 'sell', $2)",
-      [trade_id, JSON.stringify([{ type: 'RFQ', id: rfq_no }])]
+      "INSERT INTO trades (trade_id, status, trade_type, documents) VALUES ($1, 'quotation', 'sell', $2)",
+      [trade_id, JSON.stringify([{ type: 'RFQ', id: rfq_no }, { type: 'QUOTATION', id: quotation_no }])]
     );
 
-    // Insert RFQ
+    // Insert RFQ (status is 'quotated' because quotation is created)
     await client.query(
       'INSERT INTO rfqs (rfq_no, rfq_date, commercial_bid_due_date, technical_bid_due_date, buyer_id, customer_id, status, trade_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [rfq_no, rfq_date, commercial_bid_due_date, technical_bid_due_date, buyer_id, customer_id, 'rfq', trade_id]
+      [rfq_no, rfq_date, commercial_bid_due_date, technical_bid_due_date, buyer_id, customer_id, 'quotated', trade_id]
     );
 
     // Insert RFQ Items
@@ -100,13 +112,34 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Insert Quotation
+    await client.query(
+      'INSERT INTO quotations (quotation_no, rfq_no, quotation_date, terms_and_conditions, trade_id, status) VALUES ($1, $2, $3, $4, $5, $6)',
+      [quotation_no, rfq_no, rfq_date, 'Standard Quotation terms', trade_id, 'active']
+    );
+
+    // Insert Quotation Items
+    if (Array.isArray(items) && items.length > 0) {
+      for (const item of items) {
+        await client.query(
+          'INSERT INTO quotation_items (quotation_no, item_code, quantity, unit_price, unit) VALUES ($1, $2, $3, $4, $5)',
+          [quotation_no, item.item_code, parseInt(item.quantity) || 1, parseFloat(item.unit_price) || 0, item.unit || 'Piece']
+        );
+      }
+    }
+
+    // Insert status name into status table if not exists
+    await client.query(
+      "INSERT INTO status (name) VALUES ('quotation') ON CONFLICT (name) DO NOTHING"
+    );
+
     await client.query('COMMIT');
 
-    res.status(201).json({ rfq_no, trade_id });
+    res.status(201).json({ rfq_no, trade_id, quotation_no });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Error creating RFQ:', err.message);
-    res.status(500).json({ error: err.message || 'Failed to create RFQ' });
+    console.error('Error creating RFQ & Quotation:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to create RFQ & Quotation' });
   } finally {
     client.release();
   }
@@ -124,6 +157,7 @@ router.get('/:rfq_no', async (req, res) => {
                    'item_code', ri.item_code,
                    'quantity', ri.quantity,
                    'unit', ri.unit,
+                   'unit_price', COALESCE(qi.unit_price, 0),
                    'description', i.description,
                    'drawing_number', i.drawing_number
                  )
@@ -135,8 +169,10 @@ router.get('/:rfq_no', async (req, res) => {
       LEFT JOIN customers c ON r.customer_id = c.id
       LEFT JOIN rfq_items ri ON r.rfq_no = ri.rfq_no
       LEFT JOIN items i ON ri.item_code = i.item_code
+      LEFT JOIN quotations q ON r.rfq_no = q.rfq_no
+      LEFT JOIN quotation_items qi ON q.quotation_no = qi.quotation_no AND ri.item_code = qi.item_code
       WHERE r.rfq_no = $1
-      GROUP BY r.rfq_no, b.name, b.email, b.phone, c.name, c.address
+      GROUP BY r.rfq_no, b.name, b.email, b.phone, c.name, c.address, q.quotation_no
     `, [rfq_no]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'RFQ not found' });
@@ -148,7 +184,7 @@ router.get('/:rfq_no', async (req, res) => {
   }
 });
 
-// Update an RFQ
+// Update an RFQ & Quotation
 router.put('/:rfq_no', async (req, res) => {
   const { rfq_no } = req.params;
   const { rfq_date, commercial_bid_due_date, technical_bid_due_date, buyer_id, customer_id, items } = req.body || {};
@@ -168,11 +204,43 @@ router.put('/:rfq_no', async (req, res) => {
     if (updateResult.rows.length === 0) {
       throw new Error('RFQ not found');
     }
+    const rfq = updateResult.rows[0];
 
-    // Delete items
+    // Find or create linked quotation
+    const qtnCheck = await client.query('SELECT quotation_no FROM quotations WHERE rfq_no = $1', [rfq_no]);
+    let quotation_no;
+    if (qtnCheck.rows.length > 0) {
+      quotation_no = qtnCheck.rows[0].quotation_no;
+      // Update quotation date
+      await client.query(
+        'UPDATE quotations SET quotation_date = $1 WHERE quotation_no = $2',
+        [rfq_date, quotation_no]
+      );
+    } else {
+      const qCountRes = await client.query('SELECT COUNT(*) FROM quotations');
+      const qCount = parseInt(qCountRes.rows[0].count) || 0;
+      quotation_no = `QT-${String(qCount + 1).padStart(4, '0')}`;
+      
+      await client.query(
+        'INSERT INTO quotations (quotation_no, rfq_no, quotation_date, terms_and_conditions, trade_id, status) VALUES ($1, $2, $3, $4, $5, $6)',
+        [quotation_no, rfq_no, rfq_date, 'Standard Quotation terms', rfq.trade_id, 'active']
+      );
+      
+      // Ensure the trade has both RFQ and Quotation documents
+      if (rfq.trade_id) {
+        const tradeRes = await client.query('SELECT documents FROM trades WHERE trade_id = $1', [rfq.trade_id]);
+        if (tradeRes.rows.length > 0) {
+          let documents = tradeRes.rows[0].documents || [];
+          if (!documents.some(d => d.type === 'QUOTATION')) {
+            documents.push({ type: 'QUOTATION', id: quotation_no });
+            await client.query('UPDATE trades SET documents = $1 WHERE trade_id = $2', [JSON.stringify(documents), rfq.trade_id]);
+          }
+        }
+      }
+    }
+
+    // Delete and replace RFQ items
     await client.query('DELETE FROM rfq_items WHERE rfq_no = $1', [rfq_no]);
-
-    // Insert new items
     if (Array.isArray(items) && items.length > 0) {
       for (const item of items) {
         await client.query(
@@ -182,13 +250,24 @@ router.put('/:rfq_no', async (req, res) => {
       }
     }
 
+    // Delete and replace Quotation items
+    await client.query('DELETE FROM quotation_items WHERE quotation_no = $1', [quotation_no]);
+    if (Array.isArray(items) && items.length > 0) {
+      for (const item of items) {
+        await client.query(
+          'INSERT INTO quotation_items (quotation_no, item_code, quantity, unit_price, unit) VALUES ($1, $2, $3, $4, $5)',
+          [quotation_no, item.item_code, parseInt(item.quantity) || 1, parseFloat(item.unit_price) || 0, item.unit || 'Piece']
+        );
+      }
+    }
+
     await client.query('COMMIT');
 
-    res.json({ rfq_no });
+    res.json({ rfq_no, quotation_no });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Error updating RFQ:', err.message);
-    res.status(500).json({ error: err.message || 'Failed to update RFQ' });
+    console.error('Error updating RFQ & Quotation:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to update RFQ & Quotation' });
   } finally {
     client.release();
   }

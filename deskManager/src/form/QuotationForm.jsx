@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square, History } from 'lucide-react';
 import { toast } from 'react-toastify';
+import ItemQuoteHistory from '../components/ItemQuoteHistory.jsx';
 
 const DEFAULT_TERMS = [
   "1. Price Validity: 30 days from date of quote.\n2. Delivery: 4-6 weeks after receipt of technically and commercially clear PO.\n3. Payment Terms: 30% advance with order, balance against delivery.\n4. Warranty: 12 months from dispatch.",
@@ -26,6 +27,7 @@ export default function QuotationForm({ activeTab }) {
   const [nextQuotationNo, setNextQuotationNo] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [historyItem, setHistoryItem] = useState(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -405,7 +407,8 @@ export default function QuotationForm({ activeTab }) {
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900 font-sans">
-      <div className="max-w-2xl mx-auto space-y-5">
+      <div className={historyItem ? "max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6 items-start" : "max-w-2xl mx-auto space-y-5"}>
+        <div className={historyItem ? "lg:col-span-3 space-y-5 flex flex-col w-full" : "space-y-5 flex flex-col w-full"}>
         {/* Header */}
         <div className="pb-2 border-b border-slate-300">
           <button
@@ -551,78 +554,101 @@ export default function QuotationForm({ activeTab }) {
                   {quotationItems.map((item) => (
                     <div
                       key={item.item_code}
-                      className={`flex flex-col sm:flex-row sm:items-center px-4 py-3 gap-3 transition-colors ${
+                      className={`px-4 py-3 transition-colors ${
                         item.selected ? 'bg-blue-50/10' : 'bg-white opacity-70'
                       }`}
                     >
-                      {/* Checkbox */}
-                      <button
-                        type="button"
-                        onClick={() => toggleItemSelection(item.item_code)}
-                        className="focus:outline-none shrink-0 cursor-pointer"
-                        style={{ color: 'var(--theme-color)' }}
-                      >
-                        {item.selected ? <CheckSquare size={18} /> : <Square size={18} className="text-slate-400" />}
-                      </button>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        {/* Checkbox */}
+                        <button
+                          type="button"
+                          onClick={() => toggleItemSelection(item.item_code)}
+                          className="focus:outline-none shrink-0 cursor-pointer"
+                          style={{ color: 'var(--theme-color)' }}
+                        >
+                          {item.selected ? <CheckSquare size={18} /> : <Square size={18} className="text-slate-400" />}
+                        </button>
 
-                      {/* Details */}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
-                            {item.item_code}
-                          </span>
-                          {item.drawing_number && (
-                            <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
-                              DRW: {item.drawing_number}
+                        {/* Details */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                              {item.item_code}
                             </span>
+                            {item.drawing_number && (
+                              <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
+                                DRW: {item.drawing_number}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-slate-400 font-bold bg-slate-50 border border-slate-200 px-1.5 py-0.25 rounded">
+                              Qty: {item.quantity}
+                            </span>
+                          </div>
+                          {item.description && (
+                            <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
                           )}
-                          <span className="text-[10px] text-slate-400 font-bold bg-slate-50 border border-slate-200 px-1.5 py-0.25 rounded">
-                            Qty: {item.quantity}
-                          </span>
                         </div>
-                        {item.description && (
-                          <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
-                        )}
+
+                        {/* Unit Input */}
+                        <div className="shrink-0 flex items-center gap-2">
+                          <div className="flex flex-col items-end">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                              Unit {item.selected && <b className="text-red-500">*</b>}
+                            </label>
+                            <input
+                              type="text"
+                              list="quotation-units-list"
+                              required={item.selected}
+                              disabled={!item.selected}
+                              placeholder="Piece"
+                              value={item.unit || ''}
+                              onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
+                              className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Price Input */}
+                        <div className="shrink-0 flex items-center gap-2">
+                          <div className="flex flex-col items-end">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                              Price (₹) {item.selected && <b className="text-red-500">*</b>}
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              required={item.selected}
+                              disabled={!item.selected}
+                              placeholder="0.00"
+                              value={item.unit_price}
+                              onChange={(e) => handlePriceChange(item.item_code, e.target.value)}
+                              className="w-24 px-1.5 py-1 text-right font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                        </div>
+
+                        {/* History Button */}
+                        <button
+                          type="button"
+                          onClick={() => setHistoryItem(item.item_code)}
+                          className="p-1 mt-3.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
+                          title="View Quote History"
+                        >
+                          <History size={14} />
+                        </button>
                       </div>
 
-                      {/* Unit Input */}
-                      <div className="shrink-0 flex items-center gap-2">
-                        <div className="flex flex-col items-end">
-                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                            Unit {item.selected && <b className="text-red-500">*</b>}
-                          </label>
-                          <input
-                            type="text"
-                            list="quotation-units-list"
-                            required={item.selected}
-                            disabled={!item.selected}
-                            placeholder="Piece"
-                            value={item.unit || ''}
-                            onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
-                            className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      {/* Inline history panel for mobile/small screen */}
+                      {historyItem === item.item_code && (
+                        <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
+                          <ItemQuoteHistory
+                            code={historyItem}
+                            excludeRfq={formData.rfq_no}
+                            onClose={() => setHistoryItem(null)}
                           />
                         </div>
-                      </div>
-
-                      {/* Price Input */}
-                      <div className="shrink-0 flex items-center gap-2">
-                        <div className="flex flex-col items-end">
-                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                            Price (₹) {item.selected && <b className="text-red-500">*</b>}
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            required={item.selected}
-                            disabled={!item.selected}
-                            placeholder="0.00"
-                            value={item.unit_price}
-                            onChange={(e) => handlePriceChange(item.item_code, e.target.value)}
-                            className="w-24 px-1.5 py-1 text-right font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                          />
-                        </div>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -734,6 +760,18 @@ export default function QuotationForm({ activeTab }) {
             </div>
           </form>
         </div>
+        </div>
+
+        {/* Right side history panel */}
+        {historyItem && (
+          <div className="hidden lg:block lg:col-span-2 bg-white border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
+            <ItemQuoteHistory
+              code={historyItem}
+              excludeRfq={formData.rfq_no}
+              onClose={() => setHistoryItem(null)}
+            />
+          </div>
+        )}
       </div>
 
       <datalist id="quotation-units-list">

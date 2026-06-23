@@ -1,15 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import Sidebar from '../components/Sidebar';
 import { Search, RefreshCw, X } from 'lucide-react';
-import AddBuyerView from './AddBuyer';
-import AddCustomerView from './AddCustomer';
-import AddItemView from './AddItem';
-import GstCategoryView from './GstCategory';
-import ArcView from './Arc';
-import RfqForm from '../form/RfqForm';
-import QuotationForm from '../form/QuotationForm';
-import InventoryView from './Inventory';
 
 const statusStyle = (s) => {
   const v = (s || '').toLowerCase();
@@ -28,15 +19,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   const [activeTab, setActiveTab] = useState(propActiveTab || 'dashboard');
   const navigate = useNavigate();
   const location = useLocation();
-  
-  const user = JSON.parse(localStorage.getItem('user') || '{"username":"admin","role":"admin"}');
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('loginTime');
-    navigate('/login');
-  };
 
   const [trades, setTrades] = useState([]);
   const [tradesLoading, setTradesLoading] = useState(false);
@@ -58,14 +40,10 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   useEffect(() => {
     if (propActiveTab) {
       setActiveTab(propActiveTab);
+    } else {
+      setActiveTab('dashboard');
     }
   }, [propActiveTab]);
-
-  useEffect(() => {
-    if (location.state?.openTab) {
-      setActiveTab(location.state.openTab);
-    }
-  }, [location.state]);
 
   useEffect(() => {
     if (activeTab === 'purchase-order') {
@@ -162,10 +140,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
     finally { setRosLoading(false); }
   };
 
-  const handleNavigateAndOpenForm = (tabName) => {
-    setActiveTab(tabName);
-    navigate('/');
-  };
+
 
   const renderContent = () => {
     switch (activeTab) {
@@ -385,21 +360,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         })()}
           </div>
         );
-      case 'add-buyer':
-        return <AddBuyerView />;
-      case 'add-customer':
-        return <AddCustomerView />;
-      case 'add-item':
-        return <AddItemView />;
-      case 'gst-category':
-        return <GstCategoryView />;
-      case 'arc':
-        return <ArcView />;
-      case 'inventory':
-        return <InventoryView />;
-      case 'addRfq':
-      case 'updateRfq':
-        return <RfqForm onNavigateAndOpenForm={handleNavigateAndOpenForm} />;
+
       case 'purchase-order': {
         const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
         const calcTotal = (ord) => {
@@ -608,48 +569,20 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           </div>
         );
       }
-      case 'quotation':
-      case 'addQuotation':
-      case 'updateQuotation':
-        return <QuotationForm activeTab={activeTab} setActiveTab={setActiveTab} />;
       default:
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800">{activeTab}</h2>
-            <p className="mt-2 text-sm text-slate-600">Content for {activeTab}.</p>
-          </div>
-        );
+        return null;
     }
   };
 
-  return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={handleLogout} />
-
-      <main className="flex-1">
-        {activeTab === 'add-buyer' || 
-         activeTab === 'add-customer' || 
-         activeTab === 'add-item' || 
-         activeTab === 'gst-category' || 
-         activeTab === 'arc' || 
-         activeTab === 'inventory' || 
-         activeTab === 'addRfq' || 
-         activeTab === 'updateRfq' ||
-         activeTab === 'quotation' ||
-         activeTab === 'addQuotation' ||
-         activeTab === 'purchase-order' ||
-         activeTab === 'updateQuotation' ? (
-          renderContent()
-        ) : (
-          <div className="p-6">
-            <div className="mx-auto max-w-6xl">
-              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                {renderContent()}
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
+  return activeTab === 'purchase-order' ? (
+    renderContent()
+  ) : (
+    <div className="p-6">
+      <div className="mx-auto max-w-6xl">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          {renderContent()}
+        </div>
+      </div>
     </div>
   );
 }

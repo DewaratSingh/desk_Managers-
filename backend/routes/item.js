@@ -68,4 +68,63 @@ router.put('/:item_code', async (req, res) => {
   }
 });
 
+// Get history of an item (prices, dates, buyers, customers)
+router.get('/:item_code/history', async (req, res) => {
+  const { item_code } = req.params;
+  const { exclude_rfq } = req.query || {};
+  try {
+    let query = `
+      SELECT source, buyer_name, customer_id, date, status, unit_price, trade_type, trade_id
+      FROM (
+        SELECT 
+          'Quotation' as source,
+          b.name as buyer_name,
+          r.customer_id,
+          q.quotation_date as date,
+          COALESCE(t.status, q.status) as status,
+          qi.unit_price,
+          COALESCE(t.trade_type, 'sell') as trade_type,
+          r.trade_id
+        FROM quotation_items qi
+        JOIN quotations q ON qi.quotation_no = q.quotation_no
+        JOIN rfqs r ON q.rfq_no = r.rfq_no
+        LEFT JOIN buyers b ON r.buyer_id = b.id
+        LEFT JOIN trades t ON r.trade_id = t.trade_id
+        WHERE qi.item_code = $1
+    `;
+    const params = [item_code];
+    if (exclude_rfq) {
+      query += ` AND r.rfq_no <> $2`;
+      params.push(exclude_rfq);
+    }
+    
+    query += `
+        UNION ALL
+
+        SELECT 
+          'Received Quotation' as source,
+          b.name as buyer_name,
+          rq.customer_id,
+          rq.quotation_date as date,
+          COALESCE(t.status, 'active') as status,
+          rqi.unit_price,
+          COALESCE(t.trade_type, 'buy') as trade_type,
+          rq.trade_id
+        FROM received_quotation_items rqi
+        JOIN received_quotations rq ON rqi.received_quotation_no = rq.received_quotation_no
+        LEFT JOIN buyers b ON rq.buyer_id = b.id
+        LEFT JOIN trades t ON rq.trade_id = t.trade_id
+        WHERE rqi.item_code = $1
+      ) as history
+      ORDER BY date DESC
+      LIMIT 15
+    `;
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching item history:', err.message);
+    res.status(500).json({ error: 'Failed to fetch item history' });
+  }
+});
+
 module.exports = router;

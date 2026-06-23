@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -16,7 +17,10 @@ const EMPTY_FORM = {
 };
 
 export default function AddBuyerView() {
-  const [viewMode, setViewMode] = useState('list');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isFormRoute = location.pathname.endsWith('/form');
+  const [viewMode, setViewMode] = useState(isFormRoute ? 'form' : 'list');
   const [buyers, setBuyers] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,12 +31,34 @@ export default function AddBuyerView() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchBuyers(false, searchQuery);
-    }, 300);
+    if (isFormRoute) {
+      setViewMode('form');
+      if (location.state?.editingBuyer) {
+        const buyer = location.state.editingBuyer;
+        setEditingId(buyer.id);
+        setFormData({
+          name: buyer.name || '',
+          email: buyer.email || '',
+          phone: buyer.phone || ''
+        });
+      } else {
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+      }
+    } else {
+      setViewMode('list');
+    }
+  }, [location.pathname, location.state, isFormRoute]);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  useEffect(() => {
+    if (!isFormRoute) {
+      const delayDebounceFn = setTimeout(() => {
+        fetchBuyers(false, searchQuery);
+      }, 300);
+
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery, isFormRoute]);
 
   const fetchBuyers = async (isLoadMore = false, searchVal = searchQuery) => {
     if (isLoadMore) {
@@ -81,8 +107,8 @@ export default function AddBuyerView() {
           setBuyers(buyers.map(b => b.id === editingId ? updated : b));
           setFormData(EMPTY_FORM);
           setEditingId(null);
-          setViewMode('list');
           toast.success('Contact updated successfully!');
+          navigate(-1);
         } else {
           const errData = await res.json();
           toast.error(errData.error || 'Failed to update contact');
@@ -98,8 +124,8 @@ export default function AddBuyerView() {
           setBuyers([created, ...buyers]);
           setFormData(EMPTY_FORM);
           setEditingId(null);
-          setViewMode('list');
           toast.success('Contact created successfully!');
+          navigate(-1);
         } else {
           const errData = await res.json();
           toast.error(errData.error || 'Failed to create contact');
@@ -114,25 +140,15 @@ export default function AddBuyerView() {
   };
 
   const handleEditClick = (buyer) => {
-    setEditingId(buyer.id);
-    setFormData({
-      name: buyer.name || '',
-      email: buyer.email || '',
-      phone: buyer.phone || ''
-    });
-    setViewMode('form');
+    navigate('/buyer/form', { state: { editingBuyer: buyer } });
   };
 
   const handleOpenAddForm = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
-    setViewMode('form');
+    navigate('/buyer/form');
   };
 
   const handleBackToList = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
-    setViewMode('list');
+    navigate(-1);
   };
 
   const filteredBuyers = buyers;
@@ -271,7 +287,7 @@ export default function AddBuyerView() {
         <div className="max-w-2xl mx-auto space-y-5">
           {/* Header with Back */}
           <button
-            onClick={handleBackToList}
+            onClick={() => navigate(-1)}
             className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
           >
             <ArrowLeft size={14} />
@@ -335,7 +351,7 @@ export default function AddBuyerView() {
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={handleBackToList}
+                  onClick={() => navigate(-1)}
                   className="px-5 py-2.5 border border-slate-300 rounded text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                 >
                   Cancel

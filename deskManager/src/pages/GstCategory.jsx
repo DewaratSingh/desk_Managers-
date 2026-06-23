@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -16,7 +17,10 @@ const EMPTY_FORM = {
 };
 
 export default function GstCategoryView() {
-  const [viewMode, setViewMode] = useState('list');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isFormRoute = location.pathname.endsWith('/form');
+  const [viewMode, setViewMode] = useState(isFormRoute ? 'form' : 'list');
   const [gstRates, setGstRates] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,12 +32,33 @@ export default function GstCategoryView() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchGstRates(false, searchQuery);
-    }, 300);
+    if (isFormRoute) {
+      setViewMode('form');
+      if (location.state?.editingRate) {
+        const g = location.state.editingRate;
+        setEditingId(g.id);
+        setFormData({
+          type: g.type || '',
+          rate: g.rate !== undefined ? g.rate.toString() : ''
+        });
+      } else {
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+      }
+    } else {
+      setViewMode('list');
+    }
+  }, [location.pathname, location.state, isFormRoute]);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  useEffect(() => {
+    if (!isFormRoute) {
+      const delayDebounceFn = setTimeout(() => {
+        fetchGstRates(false, searchQuery);
+      }, 300);
+
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery, isFormRoute]);
 
   const fetchGstRates = async (isLoadMore = false, searchVal = searchQuery) => {
     if (isLoadMore) {
@@ -73,20 +98,11 @@ export default function GstCategoryView() {
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleOpenAddForm = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
-    setError(null);
-    setViewMode('form');
+    navigate('/gst-category/form');
   };
 
   const handleEditClick = (g) => {
-    setEditingId(g.id);
-    setFormData({
-      type: g.type || '',
-      rate: g.rate !== undefined ? g.rate.toString() : ''
-    });
-    setError(null);
-    setViewMode('form');
+    navigate('/gst-category/form', { state: { editingRate: g } });
   };
 
   const handleDeleteClick = async (id) => {
@@ -112,10 +128,7 @@ export default function GstCategoryView() {
   };
 
   const handleBackToDirectory = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
-    setError(null);
-    setViewMode('list');
+    navigate(-1);
   };
 
   const handleSubmit = async (e) => {
@@ -139,7 +152,8 @@ export default function GstCategoryView() {
           setGstRates(gstRates.map(g => g.id === editingId ? updated : g));
           setFormData(EMPTY_FORM);
           setEditingId(null);
-          setViewMode('list');
+          toast.success('GST slab updated successfully!');
+          navigate(-1);
         } else {
           const errData = await res.json();
           setError(errData.error || 'Failed to update GST category');
@@ -158,7 +172,8 @@ export default function GstCategoryView() {
           setGstRates([...gstRates, created]);
           setFormData(EMPTY_FORM);
           setEditingId(null);
-          setViewMode('list');
+          toast.success('GST slab created successfully!');
+          navigate(-1);
         } else {
           const errData = await res.json();
           setError(errData.error || 'Failed to create GST category');

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -16,7 +17,10 @@ const EMPTY_FORM = {
 };
 
 export default function ArcView() {
-  const [viewMode, setViewMode] = useState('list');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isFormRoute = location.pathname.endsWith('/form');
+  const [viewMode, setViewMode] = useState(isFormRoute ? 'form' : 'list');
   const [arcItems, setArcItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -36,12 +40,39 @@ export default function ArcView() {
   const dropdownRef = useRef(null);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchArcItems(false, searchQuery);
-    }, 300);
+    if (isFormRoute) {
+      setViewMode('form');
+      if (location.state?.editingArc) {
+        const arc = location.state.editingArc;
+        setEditingItemCode(arc.item_code);
+        setSelectedItem({
+          item_code: arc.item_code,
+          description: arc.description,
+          drawing_number: arc.drawing_number,
+          long_description: arc.long_description
+        });
+        setItemInput(arc.item_code);
+        setPrice(arc.price.toString());
+      } else {
+        setEditingItemCode(null);
+        setItemInput('');
+        setSelectedItem(null);
+        setPrice('');
+      }
+    } else {
+      setViewMode('list');
+    }
+  }, [location.pathname, location.state, isFormRoute]);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  useEffect(() => {
+    if (!isFormRoute) {
+      const delayDebounceFn = setTimeout(() => {
+        fetchArcItems(false, searchQuery);
+      }, 300);
+
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery, isFormRoute]);
 
   // Handle click outside autocomplete suggestions
   useEffect(() => {
@@ -115,26 +146,11 @@ export default function ArcView() {
   };
 
   const handleOpenAddForm = () => {
-    setEditingItemCode(null);
-    setItemInput('');
-    setSelectedItem(null);
-    setPrice('');
-    setError(null);
-    setViewMode('form');
+    navigate('/arc/form');
   };
 
   const handleEdit = (arc) => {
-    setEditingItemCode(arc.item_code);
-    setSelectedItem({
-      item_code: arc.item_code,
-      description: arc.description,
-      drawing_number: arc.drawing_number,
-      long_description: arc.long_description
-    });
-    setItemInput(arc.item_code);
-    setPrice(arc.price.toString());
-    setError(null);
-    setViewMode('form');
+    navigate('/arc/form', { state: { editingArc: arc } });
   };
 
   const handleDelete = async (itemCode) => {
@@ -160,12 +176,7 @@ export default function ArcView() {
   };
 
   const handleBackToDirectory = () => {
-    setEditingItemCode(null);
-    setItemInput('');
-    setSelectedItem(null);
-    setPrice('');
-    setError(null);
-    setViewMode('list');
+    navigate(-1);
   };
 
   const handleSave = async (e) => {
@@ -189,7 +200,8 @@ export default function ArcView() {
         if (res.ok) {
           const updated = await res.json();
           setArcItems(arcItems.map(a => a.item_code === editingItemCode ? updated : a));
-          handleBackToDirectory();
+          toast.success('ARC rate updated successfully!');
+          navigate(-1);
         } else {
           const errData = await res.json();
           setError(errData.error || 'Failed to update ARC item');
@@ -206,7 +218,8 @@ export default function ArcView() {
         if (res.ok) {
           const created = await res.json();
           setArcItems([created, ...arcItems]);
-          handleBackToDirectory();
+          toast.success('ARC rate registered successfully!');
+          navigate(-1);
         } else {
           const errData = await res.json();
           setError(errData.error || 'Failed to register ARC item');

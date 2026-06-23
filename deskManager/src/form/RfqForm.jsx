@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Plus, RefreshCw, Search, X, History } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useRfq } from '../context/RfqContext.jsx';
+import ItemQuoteHistory from '../components/ItemQuoteHistory.jsx';
 
 const EMPTY_FORM = {
   rfq_no: '',
@@ -22,30 +24,44 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
   const navigate = useNavigate();
   const editingRFQ = id || null;
 
-  const [formData, setFormData] = useState(EMPTY_FORM);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [tradeId, setTradeId] = useState('');
+  const {
+    activeRfqId,
+    setActiveRfqId,
+    formData,
+    setFormData,
+    selectedItems,
+    setSelectedItems,
+    buyerInput,
+    setBuyerInput,
+    customerInput,
+    setCustomerInput,
+    tradeId,
+    setTradeId,
+    itemSearch,
+    setItemSearch,
+    resetRfqState
+  } = useRfq();
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const [historyItem, setHistoryItem] = useState(null);
 
   // Auto-complete resources from DB
   const [buyers, setBuyers] = useState([]);
   const [customers, setCustomers] = useState([]);
   
   // Buyer Auto-complete state
-  const [buyerInput, setBuyerInput] = useState('');
   const [buyerSuggestions, setBuyerSuggestions] = useState([]);
   const [showBuyerDropdown, setShowBuyerDropdown] = useState(false);
   const [buyerNotFound, setBuyerNotFound] = useState(false);
 
   // Customer Auto-complete state
-  const [customerInput, setCustomerInput] = useState('');
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [customerNotFound, setCustomerNotFound] = useState(false);
 
   // Item Auto-complete state
-  const [itemSearch, setItemSearch] = useState('');
   const [itemSuggestions, setItemSuggestions] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
 
@@ -62,16 +78,14 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
 
   // Fetch RFQ data if in edit mode
   useEffect(() => {
-    if (editingRFQ) {
-      fetchRFQDetails(editingRFQ);
-    } else {
-      setFormData(EMPTY_FORM);
-      setSelectedItems([]);
-      setBuyerInput('');
-      setCustomerInput('');
-      setTradeId('');
+    if (activeRfqId !== editingRFQ) {
+      if (editingRFQ) {
+        fetchRFQDetails(editingRFQ);
+      } else {
+        resetRfqState(null);
+      }
     }
-  }, [editingRFQ]);
+  }, [editingRFQ, activeRfqId]);
 
   // Handle click outside dropdowns to close them
   useEffect(() => {
@@ -90,78 +104,58 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const fetchBuyers = (query) => {
+    fetch(`/api/buyers?q=${encodeURIComponent(query)}&limit=5`)
+      .then(r => r.json())
+      .then(data => {
+        setBuyerSuggestions(data);
+        setBuyerNotFound(data.length === 0);
+      })
+      .catch(console.error);
+  };
+
+  const fetchCustomers = (query) => {
+    fetch(`/api/customers?q=${encodeURIComponent(query)}&limit=5`)
+      .then(r => r.json())
+      .then(data => {
+        setCustomerSuggestions(data);
+        setCustomerNotFound(data.length === 0);
+      })
+      .catch(console.error);
+  };
+
+  const fetchItems = (query) => {
+    fetch(`/api/items?q=${encodeURIComponent(query)}&limit=5`)
+      .then(r => r.json())
+      .then(data => {
+        setItemSuggestions(data);
+      })
+      .catch(console.error);
+  };
+
   // Debounced search for buyers (limit 5)
   useEffect(() => {
-    const trimmed = buyerInput.trim();
-    if (!trimmed) {
-      setBuyerSuggestions([]);
-      setShowBuyerDropdown(false);
-      setBuyerNotFound(false);
-      return;
-    }
-
-    if (!buyerManualRef.current) {
-      return;
-    }
-
+    if (!buyerManualRef.current) return;
     const delayDebounceFn = setTimeout(() => {
-      fetch(`/api/buyers?q=${encodeURIComponent(trimmed)}&limit=5`)
-        .then(r => r.json())
-        .then(data => {
-          setBuyerSuggestions(data);
-          setBuyerNotFound(data.length === 0);
-        })
-        .catch(console.error);
+      fetchBuyers(buyerInput.trim());
     }, 200);
-
     return () => clearTimeout(delayDebounceFn);
   }, [buyerInput]);
 
   // Debounced search for customers (limit 5)
   useEffect(() => {
-    const trimmed = customerInput.trim();
-    if (!trimmed) {
-      setCustomerSuggestions([]);
-      setShowCustomerDropdown(false);
-      setCustomerNotFound(false);
-      return;
-    }
-
-    if (!customerManualRef.current) {
-      return;
-    }
-
+    if (!customerManualRef.current) return;
     const delayDebounceFn = setTimeout(() => {
-      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
-        .then(r => r.json())
-        .then(data => {
-          setCustomerSuggestions(data);
-          setCustomerNotFound(data.length === 0);
-        })
-        .catch(console.error);
+      fetchCustomers(customerInput.trim());
     }, 200);
-
     return () => clearTimeout(delayDebounceFn);
   }, [customerInput]);
 
   // Debounced search for items (limit 5)
   useEffect(() => {
-    const trimmed = itemSearch.trim();
-    if (!trimmed) {
-      setItemSuggestions([]);
-      setShowItemDropdown(false);
-      return;
-    }
-
     const delayDebounceFn = setTimeout(() => {
-      fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=5`)
-        .then(r => r.json())
-        .then(data => {
-          setItemSuggestions(data);
-        })
-        .catch(console.error);
+      fetchItems(itemSearch.trim());
     }, 200);
-
     return () => clearTimeout(delayDebounceFn);
   }, [itemSearch]);
 
@@ -172,6 +166,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
       const res = await fetch(`/api/rfqs/${encodeURIComponent(rfqNo)}`);
       if (res.ok) {
         const rfq = await res.json();
+        setActiveRfqId(rfqNo);
         setFormData({
           rfq_no: rfq.rfq_no || '',
           rfq_date: rfq.rfq_date ? rfq.rfq_date.split('T')[0] : '',
@@ -252,7 +247,8 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
         drawing_number: item.drawing_number || '',
         description: item.description || '',
         quantity: 1,
-        unit: 'Piece'
+        unit: 'Piece',
+        unit_price: '0'
       }
     ]);
     setItemSearch('');
@@ -273,7 +269,16 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
     setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, unit: value } : i));
   };
 
+  const handlePriceChange = (itemCode, value) => {
+    setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, unit_price: value } : i));
+  };
+
   const backToList = () => {
+    navigate('/');
+  };
+
+  const handleCancel = () => {
+    resetRfqState(undefined);
     navigate('/');
   };
 
@@ -312,7 +317,8 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
       items: selectedItems.map(item => ({
         item_code: item.item_code,
         quantity: parseInt(item.quantity) || 1,
-        unit: item.unit || 'Piece'
+        unit: item.unit || 'Piece',
+        unit_price: parseFloat(item.unit_price) || 0
       }))
     };
 
@@ -335,6 +341,8 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
       if (res.ok) {
         const resData = await res.json();
         const finalTradeId = editingRFQ ? tradeId : resData.trade_id;
+
+        resetRfqState(undefined);
 
         if (isQuotateRedirectRef.current) {
           toast.success('RFQ saved successfully!');
@@ -361,26 +369,35 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900">
-      <div className="max-w-2xl mx-auto space-y-5">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 m-0">
-            {editingRFQ ? 'Modify RFQ Record' : 'New RFQ Entry'}
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            {editingRFQ ? 'Update the details of an existing RFQ.' : 'Fill in the RFQ details below.'}
-          </p>
-        </div>
-
-        {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg flex items-center gap-1.5">
-            <AlertCircle size={14} />
-            {error}
+      <div className={historyItem ? "max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6 items-start" : "max-w-2xl mx-auto space-y-5"}>
+        <div className={historyItem ? "lg:col-span-3 space-y-5 flex flex-col w-full" : "space-y-5 flex flex-col w-full"}>
+          <button
+            type="button"
+            onClick={backToList}
+            className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
+          >
+            <ArrowLeft size={14} />
+            Back to Dashboard
+          </button>
+          {/* Header */}
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 m-0">
+              {editingRFQ ? 'Modify RFQ Record' : 'New RFQ Entry'}
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              {editingRFQ ? 'Update the details of an existing RFQ.' : 'Fill in the RFQ details below.'}
+            </p>
           </div>
-        )}
 
-        {/* Form Card */}
-        <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg flex items-center gap-1.5">
+              <AlertCircle size={14} />
+              {error}
+            </div>
+          )}
+
+          {/* Form Card */}
+          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
             
             {/* RFQ No */}
@@ -452,9 +469,13 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                 placeholder="Start typing buyer name..."
                 value={buyerInput}
                 onChange={(e) => handleBuyerInput(e.target.value)}
-                onFocus={() => buyerInput.trim() && setShowBuyerDropdown(true)}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--theme-color)';
+                  buyerManualRef.current = true;
+                  setShowBuyerDropdown(true);
+                  fetchBuyers(buyerInput);
+                }}
                 className={inputCls}
-                onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                 onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 autoComplete="off"
               />
@@ -481,9 +502,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (onNavigateAndOpenForm) onNavigateAndOpenForm('add-buyer');
-                    }}
+                    onClick={() => navigate('/buyer/form')}
                     className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
                   >
                     Add Buyer
@@ -509,9 +528,13 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                 placeholder="Start typing customer ID or name..."
                 value={customerInput}
                 onChange={(e) => handleCustomerInput(e.target.value)}
-                onFocus={() => customerInput.trim() && setShowCustomerDropdown(true)}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--theme-color)';
+                  customerManualRef.current = true;
+                  setShowCustomerDropdown(true);
+                  fetchCustomers(customerInput);
+                }}
                 className={inputCls}
-                onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                 onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 autoComplete="off"
               />
@@ -538,9 +561,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (onNavigateAndOpenForm) onNavigateAndOpenForm('add-customer');
-                    }}
+                    onClick={() => navigate('/party/form')}
                     className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
                   >
                     Add Customer
@@ -567,9 +588,12 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                   placeholder="Search item by code or description to attach..."
                   value={itemSearch}
                   onChange={(e) => handleItemSearch(e.target.value)}
-                  onFocus={() => itemSearch.trim() && setShowItemDropdown(true)}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = 'var(--theme-color)';
+                    setShowItemDropdown(true);
+                    fetchItems(itemSearch);
+                  }}
                   className={inputCls}
-                  onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                   autoComplete="off"
                 />
@@ -603,9 +627,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (onNavigateAndOpenForm) onNavigateAndOpenForm('add-item');
-                      }}
+                      onClick={() => navigate('/item/form')}
                       className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
                     >
                       Add Item
@@ -624,57 +646,91 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                   </div>
                   <div className="divide-y divide-slate-200">
                     {selectedItems.map((item) => (
-                      <div key={item.item_code} className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors gap-3">
-                        <div className="min-w-0 flex-1 mr-4">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
-                              {item.item_code}
-                            </span>
-                            {item.drawing_number && (
-                              <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
-                                DRW: {item.drawing_number}
+                      <div key={item.item_code} className="px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1 mr-4">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                                {item.item_code}
                               </span>
+                              {item.drawing_number && (
+                                <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
+                                  DRW: {item.drawing_number}
+                                </span>
+                              )}
+                            </div>
+                            {item.description && (
+                              <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
                             )}
                           </div>
-                          {item.description && (
-                            <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
-                          )}
+                          
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="flex flex-col items-end">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Qty *</label>
+                              <input
+                                type="number"
+                                min="1"
+                                required
+                                value={item.quantity}
+                                onChange={(e) => handleQuantityChange(item.item_code, e.target.value)}
+                                className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                              />
+                            </div>
+                            <div className="flex flex-col items-end">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Unit *</label>
+                              <input
+                                type="text"
+                                list="rfq-units-list"
+                                required
+                                placeholder="e.g. Piece"
+                                value={item.unit || ''}
+                                onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
+                                className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                autoComplete="off"
+                              />
+                            </div>
+                            <div className="flex flex-col items-end">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Price *</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                required
+                                placeholder="0.00"
+                                value={item.unit_price || '0'}
+                                onChange={(e) => handlePriceChange(item.item_code, e.target.value)}
+                                className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setHistoryItem(item.item_code)}
+                              className="p-1 mt-3.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
+                              title="View Quote History"
+                            >
+                              <History size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeItem(item.item_code)}
+                              className="p-1 mt-3.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
+                              title="Remove item"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
                         </div>
-                        
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="flex flex-col items-end">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Qty *</label>
-                            <input
-                              type="number"
-                              min="1"
-                              required
-                              value={item.quantity}
-                              onChange={(e) => handleQuantityChange(item.item_code, e.target.value)}
-                              className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+
+                        {/* Inline history panel for mobile/small screen */}
+                        {historyItem === item.item_code && (
+                          <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
+                            <ItemQuoteHistory
+                              code={historyItem}
+                              excludeRfq={editingRFQ}
+                              onClose={() => setHistoryItem(null)}
                             />
                           </div>
-                          <div className="flex flex-col items-end">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Unit *</label>
-                            <input
-                              type="text"
-                              list="rfq-units-list"
-                              required
-                              placeholder="e.g. Piece"
-                              value={item.unit || ''}
-                              onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
-                              className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
-                              autoComplete="off"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeItem(item.item_code)}
-                            className="p-1 mt-3.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
-                            title="Remove item"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -688,6 +744,13 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
 
             {/* Action Buttons */}
             <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
               
               <button
                 type="submit"
@@ -710,6 +773,18 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
 
           </form>
         </div>
+        </div>
+
+        {/* Right side history panel */}
+        {historyItem && (
+          <div className="hidden lg:block lg:col-span-2 bg-white border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
+            <ItemQuoteHistory
+              code={historyItem}
+              excludeRfq={editingRFQ}
+              onClose={() => setHistoryItem(null)}
+            />
+          </div>
+        )}
       </div>
 
       <datalist id="rfq-units-list">

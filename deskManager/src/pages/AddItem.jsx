@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -27,7 +28,10 @@ export default function AddItemView({
   searchResource,
   onCancel
 }) {
-  const [viewMode, setViewMode] = useState('list');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isFormRoute = location.pathname.endsWith('/form');
+  const [viewMode, setViewMode] = useState(isFormRoute ? 'form' : 'list');
   const [localItems, setLocalItems] = useState([]);
   const items = propsItems || localItems;
   const [searchFocused, setSearchFocused] = useState(false);
@@ -40,17 +44,38 @@ export default function AddItemView({
   const [viewingItem, setViewingItem] = useState(null);
 
   useEffect(() => {
+    if (isFormRoute) {
+      setViewMode('form');
+      if (location.state?.editingItem) {
+        const item = location.state.editingItem;
+        setEditingCode(item.item_code);
+        setFormData({
+          item_code: item.item_code || '',
+          description: item.description || '',
+          drawing_number: item.drawing_number || '',
+          long_description: item.long_description || ''
+        });
+      } else {
+        setEditingCode(null);
+        setFormData(EMPTY_FORM);
+      }
+    } else {
+      setViewMode('list');
+    }
+  }, [location.pathname, location.state, isFormRoute]);
+
+  useEffect(() => {
     setIsLoading(propsIsLoading);
   }, [propsIsLoading]);
 
   useEffect(() => {
-    if (!propsItems) {
+    if (!propsItems && !isFormRoute) {
       const delayDebounceFn = setTimeout(() => {
         fetchItems(false, searchQuery);
       }, 300);
       return () => clearTimeout(delayDebounceFn);
     }
-  }, [searchQuery, propsItems]);
+  }, [searchQuery, propsItems, isFormRoute]);
 
   const fetchItems = async (isLoadMore = false, searchVal = searchQuery) => {
     if (isLoadMore) {
@@ -99,30 +124,15 @@ export default function AddItemView({
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleOpenAddForm = () => {
-    setEditingCode(null);
-    setFormData(EMPTY_FORM);
-    setViewMode('form');
+    navigate('/item/form');
   };
 
   const handleEditClick = (item) => {
-    setEditingCode(item.item_code);
-    setFormData({
-      item_code: item.item_code || '',
-      description: item.description || '',
-      drawing_number: item.drawing_number || '',
-      long_description: item.long_description || ''
-    });
-    setViewMode('form');
+    navigate('/item/form', { state: { editingItem: item } });
   };
 
   const handleBackToDirectory = () => {
-    setEditingCode(null);
-    setFormData(EMPTY_FORM);
-    if (onCancel) {
-      onCancel(() => setViewMode('list'));
-    } else {
-      setViewMode('list');
-    }
+    navigate('/item');
   };
 
   const handleSubmit = async (e) => {
@@ -152,8 +162,8 @@ export default function AddItemView({
           if (res.ok) {
             const updated = await res.json();
             setLocalItems(localItems.map(item => item.item_code === editingCode ? updated : item));
-            handleBackToDirectory();
             toast.success('Item updated successfully!');
+            navigate(-1);
           } else {
             const errData = await res.json();
             toast.error(errData.error || 'Failed to update item');
@@ -165,6 +175,7 @@ export default function AddItemView({
           if (success) {
             setFormData(EMPTY_FORM);
             toast.success('Item created successfully!');
+            navigate(-1);
           }
         } else {
           const res = await fetch('/api/items', {
@@ -176,8 +187,8 @@ export default function AddItemView({
             const created = await res.json();
             setLocalItems([created, ...localItems]);
             setFormData(EMPTY_FORM);
-            setViewMode('list');
             toast.success('Item created successfully!');
+            navigate(-1);
           } else {
             const errData = await res.json();
             toast.error(errData.error || 'Failed to create item');
@@ -339,7 +350,7 @@ export default function AddItemView({
            ================================================================ */
         <div className="max-w-2xl mx-auto space-y-5">
           <button
-            onClick={handleBackToDirectory}
+            onClick={() => navigate(-1)}
             className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
           >
             <ArrowLeft size={14} />
@@ -423,7 +434,7 @@ export default function AddItemView({
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={handleBackToDirectory}
+                  onClick={() => navigate(-1)}
                   className="px-5 py-2.5 border border-slate-300 rounded text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                 >
                   Cancel
