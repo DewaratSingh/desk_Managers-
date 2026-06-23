@@ -301,12 +301,12 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
       return;
     }
     if (!formData.buyer_id) {
-      setError('Please select a valid Seller Name.');
+      setError('Please select a valid vendor Name.');
       setIsLoading(false);
       return;
     }
     if (!formData.customer_id) {
-      setError('Please select a valid Customer ID.');
+      setError('Please select a valid Seller vendor.');
       setIsLoading(false);
       return;
     }
@@ -430,11 +430,11 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
 
               {/* Buyer Lookup */}
               <div ref={buyerRef} className="relative">
-                <label className={labelCls}>Seller Name <b className="text-red-500">*</b></label>
+                <label className={labelCls}>Seller  <b className="text-red-500">*</b></label>
                 <input
                   type="text"
                   required
-                  placeholder="Search and select seller name..."
+                  placeholder="Search and select seller ..."
                   value={buyerInput}
                   onChange={(e) => handleBuyerInput(e.target.value)}
                   onFocus={(e) => {
@@ -483,7 +483,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                 )}
                 {formData.buyer_id && (
                   <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
-                    <span className="text-emerald-600">✓ Seller linked</span>
+                    <span className="text-emerald-600">✓ Seller vendor linked</span>
                     <span className="text-slate-300">|</span>
                     <span>{formData.buyer_email}</span>
                     <span className="text-slate-300">|</span>
@@ -494,11 +494,11 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
 
               {/* Customer Lookup */}
               <div ref={customerRef} className="relative">
-                <label className={labelCls}>Customer ID <b className="text-red-500">*</b></label>
+                <label className={labelCls}>Seller Vendor <b className="text-red-500">*</b></label>
                 <input
                   type="text"
                   required
-                  placeholder="Search and select customer name/ID..."
+                  placeholder="Search and select seller vendor..."
                   value={customerInput}
                   onChange={(e) => handleCustomerInput(e.target.value)}
                   onFocus={(e) => {
