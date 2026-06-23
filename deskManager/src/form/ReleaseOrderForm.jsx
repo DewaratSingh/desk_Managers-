@@ -810,41 +810,10 @@ export default function ReleaseOrderForm() {
                 <span className="text-[10px] font-bold text-slate-400">{roItems.filter(i=>i.selected).length} selected</span>
               </div>
 
-              {/* Add Item search input */}
-              <div ref={itemSearchRef} className="relative">
-                <label className={labelCls}>Add Item by Code or Description</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Type Item Code or Description to add..."
-                    value={itemSearchInput}
-                    onChange={(e) => handleItemSearchInput(e.target.value)}
-                    className={inputCls + " pl-8"}
-                    autoComplete="off"
-                  />
-                  <Search size={14} className="absolute left-2.5 top-3 text-slate-400" />
-                </div>
-                {showItemDropdown && itemSuggestions.length > 0 && (
-                  <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                    {itemSuggestions.map(item => (
-                      <button
-                        key={item.item_code}
-                        type="button"
-                        onClick={() => addRoItem(item)}
-                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                      >
-                        <div className="font-bold text-xs text-slate-900">{item.item_code}</div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{item.description} &bull; Dwg: {item.drawing_number || '—'}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               {/* Items List */}
               {roItems.length === 0 ? (
                 <div className="text-center py-6 border border-dashed border-slate-300 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-400 font-semibold m-0">No items added yet. Search and select above.</p>
+                  <p className="text-xs text-slate-400 font-semibold m-0">No items added yet. Search and select below.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1015,7 +984,6 @@ export default function ReleaseOrderForm() {
                           </div>
                         )}
 
-                        {/* pricing footer snippet */}
                         {item.selected && (
                           <div className="mt-3.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
                             <div>
@@ -1030,6 +998,37 @@ export default function ReleaseOrderForm() {
                   })}
                 </div>
               )}
+
+              {/* Add Item search input */}
+              <div ref={itemSearchRef} className="relative pt-2">
+                <label className={labelCls}>Add Item by Code or Description</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Type Item Code or Description to add..."
+                    value={itemSearchInput}
+                    onChange={(e) => handleItemSearchInput(e.target.value)}
+                    className={inputCls + " pl-8"}
+                    autoComplete="off"
+                  />
+                  <Search size={14} className="absolute left-2.5 top-3 text-slate-400" />
+                </div>
+                {showItemDropdown && itemSuggestions.length > 0 && (
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                    {itemSuggestions.map(item => (
+                      <button
+                        key={item.item_code}
+                        type="button"
+                        onClick={() => addRoItem(item)}
+                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                      >
+                        <div className="font-bold text-xs text-slate-900">{item.item_code}</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">{item.description} &bull; Dwg: {item.drawing_number || '—'}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Other Charges */}

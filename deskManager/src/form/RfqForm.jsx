@@ -581,64 +581,9 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
             <div>
               <label className={labelCls}>Items</label>
 
-              {/* Item search autocomplete */}
-              <div ref={itemRef} className="relative">
-                <input
-                  type="text"
-                  placeholder="Search item by code or description to attach..."
-                  value={itemSearch}
-                  onChange={(e) => handleItemSearch(e.target.value)}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'var(--theme-color)';
-                    setShowItemDropdown(true);
-                    fetchItems(itemSearch);
-                  }}
-                  className={inputCls}
-                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  autoComplete="off"
-                />
-
-                {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
-                  <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                    {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
-                      <button
-                        key={item.item_code}
-                        type="button"
-                        onClick={() => addItem(item)}
-                        className="w-full text-left px-3.5 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
-                      >
-                        <div>
-                          <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
-                            {item.item_code}
-                          </span>
-                          {item.drawing_number && <span className="text-[10px] text-slate-400 ml-2">DRW: {item.drawing_number}</span>}
-                          <div className="text-[10px] text-slate-500 mt-1">{item.description}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {itemSearch.trim().length > 0 && itemSuggestions.length === 0 && (
-                  <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                    <div className="flex items-center gap-1.5">
-                      <AlertCircle size={13} className="shrink-0" />
-                      <span>No item found for "{itemSearch}".</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/item/form')}
-                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
-                    >
-                      Add Item
-                    </button>
-                  </div>
-                )}
-              </div>
-
               {/* Selected Items */}
               {selectedItems.length > 0 && (
-                <div className="mt-3 border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
+                <div className="mb-3 border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
                   <div className="bg-slate-100 px-4 py-2 border-b border-slate-300">
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                       Attached Items ({selectedItems.length})
@@ -737,8 +682,63 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                 </div>
               )}
 
+              {/* Item search autocomplete */}
+              <div ref={itemRef} className="relative">
+                <input
+                  type="text"
+                  placeholder="Search item by code or description to attach..."
+                  value={itemSearch}
+                  onChange={(e) => handleItemSearch(e.target.value)}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = 'var(--theme-color)';
+                    setShowItemDropdown(true);
+                    fetchItems(itemSearch);
+                  }}
+                  className={inputCls}
+                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                  autoComplete="off"
+                />
+
+                {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
+                  <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                    {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
+                      <button
+                        key={item.item_code}
+                        type="button"
+                        onClick={() => addItem(item)}
+                        className="w-full text-left px-3.5 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
+                      >
+                        <div>
+                          <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                            {item.item_code}
+                          </span>
+                          {item.drawing_number && <span className="text-[10px] text-slate-400 ml-2">DRW: {item.drawing_number}</span>}
+                          <div className="text-[10px] text-slate-500 mt-1">{item.description}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {itemSearch.trim().length > 0 && itemSuggestions.length === 0 && (
+                  <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                    <div className="flex items-center gap-1.5">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>No item found for "{itemSearch}".</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/item/form')}
+                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                    >
+                      Add Item
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {selectedItems.length === 0 && (
-                <p className="mt-2 text-xs text-slate-400 font-medium pl-1">No items added yet. Search above to attach items to this RFQ.</p>
+                <p className="mt-2 text-xs text-slate-400 font-medium pl-1">No items added yet. Search below to attach items to this RFQ.</p>
               )}
             </div>
 

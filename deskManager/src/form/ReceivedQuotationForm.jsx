@@ -565,61 +565,10 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
               {/* Item Lookup */}
               <div>
                 <label className={labelCls}>Items</label>
-                <div ref={itemRef} className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search item by code, short desc, or long desc..."
-                    value={itemInput}
-                    onChange={(e) => handleItemInput(e.target.value)}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = 'var(--theme-color)';
-                      if (itemInput.trim()) setShowItemDropdown(true);
-                    }}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                    className={inputCls}
-                    autoComplete="off"
-                  />
-                  {showItemDropdown && itemSuggestions.length > 0 && (
-                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
-                      {itemSuggestions.map((item) => (
-                        <button
-                          key={item.item_code}
-                          type="button"
-                          onClick={() => addItem(item)}
-                          className="w-full text-left px-3.5 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
-                        >
-                          <div className="font-bold text-xs text-slate-900 flex justify-between items-center">
-                            <span className="font-mono font-bold" style={{ color: 'var(--theme-color)' }}>{item.item_code}</span>
-                            {item.drawing_number && <span className="text-[10px] text-slate-400">DRW: {item.drawing_number}</span>}
-                          </div>
-                          <div className="text-xs text-slate-600 font-semibold mt-0.5">{item.description}</div>
-                          {item.long_description && (
-                            <div className="text-[9px] text-slate-400 mt-0.5 truncate">{item.long_description}</div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {itemInput.trim().length > 0 && itemSuggestions.length === 0 && (
-                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                      <div className="flex items-center gap-1.5">
-                        <AlertCircle size={13} className="shrink-0" />
-                        <span>No item found matching "{itemInput}".</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/item/form')}
-                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
-                      >
-                        Add Item
-                      </button>
-                    </div>
-                  )}
-                </div>
 
                 {/* Selected Items List */}
                 {selectedItems.length > 0 && (
-                  <div className="mt-3 border border-slate-200 rounded overflow-hidden">
+                  <div className="mb-3 border border-slate-200 rounded overflow-hidden">
                     <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
                       <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
                         Attached Items ({selectedItems.length})
@@ -713,6 +662,59 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                   </div>
                 )}
 
+                {/* Item Lookup input */}
+                <div ref={itemRef} className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search item by code, short desc, or long desc..."
+                    value={itemInput}
+                    onChange={(e) => handleItemInput(e.target.value)}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = 'var(--theme-color)';
+                      if (itemInput.trim()) setShowItemDropdown(true);
+                    }}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    className={inputCls}
+                    autoComplete="off"
+                  />
+                  {showItemDropdown && itemSuggestions.length > 0 && (
+                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                      {itemSuggestions.map((item) => (
+                        <button
+                          key={item.item_code}
+                          type="button"
+                          onClick={() => addItem(item)}
+                          className="w-full text-left px-3.5 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
+                        >
+                          <div className="font-bold text-xs text-slate-900 flex justify-between items-center">
+                            <span className="font-mono font-bold" style={{ color: 'var(--theme-color)' }}>{item.item_code}</span>
+                            {item.drawing_number && <span className="text-[10px] text-slate-400">DRW: {item.drawing_number}</span>}
+                          </div>
+                          <div className="text-xs text-slate-600 font-semibold mt-0.5">{item.description}</div>
+                          {item.long_description && (
+                            <div className="text-[9px] text-slate-400 mt-0.5 truncate">{item.long_description}</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {itemInput.trim().length > 0 && itemSuggestions.length === 0 && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No item found matching "{itemInput}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/item/form')}
+                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                      >
+                        Add Item
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {/* Financial calculations */}
                 {selectedItems.length > 0 && (
                   <div className="mt-3 bg-slate-50/50 border border-slate-200 rounded p-4 space-y-2">
@@ -741,7 +743,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                 )}
                 {selectedItems.length === 0 && (
                   <p className="mt-2 text-xs text-slate-400 font-medium pl-1">
-                    No items added yet. Search code or description to attach items.
+                    No items added yet. Search code or description below to attach items.
                   </p>
                 )}
               </div>
