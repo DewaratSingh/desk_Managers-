@@ -44,9 +44,11 @@ function App() {
           <Route path="/updateDeliveryNote/:id" element={<DeliveryNoteForm />} />
           <Route path="/addInvoice" element={<InvoiceForm />} />
           <Route path="/updateInvoice/:id" element={<InvoiceForm />} />
+          <Route path="/order" element={<Dashboard activeTab="purchase-order" />} />
           <Route path="/order/:po_no" element={<PurchaseOrderView />} />
           <Route path="/release-order/:ro_no" element={<ReleaseOrderView />} />
           <Route path="/trade/:tradeid" element={<TradeView />} />
+          <Route path="/trade/:tradeid/:deliveryId" element={<TradeView />} />
         </Route>
 
         <Route

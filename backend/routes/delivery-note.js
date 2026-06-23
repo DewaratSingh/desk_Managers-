@@ -80,6 +80,13 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
             WHERE dn.trade_id = $1
               AND dni.item_code = roi.item_code
               AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
+          ), 0) - COALESCE((
+            SELECT SUM((elem->>'quantity')::numeric)
+            FROM grns g
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+            WHERE g.trade_id = $1
+              AND elem->>'item_code' = roi.item_code
+              AND ($3::varchar IS NULL OR g.delivery_note_no != $3)
           ), 0) as delivered_qty
         FROM release_order_items roi
         LEFT JOIN items i ON roi.item_code = i.item_code
@@ -105,6 +112,13 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
             WHERE dn.trade_id = $1
               AND dni.item_code = poi.item_code
               AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
+          ), 0) - COALESCE((
+            SELECT SUM((elem->>'quantity')::numeric)
+            FROM grns g
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+            WHERE g.trade_id = $1
+              AND elem->>'item_code' = poi.item_code
+              AND ($3::varchar IS NULL OR g.delivery_note_no != $3)
           ), 0) as delivered_qty
         FROM purchase_order_items poi
         LEFT JOIN items i ON poi.item_code = i.item_code
@@ -316,15 +330,53 @@ async function updateTradeDeliveryStatus(client, trade_id) {
           0
         )::numeric AS ordered_val,
         COALESCE(
-          (SELECT SUM(dni.quantity * poi.unit_price) FROM delivery_notes dn JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no JOIN purchase_order_items poi ON dn.po_no = poi.po_no AND dni.item_code = poi.item_code WHERE dn.trade_id = $1),
-          (SELECT SUM(dni.quantity * roi.unit_price) FROM delivery_notes dn JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no JOIN release_order_items roi ON dn.ro_no = roi.ro_no AND dni.item_code = roi.item_code WHERE dn.trade_id = $1),
+          (
+            SELECT SUM(
+              (
+                dni.quantity - COALESCE((
+                  SELECT SUM((elem->>'quantity')::numeric)
+                  FROM grns g
+                  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+                  WHERE g.delivery_note_no = dn.delivery_note_no
+                    AND elem->>'item_code' = dni.item_code
+                ), 0)
+              ) * poi.unit_price
+            )
+            FROM delivery_notes dn
+            JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no
+            JOIN purchase_order_items poi ON dn.po_no = poi.po_no AND dni.item_code = poi.item_code
+            WHERE dn.trade_id = $1
+          ),
+          (
+            SELECT SUM(
+              (
+                dni.quantity - COALESCE((
+                  SELECT SUM((elem->>'quantity')::numeric)
+                  FROM grns g
+                  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+                  WHERE g.delivery_note_no = dn.delivery_note_no
+                    AND elem->>'item_code' = dni.item_code
+                ), 0)
+              ) * roi.unit_price
+            )
+            FROM delivery_notes dn
+            JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no
+            JOIN release_order_items roi ON dn.ro_no = roi.ro_no AND dni.item_code = roi.item_code
+            WHERE dn.trade_id = $1
+          ),
           0
         )::numeric AS delivered_val
     ) val_sub
   `, [trade_id]);
 
   const pct = pctRes.rows.length > 0 ? parseFloat(pctRes.rows[0].pct) : 0;
-  const statusName = pct >= 99.9 ? 'delivered' : 'partially delivered';
+  
+  let statusName = 'ordered';
+  if (pct >= 99.9) {
+    statusName = 'delivered';
+  } else if (pct > 0) {
+    statusName = 'partially delivered';
+  }
 
   await client.query(
     "INSERT INTO status (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
@@ -337,4 +389,3 @@ async function updateTradeDeliveryStatus(client, trade_id) {
 }
 
 module.exports = router;
-module.exports.updateTradeDeliveryStatus = updateTradeDeliveryStatus;

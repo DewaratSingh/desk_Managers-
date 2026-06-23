@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
-// Get all RFQs
+// Get all RFQs (supports search & limit)
 router.get('/', async (req, res) => {
+  const { q } = req.query || {};
   try {
-    const result = await pool.query(`
-      SELECT r.rfq_no, r.rfq_date, r.commercial_bid_due_date, r.technical_bid_due_date, r.buyer_id, b.name as buyer_name, b.email as buyer_email, b.phone as buyer_phone, r.customer_id, c.name as customer_name, r.status, r.trade_id, r.created_at,
+    let queryText = `
+      SELECT r.rfq_no, r.rfq_date, r.commercial_bid_due_date, r.technical_bid_due_date, r.buyer_id, b.name as buyer_name, b.email as buyer_email, b.phone as buyer_phone, r.customer_id, c.name as customer_name, c.address as customer_address, r.status, r.trade_id, r.created_at,
              COALESCE(
                (
                  SELECT json_agg(
@@ -27,8 +28,23 @@ router.get('/', async (req, res) => {
       FROM rfqs r
       LEFT JOIN buyers b ON r.buyer_id = b.id
       LEFT JOIN customers c ON r.customer_id = c.id
-      ORDER BY r.created_at DESC
-    `);
+    `;
+    const params = [];
+    if (q) {
+      queryText += ` WHERE r.rfq_no ILIKE $1 OR c.name ILIKE $1`;
+      params.push(`%${q}%`);
+    }
+    queryText += ` ORDER BY r.created_at DESC`;
+
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+    if (limit !== null) {
+      queryText += ` LIMIT $${params.length + 1}`;
+      params.push(limit);
+    } else if (q) {
+      queryText += ` LIMIT 5`;
+    }
+
+    const result = await pool.query(queryText, params);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching rfqs:', err.message);
@@ -101,7 +117,7 @@ router.get('/:rfq_no', async (req, res) => {
   const { rfq_no } = req.params;
   try {
     const result = await pool.query(`
-      SELECT r.rfq_no, r.rfq_date, r.commercial_bid_due_date, r.technical_bid_due_date, r.buyer_id, b.name as buyer_name, b.email as buyer_email, b.phone as buyer_phone, r.customer_id, c.name as customer_name, r.status, r.trade_id, r.created_at,
+      SELECT r.rfq_no, r.rfq_date, r.commercial_bid_due_date, r.technical_bid_due_date, r.buyer_id, b.name as buyer_name, b.email as buyer_email, b.phone as buyer_phone, r.customer_id, c.name as customer_name, c.address as customer_address, r.status, r.trade_id, r.created_at,
              COALESCE(
                json_agg(
                  json_build_object(
@@ -120,7 +136,7 @@ router.get('/:rfq_no', async (req, res) => {
       LEFT JOIN rfq_items ri ON r.rfq_no = ri.rfq_no
       LEFT JOIN items i ON ri.item_code = i.item_code
       WHERE r.rfq_no = $1
-      GROUP BY r.rfq_no, b.name, b.email, b.phone, c.name
+      GROUP BY r.rfq_no, b.name, b.email, b.phone, c.name, c.address
     `, [rfq_no]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'RFQ not found' });

@@ -8,7 +8,8 @@ router.get('/', async (req, res) => {
   try {
     let query = `
       SELECT rq.received_quotation_no, rq.buyer_id, rq.customer_id, rq.quotation_date, rq.terms_and_conditions, rq.trade_id, rq.created_at,
-             b.name as buyer_name, c.name as customer_name,
+             b.name as buyer_name, b.email as buyer_email, b.phone as buyer_phone,
+             c.name as customer_name, c.address as customer_address,
              (
                SELECT COALESCE(json_agg(json_build_object(
                  'item_code', rqi.item_code,
@@ -30,7 +31,12 @@ router.get('/', async (req, res) => {
       query += ` WHERE rq.received_quotation_no ILIKE $1 OR b.name ILIKE $1 OR c.name ILIKE $1`;
       params.push(`%${q}%`);
     }
-    query += ` ORDER BY rq.created_at DESC LIMIT 50`;
+    query += ` ORDER BY rq.created_at DESC`;
+    
+    const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+    query += ` LIMIT $${params.length + 1}`;
+    params.push(limit);
+
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
@@ -46,7 +52,7 @@ router.get('/:received_quotation_no', async (req, res) => {
     const query = `
       SELECT rq.received_quotation_no, rq.buyer_id, rq.customer_id, rq.quotation_date, rq.terms_and_conditions, rq.trade_id, rq.created_at,
              b.name as buyer_name, b.email as buyer_email, b.phone as buyer_phone,
-             c.name as customer_name,
+             c.name as customer_name, c.address as customer_address,
              (
                SELECT COALESCE(json_agg(json_build_object(
                  'item_code', rqi.item_code,

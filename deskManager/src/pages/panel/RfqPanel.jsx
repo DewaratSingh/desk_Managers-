@@ -60,6 +60,11 @@ export default function RfqPanel({ rfq, tradeId }) {
             <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 space-y-0.5">
               <p className="text-[10px] font-semibold text-slate-400">ID: <span className="text-slate-700">{rfq.customer_id}</span></p>
               <p className="text-sm font-bold text-slate-900">{rfq.customer_name || '—'}</p>
+              {rfq.customer_address && (
+                <p className="text-[11px] font-medium text-slate-500 mt-2 pt-2 border-t border-slate-200/60 whitespace-pre-line leading-relaxed">
+                  {rfq.customer_address}
+                </p>
+              )}
             </div>
           </div>
           <div>

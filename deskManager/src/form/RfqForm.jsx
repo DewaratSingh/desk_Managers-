@@ -55,13 +55,10 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
   const itemRef = useRef(null);
   const isQuotateRedirectRef = useRef(false);
 
-  const units = ['Piece', 'Kg', 'Meter', 'Box', 'Set', 'Liter', 'Ton', 'Nos'];
+  const buyerManualRef = useRef(false);
+  const customerManualRef = useRef(false);
 
-  // Load buyers, customers on mount
-  useEffect(() => {
-    fetchBuyers();
-    fetchCustomers();
-  }, []);
+  const units = ['Piece', 'Kg', 'Meter', 'Box', 'Set', 'Liter', 'Ton', 'Nos'];
 
   // Fetch RFQ data if in edit mode
   useEffect(() => {
@@ -93,29 +90,80 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchBuyers = async () => {
-    try {
-      const res = await fetch('/api/buyers');
-      if (res.ok) {
-        const data = await res.json();
-        setBuyers(data);
-      }
-    } catch (err) {
-      console.error('Error fetching buyers:', err);
+  // Debounced search for buyers (limit 5)
+  useEffect(() => {
+    const trimmed = buyerInput.trim();
+    if (!trimmed) {
+      setBuyerSuggestions([]);
+      setShowBuyerDropdown(false);
+      setBuyerNotFound(false);
+      return;
     }
-  };
 
-  const fetchCustomers = async () => {
-    try {
-      const res = await fetch('/api/customers');
-      if (res.ok) {
-        const data = await res.json();
-        setCustomers(data);
-      }
-    } catch (err) {
-      console.error('Error fetching customers:', err);
+    if (!buyerManualRef.current) {
+      return;
     }
-  };
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/buyers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setBuyerSuggestions(data);
+          setBuyerNotFound(data.length === 0);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [buyerInput]);
+
+  // Debounced search for customers (limit 5)
+  useEffect(() => {
+    const trimmed = customerInput.trim();
+    if (!trimmed) {
+      setCustomerSuggestions([]);
+      setShowCustomerDropdown(false);
+      setCustomerNotFound(false);
+      return;
+    }
+
+    if (!customerManualRef.current) {
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setCustomerSuggestions(data);
+          setCustomerNotFound(data.length === 0);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerInput]);
+
+  // Debounced search for items (limit 5)
+  useEffect(() => {
+    const trimmed = itemSearch.trim();
+    if (!trimmed) {
+      setItemSuggestions([]);
+      setShowItemDropdown(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setItemSuggestions(data);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [itemSearch]);
 
   const fetchRFQDetails = async (rfqNo) => {
     setIsLoading(true);
@@ -154,24 +202,14 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
 
   // Autocomplete Handlers
   const handleBuyerInput = (value) => {
+    buyerManualRef.current = true;
     setBuyerInput(value);
-    // Clear linked buyer details when input is edited
     setFormData(prev => ({ ...prev, buyer_id: '', buyer_email: '', buyer_phone: '' }));
-    
-    if (!value.trim()) {
-      setBuyerSuggestions([]);
-      setShowBuyerDropdown(false);
-      setBuyerNotFound(false);
-      return;
-    }
-
-    const matches = buyers.filter(b => b.name.toLowerCase().includes(value.toLowerCase()));
-    setBuyerSuggestions(matches);
     setShowBuyerDropdown(true);
-    setBuyerNotFound(matches.length === 0);
   };
 
   const selectBuyer = (b) => {
+    buyerManualRef.current = false;
     setFormData(prev => ({
       ...prev,
       buyer_id: b.id,
@@ -184,50 +222,23 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
   };
 
   const handleCustomerInput = (value) => {
+    customerManualRef.current = true;
     setCustomerInput(value);
     setFormData(prev => ({ ...prev, customer_id: '' }));
-
-    if (!value.trim()) {
-      setCustomerSuggestions([]);
-      setShowCustomerDropdown(false);
-      setCustomerNotFound(false);
-      return;
-    }
-
-    const matches = customers.filter(c => 
-      c.id.toLowerCase().includes(value.toLowerCase()) || 
-      c.name.toLowerCase().includes(value.toLowerCase())
-    );
-    setCustomerSuggestions(matches);
     setShowCustomerDropdown(true);
-    setCustomerNotFound(matches.length === 0);
   };
 
   const selectCustomer = (c) => {
+    customerManualRef.current = false;
     setFormData(prev => ({ ...prev, customer_id: c.id }));
     setCustomerInput(c.id);
     setShowCustomerDropdown(false);
     setCustomerNotFound(false);
   };
 
-  const handleItemSearch = async (value) => {
+  const handleItemSearch = (value) => {
     setItemSearch(value);
-    if (!value.trim()) {
-      setItemSuggestions([]);
-      setShowItemDropdown(false);
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/items?q=${encodeURIComponent(value)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setItemSuggestions(data);
-        setShowItemDropdown(true);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    setShowItemDropdown(true);
   };
 
   const addItem = (item) => {

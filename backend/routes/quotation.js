@@ -5,7 +5,11 @@ const { pool, appendDocToTrade } = require('../db');
 // List all quotations (for autocomplete in PO form)
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query(`
+    const { q } = req.query || {};
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+    const params = [];
+    
+    let queryText = `
       SELECT q.quotation_no, q.rfq_no, q.quotation_date, q.trade_id, q.status,
              r.customer_id,
              (
@@ -23,8 +27,21 @@ router.get('/', async (req, res) => {
              ) as items
       FROM quotations q
       LEFT JOIN rfqs r ON q.rfq_no = r.rfq_no
-      ORDER BY q.created_at DESC
-    `);
+    `;
+    
+    if (q) {
+      queryText += ` WHERE q.quotation_no ILIKE $1 OR q.rfq_no ILIKE $1`;
+      params.push(`%${q}%`);
+    }
+    
+    queryText += ` ORDER BY q.created_at DESC`;
+    
+    if (limit !== null) {
+      queryText += ` LIMIT $${params.length + 1}`;
+      params.push(limit);
+    }
+    
+    const result = await pool.query(queryText, params);
     res.json(result.rows);
   } catch (err) {
     console.error('Error listing quotations:', err.message);

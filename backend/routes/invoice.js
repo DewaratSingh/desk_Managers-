@@ -58,7 +58,15 @@ router.get('/items-lookup/:delivery_note_no', async (req, res) => {
     const itemsRes = await pool.query(
       `SELECT
         dni.item_code,
-        dni.quantity as original_qty, -- Quantity delivered in this DN
+        (
+          dni.quantity - COALESCE((
+            SELECT SUM((elem->>'quantity')::numeric)
+            FROM grns g
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+            WHERE g.delivery_note_no = $1
+              AND elem->>'item_code' = dni.item_code
+          ), 0)
+        ) as original_qty, -- Accepted quantity (delivered minus rejected)
         dni.rate_per_piece,
         dni.shipping_address,
         dni.delivery_date,

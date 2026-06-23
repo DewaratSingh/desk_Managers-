@@ -18,8 +18,7 @@ export default function ReleaseOrderForm() {
   const [error, setError]         = useState(null);
   const [roNoError, setRoNoError] = useState('');
 
-  // Buyers list and search state
-  const [buyers, setBuyers]                 = useState([]);
+  // Buyers search state
   const [buyerInput, setBuyerInput]         = useState('');
   const [buyerSuggestions, setBuyerSuggestions] = useState([]);
   const [showBuyerDropdown, setShowBuyerDropdown] = useState(false);
@@ -27,8 +26,7 @@ export default function ReleaseOrderForm() {
   const [selectedBuyer, setSelectedBuyer]     = useState(null);
   const buyerRef = useRef(null);
 
-  // Customers list and search state (for Seller/Customer)
-  const [customers, setCustomers]               = useState([]);
+  // Customers search state (for Seller/Customer)
   const [customerInput, setCustomerInput]       = useState('');
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -37,24 +35,24 @@ export default function ReleaseOrderForm() {
   const customerRef = useRef(null);
 
   // Items search (to add items to RO)
-  const [allItems, setAllItems]               = useState([]);
   const [itemSearchInput, setItemSearchInput] = useState('');
   const [itemSuggestions, setItemSuggestions] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const itemSearchRef = useRef(null);
 
-  // All GST rates from DB (fetched once)
-  const [gstRates, setGstRates] = useState([]);
-
   // Per-item GST search state keyed by item_code
   const [gstSearchInput, setGstSearchInput]   = useState({});  // { item_code: string }
   const [gstDropdownOpen, setGstDropdownOpen] = useState({});  // { item_code: bool }
+  const [gstSuggestions, setGstSuggestions]   = useState({});  // { item_code: array }
   const gstItemRefs = useRef({});
+  const gstTimeoutRefs = useRef({});
 
   // Per-item shipping address search state
   const [shipInput, setShipInput]           = useState({});  // { item_code: string (display) }
   const [shipDropdownOpen, setShipDropdownOpen] = useState({});  // { item_code: bool }
+  const [shipSuggestions, setShipSuggestions]   = useState({});  // { item_code: array }
   const shipItemRefs = useRef({});
+  const shipTimeoutRefs = useRef({});
 
   // RO items in form
   const [roItems, setRoItems] = useState([]);
@@ -73,13 +71,6 @@ export default function ReleaseOrderForm() {
   });
 
   useEffect(() => {
-    fetchBuyers();
-    fetchCustomers();
-    fetchArcItems();
-    fetchGstRates();
-  }, []);
-
-  useEffect(() => {
     if (editingNo) {
       fetchRoDetails(editingNo);
     } else {
@@ -93,6 +84,14 @@ export default function ReleaseOrderForm() {
       }
     }
   }, [editingNo, queryTradeId]);
+
+  // Clean up timeouts on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(gstTimeoutRefs.current).forEach(clearTimeout);
+      Object.values(shipTimeoutRefs.current).forEach(clearTimeout);
+    };
+  }, []);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -121,33 +120,85 @@ export default function ReleaseOrderForm() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchBuyers = async () => {
-    try {
-      const res = await fetch('/api/buyers');
-      if (res.ok) setBuyers(await res.json());
-    } catch (err) { console.error('Error fetching buyers:', err); }
-  };
+  // Debounced search for buyers (limit 5)
+  useEffect(() => {
+    const trimmed = buyerInput.trim();
+    if (!trimmed) {
+      setBuyerSuggestions([]);
+      setShowBuyerDropdown(false);
+      setBuyerNotFound(false);
+      return;
+    }
 
-  const fetchCustomers = async () => {
-    try {
-      const res = await fetch('/api/customers');
-      if (res.ok) setCustomers(await res.json());
-    } catch (err) { console.error('Error fetching customers:', err); }
-  };
+    if (selectedBuyer && selectedBuyer.name === buyerInput) {
+      setShowBuyerDropdown(false);
+      return;
+    }
 
-  const fetchArcItems = async () => {
-    try {
-      const res = await fetch('/api/arc-items');
-      if (res.ok) setAllItems(await res.json());
-    } catch (err) { console.error('Error fetching ARC items:', err); }
-  };
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/buyers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setBuyerSuggestions(data);
+          setBuyerNotFound(data.length === 0);
+          setShowBuyerDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
 
-  const fetchGstRates = async () => {
-    try {
-      const res = await fetch('/api/gst-rates');
-      if (res.ok) setGstRates(await res.json());
-    } catch (err) { console.error('Error fetching GST rates:', err); }
-  };
+    return () => clearTimeout(delayDebounceFn);
+  }, [buyerInput, selectedBuyer]);
+
+  // Debounced search for customers (limit 5)
+  useEffect(() => {
+    const trimmed = customerInput.trim();
+    if (!trimmed) {
+      setCustomerSuggestions([]);
+      setShowCustomerDropdown(false);
+      setCustomerNotFound(false);
+      return;
+    }
+
+    if (selectedCustomer && selectedCustomer.name === customerInput) {
+      setShowCustomerDropdown(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setCustomerSuggestions(data);
+          setCustomerNotFound(data.length === 0);
+          setShowCustomerDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerInput, selectedCustomer]);
+
+  // Debounced search for items (limit 5)
+  useEffect(() => {
+    const trimmed = itemSearchInput.trim();
+    if (!trimmed) {
+      setItemSuggestions([]);
+      setShowItemDropdown(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/arc-items?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setItemSuggestions(data);
+          setShowItemDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [itemSearchInput]);
 
   const fetchNextNo = async () => {
     try {
@@ -161,15 +212,6 @@ export default function ReleaseOrderForm() {
 
   const fetchTradeRfqItems = async (tradeId) => {
     try {
-      let currentArcItems = allItems;
-      if (currentArcItems.length === 0) {
-        const arcRes = await fetch('/api/arc-items');
-        if (arcRes.ok) {
-          currentArcItems = await arcRes.json();
-          setAllItems(currentArcItems);
-        }
-      }
-
       const res = await fetch(`/api/trades/${encodeURIComponent(tradeId)}`);
       if (res.ok) {
         const tradeData = await res.json();
@@ -180,22 +222,28 @@ export default function ReleaseOrderForm() {
             const rfqData = await rfqRes.json();
             // Pre-fill Buyer and Customer from RFQ
             if (rfqData.buyer_id) {
-              const b = buyers.find(buyer => buyer.id === rfqData.buyer_id);
-              if (b) selectBuyer(b);
-              else fetchAndSelectBuyer(rfqData.buyer_id);
+              fetchAndSelectBuyer(rfqData.buyer_id);
             }
             if (rfqData.customer_id) {
-              const c = customers.find(cust => cust.id === rfqData.customer_id);
-              if (c) selectCustomer(c);
-              else fetchAndSelectCustomer(rfqData.customer_id);
+              fetchAndSelectCustomer(rfqData.customer_id);
             }
             if (Array.isArray(rfqData.items)) {
-              setRoItems(rfqData.items.map(i => {
-                const arcItem = currentArcItems.find(ai => ai.item_code === i.item_code);
+              const fetchedItems = await Promise.all(rfqData.items.map(async (i) => {
+                let price = '0';
+                try {
+                  const arcRes = await fetch(`/api/arc-items?q=${encodeURIComponent(i.item_code)}&limit=1`);
+                  if (arcRes.ok) {
+                    const arcData = await arcRes.json();
+                    const arcItem = arcData.find(ai => ai.item_code === i.item_code);
+                    if (arcItem) price = String(arcItem.price);
+                  }
+                } catch (e) {
+                  console.error('Error prefetching item price:', e);
+                }
                 return {
                   item_code:        i.item_code,
                   quantity:         i.quantity || 1,
-                  unit_price:       arcItem ? String(arcItem.price) : '0',
+                  unit_price:       price,
                   gst_type:         '',
                   gst_rate:         '',
                   shipping_address: '',
@@ -205,6 +253,7 @@ export default function ReleaseOrderForm() {
                   selected:         true
                 };
               }));
+              setRoItems(fetchedItems);
             }
           }
         }
@@ -302,11 +351,7 @@ export default function ReleaseOrderForm() {
   const handleBuyerInput = (value) => {
     setBuyerInput(value);
     setSelectedBuyer(null);
-    if (!value.trim()) { setBuyerSuggestions([]); setShowBuyerDropdown(false); setBuyerNotFound(false); return; }
-    const matches = buyers.filter(b => b.name.toLowerCase().includes(value.toLowerCase()) || b.email.toLowerCase().includes(value.toLowerCase()));
-    setBuyerSuggestions(matches);
-    setShowBuyerDropdown(true);
-    setBuyerNotFound(matches.length === 0);
+    if (!value.trim()) { setBuyerSuggestions([]); setShowBuyerDropdown(false); setBuyerNotFound(false); }
   };
 
   const selectBuyer = (buyer) => {
@@ -320,11 +365,7 @@ export default function ReleaseOrderForm() {
   const handleCustomerInput = (value) => {
     setCustomerInput(value);
     setSelectedCustomer(null);
-    if (!value.trim()) { setCustomerSuggestions([]); setShowCustomerDropdown(false); setCustomerNotFound(false); return; }
-    const matches = customers.filter(c => c.name.toLowerCase().includes(value.toLowerCase()) || c.id.toLowerCase().includes(value.toLowerCase()));
-    setCustomerSuggestions(matches);
-    setShowCustomerDropdown(true);
-    setCustomerNotFound(matches.length === 0);
+    if (!value.trim()) { setCustomerSuggestions([]); setShowCustomerDropdown(false); setCustomerNotFound(false); }
   };
 
   const selectCustomer = (cust) => {
@@ -337,13 +378,7 @@ export default function ReleaseOrderForm() {
   // Item Autocomplete handlers
   const handleItemSearchInput = (value) => {
     setItemSearchInput(value);
-    if (!value.trim()) { setItemSuggestions([]); setShowItemDropdown(false); return; }
-    const matches = allItems.filter(i =>
-      i.item_code.toLowerCase().includes(value.toLowerCase()) ||
-      i.description.toLowerCase().includes(value.toLowerCase())
-    );
-    setItemSuggestions(matches);
-    setShowItemDropdown(true);
+    if (!value.trim()) { setItemSuggestions([]); setShowItemDropdown(false); }
   };
 
   const addRoItem = (item) => {
@@ -376,11 +411,32 @@ export default function ReleaseOrderForm() {
     setRoItems(prev => prev.filter(i => i.item_code !== itemCode));
   };
 
+  // GST Search Suggestions On-Demand Fetcher
+  const fetchGstSuggestions = (itemCode, val) => {
+    if (gstTimeoutRefs.current[itemCode]) {
+      clearTimeout(gstTimeoutRefs.current[itemCode]);
+    }
+    // Don't search if it's already selected format like "GST (18%)"
+    const isSelectedFormat = /^[A-Z0-9\s]+\s*\(\d+(\.\d+)?%\)$/i.test(val);
+    if (isSelectedFormat) {
+      return;
+    }
+    gstTimeoutRefs.current[itemCode] = setTimeout(() => {
+      fetch(`/api/gst-rates?q=${encodeURIComponent(val)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setGstSuggestions(prev => ({ ...prev, [itemCode]: data }));
+        })
+        .catch(console.error);
+    }, 200);
+  };
+
   // Per-item GST handlers
   const handleGstSearch = (itemCode, value) => {
     setGstSearchInput(prev => ({ ...prev, [itemCode]: value }));
     setRoItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, gst_type: '', gst_rate: '' } : i));
-    setGstDropdownOpen(prev => ({ ...prev, [itemCode]: value.trim().length > 0 }));
+    setGstDropdownOpen(prev => ({ ...prev, [itemCode]: true }));
+    fetchGstSuggestions(itemCode, value);
   };
 
   const selectItemGst = (itemCode, gst) => {
@@ -399,12 +455,19 @@ export default function ReleaseOrderForm() {
     setGstDropdownOpen(prev => ({ ...prev, [itemCode]: false }));
   };
 
-  const getGstSuggestions = (itemCode) => {
-    const query = (gstSearchInput[itemCode] || '').toLowerCase();
-    if (!query) return gstRates;
-    return gstRates.filter(g =>
-      g.type.toLowerCase().includes(query) || String(g.rate).includes(query)
-    );
+  // Shipping Address Customer Suggestions On-Demand Fetcher
+  const fetchShipSuggestions = (itemCode, val) => {
+    if (shipTimeoutRefs.current[itemCode]) {
+      clearTimeout(shipTimeoutRefs.current[itemCode]);
+    }
+    shipTimeoutRefs.current[itemCode] = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(val)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setShipSuggestions(prev => ({ ...prev, [itemCode]: data }));
+        })
+        .catch(console.error);
+    }, 200);
   };
 
   // Per-item shipping address handlers
@@ -412,6 +475,7 @@ export default function ReleaseOrderForm() {
     setShipInput(prev => ({ ...prev, [itemCode]: value }));
     updateItem(itemCode, 'shipping_address', value);
     setShipDropdownOpen(prev => ({ ...prev, [itemCode]: true }));
+    fetchShipSuggestions(itemCode, value);
   };
 
   const selectShipCustomer = (itemCode, customer) => {
@@ -424,16 +488,6 @@ export default function ReleaseOrderForm() {
     setShipInput(prev => ({ ...prev, [itemCode]: '' }));
     updateItem(itemCode, 'shipping_address', '');
     setShipDropdownOpen(prev => ({ ...prev, [itemCode]: false }));
-  };
-
-  const getShipSuggestions = (itemCode) => {
-    const query = (shipInput[itemCode] || '').toLowerCase();
-    if (!query) return customers;
-    return customers.filter(c =>
-      c.id.toLowerCase().includes(query) ||
-      c.name.toLowerCase().includes(query) ||
-      (c.address || '').toLowerCase().includes(query)
-    );
   };
 
   const toggleItem = (itemCode) =>
@@ -823,86 +877,97 @@ export default function ReleaseOrderForm() {
                                 step="0.01"
                                 min="0"
                                 required
+                                disabled
                                 value={item.unit_price}
                                 onChange={(e) => updateItem(item.item_code, 'unit_price', e.target.value)}
                                 className={inputCls}
                               />
                             </div>
 
-                            {/* GST search-based autocomplete */}
-                            <div ref={el => gstItemRefs.current[item.item_code] = el} className="relative">
-                              <label className={labelCls}>GST Category</label>
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  placeholder="Type GST rate or type..."
-                                  value={gstSearchInput[item.item_code] || ''}
-                                  onChange={(e) => handleGstSearch(item.item_code, e.target.value)}
-                                  className={inputCls + " pr-7"}
-                                />
-                                {item.gst_type && (
-                                  <button
-                                    type="button"
-                                    onClick={() => clearItemGst(item.item_code)}
-                                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                )}
-                              </div>
-                              {gstDropdownOpen[item.item_code] && (
-                                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-40 overflow-y-auto">
-                                  {getGstSuggestions(item.item_code).map(g => (
-                                    <button
-                                      key={g.id}
-                                      type="button"
-                                      onClick={() => selectItemGst(item.item_code, g)}
-                                      className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-slate-800 hover:bg-blue-50 border-b border-slate-100 last:border-0 cursor-pointer"
-                                    >
-                                      {g.type} ({g.rate}%)
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+                             {/* GST search-based autocomplete */}
+                             <div ref={el => gstItemRefs.current[item.item_code] = el} className="relative">
+                               <label className={labelCls}>GST Category</label>
+                               <div className="relative">
+                                 <input
+                                   type="text"
+                                   placeholder="Type GST rate or type..."
+                                   value={gstSearchInput[item.item_code] || ''}
+                                   onChange={(e) => handleGstSearch(item.item_code, e.target.value)}
+                                   onFocus={() => {
+                                     const currentVal = gstSearchInput[item.item_code] || '';
+                                     setGstDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
+                                     fetchGstSuggestions(item.item_code, currentVal);
+                                   }}
+                                   className={inputCls + " pr-7"}
+                                 />
+                                 {item.gst_type && (
+                                   <button
+                                     type="button"
+                                     onClick={() => clearItemGst(item.item_code)}
+                                     className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                   >
+                                     <X size={12} />
+                                   </button>
+                                 )}
+                               </div>
+                               {gstDropdownOpen[item.item_code] && (gstSuggestions[item.item_code] || []).length > 0 && (
+                                 <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-40 overflow-y-auto">
+                                   {(gstSuggestions[item.item_code] || []).map(g => (
+                                     <button
+                                       key={g.id}
+                                       type="button"
+                                       onClick={() => selectItemGst(item.item_code, g)}
+                                       className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-slate-800 hover:bg-blue-50 border-b border-slate-100 last:border-0 cursor-pointer"
+                                     >
+                                       {g.type} ({g.rate}%)
+                                     </button>
+                                   ))}
+                                 </div>
+                               )}
+                             </div>
 
-                            {/* Shipping address autocomplete */}
-                            <div ref={el => shipItemRefs.current[item.item_code] = el} className="relative">
-                              <label className={labelCls}>Shipping Address</label>
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  placeholder="Type address or search customer..."
-                                  value={shipInput[item.item_code] || ''}
-                                  onChange={(e) => handleShipInput(item.item_code, e.target.value)}
-                                  className={inputCls + " pr-7"}
-                                />
-                                {shipInput[item.item_code] && (
-                                  <button
-                                    type="button"
-                                    onClick={() => clearShip(item.item_code)}
-                                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                )}
-                              </div>
-                              {shipDropdownOpen[item.item_code] && getShipSuggestions(item.item_code).length > 0 && (
-                                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-40 overflow-y-auto">
-                                  {getShipSuggestions(item.item_code).slice(0, 5).map(c => (
-                                    <button
-                                      key={c.id}
-                                      type="button"
-                                      onClick={() => selectShipCustomer(item.item_code, c)}
-                                      className="w-full text-left px-3 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
-                                    >
-                                      <div className="font-bold text-[10px] text-slate-900 leading-tight">[{c.id}] {c.name}</div>
-                                      <div className="text-[9px] text-slate-500 truncate mt-0.5">{c.address}</div>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+                             {/* Shipping address autocomplete */}
+                             <div ref={el => shipItemRefs.current[item.item_code] = el} className="relative">
+                               <label className={labelCls}>Shipping Address</label>
+                               <div className="relative">
+                                 <input
+                                   type="text"
+                                   placeholder="Type address or search customer..."
+                                   value={shipInput[item.item_code] || ''}
+                                   onChange={(e) => handleShipInput(item.item_code, e.target.value)}
+                                   onFocus={() => {
+                                     const currentVal = shipInput[item.item_code] || '';
+                                     setShipDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
+                                     fetchShipSuggestions(item.item_code, currentVal);
+                                   }}
+                                   className={inputCls + " pr-7"}
+                                 />
+                                 {shipInput[item.item_code] && (
+                                   <button
+                                     type="button"
+                                     onClick={() => clearShip(item.item_code)}
+                                     className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                   >
+                                     <X size={12} />
+                                   </button>
+                                 )}
+                               </div>
+                               {shipDropdownOpen[item.item_code] && (shipSuggestions[item.item_code] || []).length > 0 && (
+                                 <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-40 overflow-y-auto">
+                                   {(shipSuggestions[item.item_code] || []).slice(0, 5).map(c => (
+                                     <button
+                                       key={c.id}
+                                       type="button"
+                                       onClick={() => selectShipCustomer(item.item_code, c)}
+                                       className="w-full text-left px-3 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
+                                     >
+                                       <div className="font-bold text-[10px] text-slate-900 leading-tight">[{c.id}] {c.name}</div>
+                                       <div className="text-[9px] text-slate-500 truncate mt-0.5">{c.address}</div>
+                                     </button>
+                                   ))}
+                                 </div>
+                               )}
+                             </div>
 
                             {/* Delivery Date */}
                             <div className="sm:col-span-2">

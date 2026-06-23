@@ -75,12 +75,21 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   }, [activeTab]);
 
   useEffect(() => {
-    // Load all statuses from DB on mount
-    fetch('/api/statuses')
-      .then(r => r.json())
-      .then(data => setAllStatuses(Array.isArray(data) ? data : []))
-      .catch(console.error);
-  }, []);
+    const trimmed = filterInput.trim();
+    if (!trimmed) {
+      setAllStatuses([]);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/statuses?q=${encodeURIComponent(trimmed)}`)
+        .then(r => r.json())
+        .then(data => setAllStatuses(Array.isArray(data) ? data : []))
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [filterInput]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -222,7 +231,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                         <Search size={16} className="text-slate-400 shrink-0" />
                         <input
                           type="text"
-                          placeholder="Search by ID, item code..."
+                          placeholder="Search by ID, item code, PO, RO, DN..."
                           value={tradeSearchQuery}
                           onChange={(e) => setTradeSearchQuery(e.target.value)}
                           className="w-full bg-transparent focus:outline-none text-xs text-slate-900 placeholder:text-slate-400 font-semibold"
@@ -412,6 +421,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         if (showPOs) {
           purchaseOrders.forEach(po => {
             if (orderFilter === 'PO_BUY' && po.trade_type !== 'buy') return;
+            if (orderFilter === 'PO' && po.trade_type !== 'sell') return;
             if (po.trade_status && (po.trade_status.trim().toLowerCase() === 'completed' || po.trade_status.trim().toLowerCase() === 'complete')) return;
             
             // Calculate delivered percentage to skip if fully delivered

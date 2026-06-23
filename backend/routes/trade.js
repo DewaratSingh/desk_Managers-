@@ -30,20 +30,32 @@ router.get('/', async (req, res) => {
           '—'
         ) AS contact_name,
         (
-          SELECT CASE WHEN ordered_val > 0 THEN ROUND((delivered_val / ordered_val) * 100, 1) ELSE 0.0 END
+          SELECT CASE WHEN ordered_qty > 0 THEN ROUND((delivered_qty::numeric / ordered_qty::numeric) * 100, 1) ELSE 0.0 END
           FROM (
             SELECT
               COALESCE(
-                (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.po_no = poi.po_no WHERE po.trade_id = t.trade_id),
-                (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.ro_no = roi.ro_no WHERE ro.trade_id = t.trade_id),
+                (SELECT SUM(poi.quantity) FROM purchase_orders po JOIN purchase_order_items poi ON po.po_no = poi.po_no WHERE po.trade_id = t.trade_id),
+                (SELECT SUM(roi.quantity) FROM release_orders ro JOIN release_order_items roi ON ro.ro_no = roi.ro_no WHERE ro.trade_id = t.trade_id),
                 0
-              ) AS ordered_val,
+              ) AS ordered_qty,
               COALESCE(
-                (SELECT SUM(dni.quantity * poi.unit_price) FROM delivery_notes dn JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no JOIN purchase_order_items poi ON dn.po_no = poi.po_no AND dni.item_code = poi.item_code WHERE dn.trade_id = t.trade_id),
-                (SELECT SUM(dni.quantity * roi.unit_price) FROM delivery_notes dn JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no JOIN release_order_items roi ON dn.ro_no = roi.ro_no AND dni.item_code = roi.item_code WHERE dn.trade_id = t.trade_id),
+                (
+                  SELECT SUM(
+                    dni.quantity - COALESCE((
+                      SELECT SUM((elem->>'quantity')::numeric)
+                      FROM grns g
+                      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+                      WHERE g.delivery_note_no = dn.delivery_note_no
+                        AND elem->>'item_code' = dni.item_code
+                    ), 0)
+                  )
+                  FROM delivery_notes dn
+                  JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no
+                  WHERE dn.trade_id = t.trade_id
+                ),
                 0
-              ) AS delivered_val
-          ) val_sub
+              ) AS delivered_qty
+          ) qty_sub
         ) AS delivered_pct
       FROM trades t
     `;
@@ -55,6 +67,15 @@ router.get('/', async (req, res) => {
       const idx = params.length + 1;
       conditions.push(`(
         t.trade_id ILIKE $${idx}
+        OR EXISTS (SELECT 1 FROM purchase_orders po WHERE po.trade_id = t.trade_id AND po.po_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM release_orders ro WHERE ro.trade_id = t.trade_id AND ro.ro_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM delivery_notes dn WHERE dn.trade_id = t.trade_id AND dn.delivery_note_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM quotations q WHERE q.trade_id = t.trade_id AND q.quotation_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM received_quotations rq WHERE rq.trade_id = t.trade_id AND rq.received_quotation_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM rfqs r WHERE r.trade_id = t.trade_id AND r.rfq_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM invoices inv WHERE inv.trade_id = t.trade_id AND inv.invoice_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM grns g WHERE g.trade_id = t.trade_id AND g.grn_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM payments pay WHERE pay.trade_id = t.trade_id AND pay.payment_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM purchase_order_items poi JOIN purchase_orders po ON poi.po_no = po.po_no WHERE po.trade_id = t.trade_id AND poi.item_code ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM release_order_items roi JOIN release_orders ro ON roi.ro_no = ro.ro_no WHERE ro.trade_id = t.trade_id AND roi.item_code ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM quotation_items qi JOIN quotations q ON qi.quotation_no = q.quotation_no WHERE q.trade_id = t.trade_id AND qi.item_code ILIKE $${idx})

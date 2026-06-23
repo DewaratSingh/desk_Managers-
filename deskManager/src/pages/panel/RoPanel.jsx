@@ -1,4 +1,4 @@
-import { FileText, List, Edit2, Plus, ExternalLink } from 'lucide-react';
+import { FileText, List, Edit2, Plus, ExternalLink, Building2, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const fmtDate = (d) => {
@@ -96,6 +96,34 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
               <p className="text-sm font-semibold text-slate-800">{value}</p>
             </div>
           ))}
+        </div>
+
+        {/* Customer & Contact Details */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pb-5 border-b border-slate-100">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
+              <Building2 size={11} /> Customer
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 space-y-0.5">
+              <p className="text-[10px] font-semibold text-slate-400">ID: <span className="text-slate-700">{releaseOrder.customer_id}</span></p>
+              <p className="text-sm font-bold text-slate-900">{releaseOrder.customer_name || '—'}</p>
+              {releaseOrder.customer_address && (
+                <p className="text-[11px] font-medium text-slate-500 mt-2 pt-2 border-t border-slate-200/60 whitespace-pre-line leading-relaxed">
+                  {releaseOrder.customer_address}
+                </p>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
+              <User size={11} /> Contact / Buyer
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 space-y-0.5">
+              <p className="text-sm font-bold text-slate-900">{releaseOrder.buyer_name || '—'}</p>
+              <p className="text-[10px] font-semibold text-slate-400">{releaseOrder.buyer_email || '—'}</p>
+              <p className="text-[10px] font-semibold text-slate-400">{releaseOrder.buyer_phone || '—'}</p>
+            </div>
+          </div>
         </div>
 
         {/* Items table */}

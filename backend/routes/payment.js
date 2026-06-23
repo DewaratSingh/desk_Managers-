@@ -7,7 +7,7 @@ router.get('/:payment_no', async (req, res) => {
   const { payment_no } = req.params;
   try {
     const result = await pool.query(
-      `SELECT payment_no, delivery_note_no, trade_id, payment_date, total_amount, po_no, ro_no, created_at
+      `SELECT payment_no, delivery_note_no, trade_id, payment_date, total_amount, po_no, ro_no, note, created_at
        FROM payments WHERE payment_no = $1`,
       [payment_no]
     );
@@ -28,11 +28,12 @@ router.post('/', async (req, res) => {
     delivery_note_no,
     trade_id,
     payment_date,
-    total_amount
+    total_amount,
+    note
   } = req.body || {};
 
-  if (!payment_no || !delivery_note_no || !trade_id || !payment_date || total_amount === undefined) {
-    return res.status(400).json({ error: 'Missing required fields: payment_no, delivery_note_no, trade_id, payment_date, total_amount' });
+  if (!payment_no || !trade_id || !payment_date || total_amount === undefined) {
+    return res.status(400).json({ error: 'Missing required fields: payment_no, trade_id, payment_date, total_amount' });
   }
 
   const client = await pool.connect();
@@ -43,16 +44,33 @@ router.post('/', async (req, res) => {
     const dup = await client.query('SELECT payment_no FROM payments WHERE payment_no = $1', [payment_no]);
     if (dup.rows.length > 0) throw new Error('Payment number already exists');
 
-    // Resolve po_no / ro_no from delivery note
-    const dnRes = await client.query('SELECT po_no, ro_no FROM delivery_notes WHERE delivery_note_no = $1', [delivery_note_no]);
-    if (dnRes.rows.length === 0) throw new Error('Delivery Note not found');
-    const { po_no, ro_no } = dnRes.rows[0];
+    // Resolve po_no / ro_no from delivery note or trade directly
+    let po_no = null;
+    let ro_no = null;
+    if (delivery_note_no) {
+      const dnRes = await client.query('SELECT po_no, ro_no FROM delivery_notes WHERE delivery_note_no = $1', [delivery_note_no]);
+      if (dnRes.rows.length > 0) {
+        po_no = dnRes.rows[0].po_no;
+        ro_no = dnRes.rows[0].ro_no;
+      }
+    }
+    if (!po_no && !ro_no) {
+      const poRes = await client.query('SELECT po_no FROM purchase_orders WHERE trade_id = $1 LIMIT 1', [trade_id]);
+      if (poRes.rows.length > 0) {
+        po_no = poRes.rows[0].po_no;
+      } else {
+        const roRes = await client.query('SELECT ro_no FROM release_orders WHERE trade_id = $1 LIMIT 1', [trade_id]);
+        if (roRes.rows.length > 0) {
+          ro_no = roRes.rows[0].ro_no;
+        }
+      }
+    }
 
     // Insert
     await client.query(
-      `INSERT INTO payments (payment_no, delivery_note_no, trade_id, payment_date, total_amount, po_no, ro_no)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [payment_no, delivery_note_no, trade_id, payment_date, parseFloat(total_amount) || 0, po_no || null, ro_no || null]
+      `INSERT INTO payments (payment_no, delivery_note_no, trade_id, payment_date, total_amount, po_no, ro_no, note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [payment_no, delivery_note_no || null, trade_id, payment_date, parseFloat(total_amount) || 0, po_no || null, ro_no || null, note || null]
     );
 
     // Append to trade documents
@@ -75,7 +93,7 @@ router.post('/', async (req, res) => {
 // ─── UPDATE a Payment ─────────────────────────────────────────────────────────
 router.put('/:payment_no', async (req, res) => {
   const { payment_no } = req.params;
-  const { payment_date, total_amount } = req.body || {};
+  const { payment_date, total_amount, note } = req.body || {};
 
   if (!payment_date || total_amount === undefined) {
     return res.status(400).json({ error: 'payment_date and total_amount are required' });
@@ -85,8 +103,8 @@ router.put('/:payment_no', async (req, res) => {
   try {
     await client.query('BEGIN');
     const result = await client.query(
-      `UPDATE payments SET payment_date = $1, total_amount = $2 WHERE payment_no = $3 RETURNING *`,
-      [payment_date, parseFloat(total_amount) || 0, payment_no]
+      `UPDATE payments SET payment_date = $1, total_amount = $2, note = $3 WHERE payment_no = $4 RETURNING *`,
+      [payment_date, parseFloat(total_amount) || 0, note || null, payment_no]
     );
     if (result.rows.length === 0) throw new Error('Payment not found');
 
@@ -113,8 +131,8 @@ async function updateTradePaymentStatus(client, trade_id) {
   const res = await client.query(`
     SELECT 
       COALESCE(
-        (SELECT (basic_value + packing_forward + transport + other + gst) FROM purchase_orders WHERE trade_id = $1 LIMIT 1),
-        (SELECT (basic_value + packing_forward + transport + other + gst) FROM release_orders WHERE trade_id = $1 LIMIT 1),
+        (SELECT (basic_value + packing_forward + transport + other + gst + COALESCE((SELECT SUM(quantity * unit_price) FROM purchase_order_items WHERE po_no = po.po_no), 0)) FROM purchase_orders po WHERE po.trade_id = $1 LIMIT 1),
+        (SELECT (basic_value + packing_forward + transport + other + gst + COALESCE((SELECT SUM(quantity * unit_price) FROM release_order_items WHERE ro_no = ro.ro_no), 0)) FROM release_orders ro WHERE ro.trade_id = $1 LIMIT 1),
         0
       )::numeric AS expected_total,
       COALESCE(
@@ -140,4 +158,3 @@ async function updateTradePaymentStatus(client, trade_id) {
 }
 
 module.exports = router;
-module.exports.updateTradePaymentStatus = updateTradePaymentStatus;

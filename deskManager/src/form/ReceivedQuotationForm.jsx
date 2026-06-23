@@ -35,10 +35,6 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
     terms_and_conditions: ''
   });
 
-  // Autocomplete resources from DB
-  const [buyers, setBuyers] = useState([]);
-  const [customers, setCustomers] = useState([]);
-
   // Buyer Autocomplete state
   const [buyerInput, setBuyerInput] = useState('');
   const [buyerSuggestions, setBuyerSuggestions] = useState([]);
@@ -61,12 +57,6 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
   const buyerRef = useRef(null);
   const customerRef = useRef(null);
   const itemRef = useRef(null);
-
-  // Load buyers and customers on mount
-  useEffect(() => {
-    fetchBuyers();
-    fetchCustomers();
-  }, []);
 
   // Handle click outside dropdowns
   useEffect(() => {
@@ -106,25 +96,75 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
     }
   }, [editingNo]);
 
-  const fetchBuyers = async () => {
-    try {
-      const res = await fetch('/api/buyers');
-      if (res.ok) setBuyers(await res.json());
-    } catch (err) {
-      console.error('Error fetching buyers:', err);
+  // Debounced search for buyers (limit 5)
+  useEffect(() => {
+    const trimmed = buyerInput.trim();
+    if (!trimmed || formData.buyer_id) {
+      setBuyerSuggestions([]);
+      setShowBuyerDropdown(false);
+      setBuyerNotFound(false);
+      return;
     }
-  };
 
-  const fetchCustomers = async () => {
-    try {
-      const res = await fetch('/api/customers');
-      if (res.ok) setCustomers(await res.json());
-    } catch (err) {
-      console.error('Error fetching customers:', err);
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/buyers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setBuyerSuggestions(data);
+          setBuyerNotFound(data.length === 0);
+          setShowBuyerDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [buyerInput, formData.buyer_id]);
+
+  // Debounced search for customers (limit 5)
+  useEffect(() => {
+    const trimmed = customerInput.trim();
+    if (!trimmed || formData.customer_id) {
+      setCustomerSuggestions([]);
+      setShowCustomerDropdown(false);
+      setCustomerNotFound(false);
+      return;
     }
-  };
 
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setCustomerSuggestions(data);
+          setCustomerNotFound(data.length === 0);
+          setShowCustomerDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
 
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerInput, formData.customer_id]);
+
+  // Debounced search for items (limit 5)
+  useEffect(() => {
+    const trimmed = itemInput.trim();
+    if (!trimmed) {
+      setItemSuggestions([]);
+      setShowItemDropdown(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setItemSuggestions(data);
+          setShowItemDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [itemInput]);
 
   const fetchQuotationDetails = async (rqNo) => {
     setIsLoading(true);
@@ -176,15 +216,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
       setBuyerSuggestions([]);
       setShowBuyerDropdown(false);
       setBuyerNotFound(false);
-      return;
     }
-    const matches = buyers.filter(b =>
-      b.name.toLowerCase().includes(value.toLowerCase()) ||
-      b.email.toLowerCase().includes(value.toLowerCase())
-    );
-    setBuyerSuggestions(matches);
-    setShowBuyerDropdown(true);
-    setBuyerNotFound(matches.length === 0);
   };
 
   const selectBuyer = (b) => {
@@ -207,15 +239,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
       setCustomerSuggestions([]);
       setShowCustomerDropdown(false);
       setCustomerNotFound(false);
-      return;
     }
-    const matches = customers.filter(c =>
-      c.name.toLowerCase().includes(value.toLowerCase()) ||
-      c.id.toLowerCase().includes(value.toLowerCase())
-    );
-    setCustomerSuggestions(matches);
-    setShowCustomerDropdown(true);
-    setCustomerNotFound(matches.length === 0);
   };
 
   const selectCustomer = (c) => {
@@ -226,22 +250,11 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
   };
 
   // Item Lookup Autocomplete
-  const handleItemInput = async (value) => {
+  const handleItemInput = (value) => {
     setItemInput(value);
     if (!value.trim()) {
       setItemSuggestions([]);
       setShowItemDropdown(false);
-      return;
-    }
-    try {
-      const res = await fetch(`/api/items?q=${encodeURIComponent(value)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setItemSuggestions(data);
-        setShowItemDropdown(true);
-      }
-    } catch (err) {
-      console.error('Error fetching item suggestions:', err);
     }
   };
 
@@ -536,7 +549,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                   <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
                     <span className="text-emerald-600">✓ Customer linked</span>
                     <span className="text-slate-300">|</span>
-                    <span>{(customers || []).find(c => c.id === formData.customer_id)?.name}</span>
+                    <span>{customerInput}</span>
                   </div>
                 )}
               </div>
@@ -568,7 +581,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                           className="w-full text-left px-3.5 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
                         >
                           <div className="font-bold text-xs text-slate-900 flex justify-between items-center">
-                            <span className="font-mono text-blue-700">{item.item_code}</span>
+                            <span className="font-mono font-bold" style={{ color: 'var(--theme-color)' }}>{item.item_code}</span>
                             {item.drawing_number && <span className="text-[10px] text-slate-400">DRW: {item.drawing_number}</span>}
                           </div>
                           <div className="text-xs text-slate-600 font-semibold mt-0.5">{item.description}</div>
@@ -697,10 +710,10 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                         </span>
                       </div>
                       <div className="flex flex-col bg-blue-50/30 border border-blue-100 rounded p-2.5">
-                        <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-widest">
+                        <span className="text-[9px] font-extrabold text-red-500 uppercase tracking-widest">
                           Total Value
                         </span>
-                        <span className="text-base font-black text-blue-800 mt-0.5">
+                        <span className="text-base font-black text-red-500 mt-0.5">
                           ₹{calculateBasicValue(selectedItems).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </span>
                       </div>

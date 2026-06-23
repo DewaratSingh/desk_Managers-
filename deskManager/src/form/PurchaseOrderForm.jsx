@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
@@ -20,19 +20,13 @@ export default function PurchaseOrderForm() {
   const [poNoError, setPoNoError] = useState('');
 
   // Quotation autocomplete
-  const [quotations, setQuotations]               = useState([]);
   const [qtnInput, setQtnInput]                   = useState('');
   const [qtnSuggestions, setQtnSuggestions]       = useState([]);
   const [showQtnDropdown, setShowQtnDropdown]     = useState(false);
   const [qtnNotFound, setQtnNotFound]             = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState(null);
   const qtnRef = useRef(null);
-
-  // All GST rates from DB (fetched once)
-  const [gstRates, setGstRates] = useState([]);
-
-  // Customers list for shipping address search
-  const [customers, setCustomers] = useState([]);
+  const qtnManualRef = useRef(false);
 
   // Per-item GST search state keyed by item_code
   const [gstSearchInput, setGstSearchInput]       = useState({});  // { item_code: string }
@@ -47,6 +41,13 @@ export default function PurchaseOrderForm() {
   // PO items
   const [poItems, setPoItems] = useState([]);
 
+
+
+  const [gstSuggestions, setGstSuggestions]   = useState({});  // { item_code: array }
+  const [shipSuggestions, setShipSuggestions]   = useState({});  // { item_code: array }
+  const gstTimeoutRefs = useRef({});
+  const shipTimeoutRefs = useRef({});
+
   // Form data
   const [formData, setFormData] = useState({
     po_no:           '',
@@ -59,11 +60,33 @@ export default function PurchaseOrderForm() {
     packing_forward: '0',
   });
 
+  // Debounced search for quotations (limit 5)
   useEffect(() => {
-    fetchQuotations();
-    fetchGstRates();
-    fetchCustomers();
-  }, []);
+    const trimmed = qtnInput.trim();
+    if (!trimmed) {
+      setQtnSuggestions([]);
+      setShowQtnDropdown(false);
+      setQtnNotFound(false);
+      return;
+    }
+
+    if (!qtnManualRef.current) {
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/quotations?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setQtnSuggestions(data);
+          setQtnNotFound(data.length === 0);
+          setShowQtnDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [qtnInput]);
 
   useEffect(() => {
     if (editingNo) {
@@ -79,12 +102,15 @@ export default function PurchaseOrderForm() {
     }
   }, [editingNo, queryQuotationNo]);
 
+
+
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(event) {
       if (qtnRef.current && !qtnRef.current.contains(event.target)) {
         setShowQtnDropdown(false);
       }
+
       Object.keys(gstItemRefs.current).forEach(code => {
         if (gstItemRefs.current[code] && !gstItemRefs.current[code].contains(event.target)) {
           setGstDropdownOpen(prev => ({ ...prev, [code]: false }));
@@ -100,26 +126,7 @@ export default function PurchaseOrderForm() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchQuotations = async () => {
-    try {
-      const res = await fetch('/api/quotations');
-      if (res.ok) setQuotations(await res.json());
-    } catch (err) { console.error(err); }
-  };
 
-  const fetchGstRates = async () => {
-    try {
-      const res = await fetch('/api/gst-rates');
-      if (res.ok) setGstRates(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  const fetchCustomers = async () => {
-    try {
-      const res = await fetch('/api/customers');
-      if (res.ok) setCustomers(await res.json()); // [{ id, name, address }]
-    } catch (err) { console.error(err); }
-  };
 
   const fetchQuotationDetails = async (qNo) => {
     try {
@@ -185,19 +192,17 @@ export default function PurchaseOrderForm() {
 
   // Quotation autocomplete
   const handleQtnInput = (value) => {
+    qtnManualRef.current = true;
     setQtnInput(value);
     setFormData(prev => ({ ...prev, quotation_no: '' }));
     setSelectedQuotation(null);
     setPoItems([]);
     setGstSearchInput({});
-    if (!value.trim()) { setQtnSuggestions([]); setShowQtnDropdown(false); setQtnNotFound(false); return; }
-    const matches = quotations.filter(q => q.quotation_no.toLowerCase().includes(value.toLowerCase()));
-    setQtnSuggestions(matches);
     setShowQtnDropdown(true);
-    setQtnNotFound(matches.length === 0);
   };
 
   const selectQuotation = (qtn) => {
+    qtnManualRef.current = false;
     setSelectedQuotation(qtn);
     setFormData(prev => ({ ...prev, quotation_no: qtn.quotation_no }));
     setQtnInput(qtn.quotation_no);
@@ -221,12 +226,31 @@ export default function PurchaseOrderForm() {
     }
   };
 
-  // Per-item GST search handlers
+  // GST Search Suggestions On-Demand Fetcher
+  const fetchGstSuggestions = (itemCode, val) => {
+    if (gstTimeoutRefs.current[itemCode]) {
+      clearTimeout(gstTimeoutRefs.current[itemCode]);
+    }
+    const isSelectedFormat = /^[A-Z0-9\s]+\s*\(\d+(\.\d+)?%\)$/i.test(val);
+    if (isSelectedFormat) {
+      return;
+    }
+    gstTimeoutRefs.current[itemCode] = setTimeout(() => {
+      fetch(`/api/gst-rates?q=${encodeURIComponent(val)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setGstSuggestions(prev => ({ ...prev, [itemCode]: data }));
+        })
+        .catch(console.error);
+    }, 200);
+  };
+
+  // Per-item GST handlers
   const handleGstSearch = (itemCode, value) => {
     setGstSearchInput(prev => ({ ...prev, [itemCode]: value }));
-    // Clear selection on the item
     setPoItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, gst_type: '', gst_rate: '' } : i));
-    setGstDropdownOpen(prev => ({ ...prev, [itemCode]: value.trim().length > 0 }));
+    setGstDropdownOpen(prev => ({ ...prev, [itemCode]: true }));
+    fetchGstSuggestions(itemCode, value);
   };
 
   const selectItemGst = (itemCode, gst) => {
@@ -245,12 +269,19 @@ export default function PurchaseOrderForm() {
     setGstDropdownOpen(prev => ({ ...prev, [itemCode]: false }));
   };
 
-  const getGstSuggestions = (itemCode) => {
-    const query = (gstSearchInput[itemCode] || '').toLowerCase();
-    if (!query) return gstRates;
-    return gstRates.filter(g =>
-      g.type.toLowerCase().includes(query) || String(g.rate).includes(query)
-    );
+  // Shipping Address Customer Suggestions On-Demand Fetcher
+  const fetchShipSuggestions = (itemCode, val) => {
+    if (shipTimeoutRefs.current[itemCode]) {
+      clearTimeout(shipTimeoutRefs.current[itemCode]);
+    }
+    shipTimeoutRefs.current[itemCode] = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(val)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setShipSuggestions(prev => ({ ...prev, [itemCode]: data }));
+        })
+        .catch(console.error);
+    }, 200);
   };
 
   // Per-item shipping address handlers
@@ -258,6 +289,7 @@ export default function PurchaseOrderForm() {
     setShipInput(prev => ({ ...prev, [itemCode]: value }));
     updateItem(itemCode, 'shipping_address', value);
     setShipDropdownOpen(prev => ({ ...prev, [itemCode]: true }));
+    fetchShipSuggestions(itemCode, value);
   };
 
   const selectShipCustomer = (itemCode, customer) => {
@@ -272,22 +304,19 @@ export default function PurchaseOrderForm() {
     setShipDropdownOpen(prev => ({ ...prev, [itemCode]: false }));
   };
 
-  const getShipSuggestions = (itemCode) => {
-    const query = (shipInput[itemCode] || '').toLowerCase();
-    if (!query) return customers;
-    return customers.filter(c =>
-      c.id.toLowerCase().includes(query) ||
-      c.name.toLowerCase().includes(query) ||
-      (c.address || '').toLowerCase().includes(query)
-    );
-  };
-
-  // Item toggle
   const toggleItem = (itemCode) =>
     setPoItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, selected: !i.selected } : i));
 
   const updateItem = (itemCode, field, value) =>
     setPoItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, [field]: value } : i));
+
+
+
+  const removePoItem = (itemCode) => {
+    setPoItems(prev => prev.filter(i => i.item_code !== itemCode));
+  };
+
+  const removeRoItem = removePoItem;
 
   // Calculations
   const calcItemBasic   = (item) => (parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 0);
@@ -495,246 +524,213 @@ export default function PurchaseOrderForm() {
             </div>
 
             {/* Items Section */}
-            {poItems.length > 0 && (
-              <div>
-                <label className={labelCls}>Items</label>
-                <div className="border border-slate-300 rounded-lg overflow-visible bg-slate-50">
-                  {/* Items header */}
-                  <div className="bg-slate-100 px-4 py-2 border-b border-slate-300 flex justify-between items-center rounded-t-lg">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Select Items ({poItems.filter(i => i.selected).length} of {poItems.length})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const allSelected = poItems.every(i => i.selected);
-                        setPoItems(prev => prev.map(i => ({ ...i, selected: !allSelected })));
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-700 font-bold hover:underline cursor-pointer"
-                    >
-                      {poItems.every(i => i.selected) ? 'Deselect All' : 'Select All'}
-                    </button>
-                  </div>
+            <div className="border-t border-slate-200 pt-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-extrabold text-slate-800 m-0 uppercase tracking-wider">PO Items &amp; Pricing</h3>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold text-slate-400">{poItems.filter(i=>i.selected).length} of {poItems.length} selected</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allSelected = poItems.every(i => i.selected);
+                      setPoItems(prev => prev.map(i => ({ ...i, selected: !allSelected })));
+                    }}
+                    className="text-[10px] text-blue-600 hover:text-blue-700 font-bold hover:underline cursor-pointer"
+                  >
+                    {poItems.every(i => i.selected) ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+              </div>
 
-                  {/* Items list */}
-                  <div className="divide-y divide-slate-200">
-                    {poItems.map((item) => (
+              {/* Items List */}
+              {poItems.length === 0 ? (
+                <div className="text-center py-6 border border-dashed border-slate-300 rounded-lg bg-slate-50">
+                  <p className="text-xs text-slate-400 font-semibold m-0">No items linked to this Quotation. Please link a valid Quotation above.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {poItems.map((item) => {
+                    const basic = calcItemBasic(item);
+                    const gstVal = calcItemGst(item);
+                    const total  = calcItemTotal(item);
+
+                    return (
                       <div
                         key={item.item_code}
-                        className={`px-4 py-3 bg-white transition-colors ${!item.selected ? 'opacity-50' : ''}`}
+                        className={`border rounded-lg p-4 transition-all duration-150 ${item.selected ? 'bg-slate-50/50 border-slate-300 shadow-sm' : 'bg-slate-100/50 border-slate-200 opacity-60'}`}
                       >
-                        {/* Row 1: checkbox + item info + price */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <div className="flex items-center gap-3 min-w-0 flex-1 mr-4">
+                        {/* Header: Checkbox + Code + Details */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
                             <button
                               type="button"
                               onClick={() => toggleItem(item.item_code)}
-                              className="focus:outline-none shrink-0 cursor-pointer"
-                              style={{ color: 'var(--theme-color)' }}
+                              className="text-slate-600 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
                             >
-                              {item.selected ? <CheckSquare size={18} /> : <Square size={18} className="text-slate-400" />}
+                              {item.selected ? <CheckSquare size={17} style={{ color: 'var(--theme-color)' }} /> : <Square size={17} />}
                             </button>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span
-                                  className="font-mono font-bold text-xs border px-1.5 py-0.5 rounded"
-                                  style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}
-                                >
-                                  {item.item_code}
-                                </span>
-                                {item.drawing_number && (
-                                  <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                                    DRW: {item.drawing_number}
-                                  </span>
-                                )}
-                                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 shrink-0">
-                                  <span className="text-[10px] text-slate-400 font-bold">Qty:</span>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    value={item.quantity}
-                                    onChange={(e) => updateItem(item.item_code, 'quantity', parseInt(e.target.value) || 0)}
-                                    className="w-12 text-[10px] font-bold text-slate-700 bg-white border border-slate-300 rounded text-center focus:outline-none focus:border-[var(--theme-color)]"
-                                  />
-                                </div>
-                              </div>
-                              {item.description && <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>}
+                            <div>
+                              <span className="font-mono font-black text-xs px-2 py-0.5 border rounded"
+                                style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' }}>
+                                {item.item_code}
+                              </span>
+                              <p className="text-xs font-bold text-slate-700 mt-1">{item.description}</p>
+                              {item.drawing_number && (
+                                <p className="text-[9px] font-mono font-semibold text-slate-400 mt-0.5">Dwg No: {item.drawing_number}</p>
+                              )}
                             </div>
                           </div>
-                          {/* Unit price + line total */}
-                          <div className="shrink-0 text-right">
-                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Unit Price</div>
-                            <div className="font-bold text-sm text-slate-800">₹{fmt(item.unit_price)}</div>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeRoItem(item.item_code)}
+                            className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded border border-transparent hover:border-red-100 transition-colors cursor-pointer shrink-0"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
 
-                        {/* Row 2: per-item fields (only when selected) */}
+                        {/* Fields (only enabled if item selected) */}
                         {item.selected && (
-                          <div className="mt-3 pl-9 space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 border-t border-slate-200 pt-3">
+                            {/* Quantity & Unit Price */}
+                            <div>
+                              <label className={labelCls}>Quantity</label>
+                              <input
+                                type="number"
+                                min="1"
+                                required
+                                value={item.quantity}
+                                onChange={(e) => updateItem(item.item_code, 'quantity', e.target.value)}
+                                className={inputCls}
+                              />
+                            </div>
+                            <div>
+                              <label className={labelCls}>Unit Price (₹)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                required
+                                value={item.unit_price}
+                                onChange={(e) => updateItem(item.item_code, 'unit_price', e.target.value)}
+                                className={inputCls}
+                              />
+                            </div>
 
-                            {/* GST search per item */}
-                            <div
-                              className="relative"
-                              ref={el => { if (el) gstItemRefs.current[item.item_code] = el; }}
-                            >
-                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 block">
-                                GST / Tax <span className="normal-case font-semibold">(Optional)</span>
-                              </label>
+                            {/* GST search-based autocomplete */}
+                            <div ref={el => gstItemRefs.current[item.item_code] = el} className="relative">
+                              <label className={labelCls}>GST Category</label>
                               <div className="relative">
                                 <input
                                   type="text"
-                                  placeholder="Search GST type... e.g. IGST 18%"
+                                  placeholder="Type GST rate or type..."
                                   value={gstSearchInput[item.item_code] || ''}
                                   onChange={(e) => handleGstSearch(item.item_code, e.target.value)}
-                                  onFocus={() => setGstDropdownOpen(prev => ({ ...prev, [item.item_code]: true }))}
-                                  className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded font-medium placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] pr-7"
-                                  autoComplete="off"
+                                  onFocus={() => {
+                                    const currentVal = gstSearchInput[item.item_code] || '';
+                                    setGstDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
+                                    fetchGstSuggestions(item.item_code, currentVal);
+                                  }}
+                                  className={inputCls + " pr-7"}
                                 />
                                 {item.gst_type && (
                                   <button
                                     type="button"
                                     onClick={() => clearItemGst(item.item_code)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 cursor-pointer"
+                                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
                                   >
                                     <X size={12} />
                                   </button>
                                 )}
                               </div>
-
-                              {/* GST dropdown */}
-                              {gstDropdownOpen[item.item_code] && (
-                                <div className="absolute z-40 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto">
-                                  {getGstSuggestions(item.item_code).length > 0 ? (
-                                    getGstSuggestions(item.item_code).map((g) => (
-                                      <button
-                                        key={g.id}
-                                        type="button"
-                                        onClick={() => selectItemGst(item.item_code, g)}
-                                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                                      >
-                                        <div className="font-bold text-xs text-slate-900">{g.type}</div>
-                                        <div className="text-[10px] text-slate-500 mt-0.5">
-                                          {g.rate}% &bull; On ₹{fmt(calcItemBasic(item))} = <span className="font-bold text-slate-700">₹{fmt((calcItemBasic(item) * g.rate) / 100)}</span>
-                                        </div>
-                                      </button>
-                                    ))
-                                  ) : (
-                                    <div className="px-3.5 py-3 text-[10px] text-slate-400 font-medium">No GST rates found.</div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* GST linked indicator */}
-                              {item.gst_type && (
-                                <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2 py-1">
-                                  <span className="text-emerald-600">✓ {item.gst_type} @ {item.gst_rate}%</span>
-                                  <span className="text-slate-300">|</span>
-                                  <span>GST: ₹{fmt(calcItemGst(item))}</span>
-                                  <span className="text-slate-300">|</span>
-                                  <span className="text-slate-800">Item Total: ₹{fmt(calcItemTotal(item))}</span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Shipping Address (customer search) & Delivery Date */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              {/* Shipping Address — customer search */}
-                              <div
-                                className="relative"
-                                ref={el => { if (el) shipItemRefs.current[item.item_code] = el; }}
-                              >
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 block">
-                                  Shipping Address <span className="normal-case font-semibold">(Optional)</span>
-                                </label>
-                                <div className="relative">
-                                  <input
-                                    type="text"
-                                    placeholder="Search by Customer ID or name…"
-                                    value={shipInput[item.item_code] || ''}
-                                    onChange={(e) => handleShipInput(item.item_code, e.target.value)}
-                                    onFocus={() => setShipDropdownOpen(prev => ({ ...prev, [item.item_code]: true }))}
-                                    autoComplete="off"
-                                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded font-medium placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] pr-6"
-                                  />
-                                  {shipInput[item.item_code] && (
+                              {gstDropdownOpen[item.item_code] && (gstSuggestions[item.item_code] || []).length > 0 && (
+                                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-40 overflow-y-auto">
+                                  {(gstSuggestions[item.item_code] || []).map(g => (
                                     <button
+                                      key={g.id}
                                       type="button"
-                                      onClick={() => clearShip(item.item_code)}
-                                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 cursor-pointer"
+                                      onClick={() => selectItemGst(item.item_code, g)}
+                                      className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-slate-800 hover:bg-blue-50 border-b border-slate-100 last:border-0 cursor-pointer"
                                     >
-                                      <X size={11} />
+                                      {g.type} ({g.rate}%)
                                     </button>
-                                  )}
+                                  ))}
                                 </div>
-
-                                {/* Customer dropdown */}
-                                {shipDropdownOpen[item.item_code] && (
-                                  <div className="absolute z-40 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                                    {getShipSuggestions(item.item_code).length > 0 ? (
-                                      getShipSuggestions(item.item_code).map((c) => (
-                                        <button
-                                          key={c.id}
-                                          type="button"
-                                          onClick={() => selectShipCustomer(item.item_code, c)}
-                                          className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                                        >
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-mono font-bold text-[10px] px-1 py-0.5 rounded border"
-                                              style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' }}>
-                                              {c.id}
-                                            </span>
-                                            <span className="font-bold text-xs text-slate-900">{c.name}</span>
-                                          </div>
-                                          <div className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{c.address}</div>
-                                        </button>
-                                      ))
-                                    ) : (
-                                      <div className="px-3 py-3 text-[10px] text-slate-400 font-medium">No customers found.</div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Filled address preview */}
-                                {item.shipping_address && !shipDropdownOpen[item.item_code] && (
-                                  <p className="mt-1 text-[10px] text-slate-500 font-medium line-clamp-2 pl-0.5">
-                                    📍 {item.shipping_address}
-                                  </p>
-                                )}
-                              </div>
-
-                              {/* Delivery Date */}
-                              <div>
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 block">
-                                  Item Delivery Date <span className="normal-case font-semibold">(Optional)</span>
-                                </label>
-                                <input
-                                  type="date"
-                                  value={item.delivery_date}
-                                  onChange={(e) => updateItem(item.item_code, 'delivery_date', e.target.value)}
-                                  className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded font-medium focus:outline-none focus:border-[var(--theme-color)]"
-                                />
-                              </div>
+                              )}
                             </div>
 
+                            {/* Shipping address autocomplete */}
+                            <div ref={el => shipItemRefs.current[item.item_code] = el} className="relative">
+                              <label className={labelCls}>Shipping Address</label>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  placeholder="Type address or search customer..."
+                                  value={shipInput[item.item_code] || ''}
+                                  onChange={(e) => handleShipInput(item.item_code, e.target.value)}
+                                  onFocus={() => {
+                                    const currentVal = shipInput[item.item_code] || '';
+                                    setShipDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
+                                    fetchShipSuggestions(item.item_code, currentVal);
+                                  }}
+                                  className={inputCls + " pr-7"}
+                                />
+                                {shipInput[item.item_code] && (
+                                  <button
+                                    type="button"
+                                    onClick={() => clearShip(item.item_code)}
+                                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                )}
+                              </div>
+                              {shipDropdownOpen[item.item_code] && (shipSuggestions[item.item_code] || []).length > 0 && (
+                                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-40 overflow-y-auto">
+                                  {(shipSuggestions[item.item_code] || []).slice(0, 5).map(c => (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      onClick={() => selectShipCustomer(item.item_code, c)}
+                                      className="w-full text-left px-3 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
+                                    >
+                                      <div className="font-bold text-[10px] text-slate-900 leading-tight">[{c.id}] {c.name}</div>
+                                      <div className="text-[9px] text-slate-500 truncate mt-0.5">{c.address}</div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Delivery Date */}
+                            <div className="sm:col-span-2">
+                              <label className={labelCls}>Expected Delivery Date</label>
+                              <input
+                                type="date"
+                                value={item.delivery_date || ''}
+                                onChange={(e) => updateItem(item.item_code, 'delivery_date', e.target.value)}
+                                className={inputCls}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* pricing footer snippet */}
+                        {item.selected && (
+                          <div className="mt-3.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
+                            <div>
+                              <span>Basic: ₹{fmt(basic)}</span>
+                              {gstVal > 0 && <span className="ml-3">GST ({item.gst_rate}%): ₹{fmt(gstVal)}</span>}
+                            </div>
+                            <span className="text-slate-800 font-extrabold">Item Total: ₹{fmt(total)}</span>
                           </div>
                         )}
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Totals footer */}
-                  <div className="bg-slate-100 px-4 py-2.5 border-t border-slate-300 rounded-b-lg flex flex-col items-end gap-0.5">
-                    <span className="text-[10px] font-bold text-slate-500">Items Basic: ₹{fmt(calcBasicTotal())}</span>
-                    {calcGstTotal() > 0 && (
-                      <span className="text-[10px] font-bold text-slate-500">GST Total: ₹{fmt(calcGstTotal())}</span>
-                    )}
-                    <span className="text-xs font-bold text-slate-800 border-t border-slate-300 pt-0.5 mt-0.5">
-                      Items Sub-Total: ₹{fmt(calcBasicTotal() + calcGstTotal())}
-                    </span>
-                  </div>
+                    );
+                  })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Other Charges */}
             <div>
@@ -764,10 +760,16 @@ export default function PurchaseOrderForm() {
               </div>
             </div>
 
-            {/* Grand Total */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Estimated Grand Total</span>
-              <span className="text-base font-black text-slate-900">₹{fmt(calcGrandTotal())}</span>
+            {/* Summary Footer */}
+            <div className="border-t border-slate-200 pt-5 space-y-2">
+              <div className="flex justify-between text-xs font-bold text-slate-500">
+                <span>Items Total:</span>
+                <span className="font-mono">₹{fmt(calcBasicTotal() + calcGstTotal())}</span>
+              </div>
+              <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-100">
+                <span>Grand Total:</span>
+                <span className="font-mono text-lg" style={{ color: 'var(--theme-color)' }}>₹{fmt(calcGrandTotal())}</span>
+              </div>
             </div>
 
             {/* Action Buttons */}

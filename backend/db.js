@@ -384,6 +384,7 @@ const initializeDatabase = async () => {
         ro_no VARCHAR(100) REFERENCES release_orders(ro_no) ON DELETE SET NULL,
         total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         trade_id VARCHAR(100) REFERENCES trades(trade_id) ON DELETE SET NULL,
+        note TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -462,6 +463,17 @@ const initializeDatabase = async () => {
       console.log('Adding delivery_note_no column to payments table...');
       await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS delivery_note_no VARCHAR(100) REFERENCES delivery_notes(delivery_note_no) ON DELETE SET NULL;`);
       console.log('delivery_note_no column added to payments successfully.');
+    }
+
+    // Add note column to payments if it doesn't exist
+    const paymentsNoteCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'payments' AND column_name = 'note'
+    `);
+    if (paymentsNoteCheck.rows.length === 0) {
+      console.log('Adding note column to payments table...');
+      await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS note TEXT;`);
+      console.log('note column added to payments successfully.');
     }
     
     // Add shipping_address column to purchase_order_items if it doesn't exist
@@ -956,6 +968,7 @@ const initializeDatabase = async () => {
         po_no VARCHAR(100) REFERENCES purchase_orders(po_no) ON DELETE SET NULL,
         ro_no VARCHAR(100) REFERENCES release_orders(ro_no) ON DELETE SET NULL,
         total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        note TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);

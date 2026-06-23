@@ -23,7 +23,6 @@ export default function QuotationForm({ activeTab }) {
   const queryTradeId = searchParams.get('trade_id');
   const editingNo = id || (activeTab === 'updateQuotation' ? id : null);
 
-  const [rfqs, setRfqs] = useState([]);
   const [nextQuotationNo, setNextQuotationNo] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -54,13 +53,37 @@ export default function QuotationForm({ activeTab }) {
 
   const rfqRef = useRef(null);
   const recQtnRef = useRef(null);
+  const rfqManualRef = useRef(false);
 
   const units = ['Piece', 'Kg', 'Meter', 'Box', 'Set', 'Liter', 'Ton', 'Nos'];
 
-  // Load rfqs on mount
+  // Debounced search for RFQs (limit 5)
   useEffect(() => {
-    fetchRfqs();
-  }, []);
+    const trimmed = rfqInput.trim();
+    if (!trimmed) {
+      setRfqSuggestions([]);
+      setShowRfqDropdown(false);
+      setRfqNotFound(false);
+      return;
+    }
+
+    if (!rfqManualRef.current) {
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/rfqs?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setRfqSuggestions(data);
+          setRfqNotFound(data.length === 0);
+          setShowRfqDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [rfqInput]);
 
   // Handle query parameter RFQ selection or Edit mode on mount/change
   useEffect(() => {
@@ -104,17 +127,7 @@ export default function QuotationForm({ activeTab }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchRfqs = async () => {
-    try {
-      const res = await fetch('/api/rfqs');
-      if (res.ok) {
-        const data = await res.json();
-        setRfqs(data);
-      }
-    } catch (err) {
-      console.error('Error fetching RFQs:', err);
-    }
-  };
+
 
   const fetchNextNo = async () => {
     try {
@@ -150,13 +163,12 @@ export default function QuotationForm({ activeTab }) {
       }
       const qData = await res.json();
 
-      // Fetch linked RFQ details sequentially
-      const rfqRes = await fetch(`/api/rfqs/${encodeURIComponent(qData.rfq_no)}`);
-      let rfqData = null;
-      if (rfqRes.ok) {
-        rfqData = await rfqRes.json();
-        setSelectedRFQ(rfqData);
-      }
+      setSelectedRFQ({
+        rfq_no: qData.rfq_no,
+        customer_id: qData.customer_id,
+        buyer_name: qData.buyer_name,
+        trade_id: qData.trade_id
+      });
 
       setFormData({
         quotation_no: qData.quotation_no,
@@ -169,20 +181,15 @@ export default function QuotationForm({ activeTab }) {
       // Populate items
       if (Array.isArray(qData.items)) {
         setQuotationItems(
-          qData.items.map(item => {
-            const rfqItem = rfqData && Array.isArray(rfqData.items)
-              ? rfqData.items.find(ri => ri.item_code === item.item_code)
-              : null;
-            return {
-              item_code: item.item_code,
-              quantity: item.quantity,
-              unit: item.unit || 'Piece',
-              unit_price: item.unit_price,
-              description: item.description || (rfqItem?.description || ''),
-              drawing_number: item.drawing_number || (rfqItem?.drawing_number || ''),
-              selected: true
-            };
-          })
+          qData.items.map(item => ({
+            item_code: item.item_code,
+            quantity: item.quantity,
+            unit: item.unit || 'Piece',
+            unit_price: item.unit_price,
+            description: item.description || '',
+            drawing_number: item.drawing_number || '',
+            selected: true
+          }))
         );
       }
 
@@ -218,25 +225,16 @@ export default function QuotationForm({ activeTab }) {
 
   // RFQ Input handler
   const handleRfqInput = (value) => {
+    rfqManualRef.current = true;
     setRfqInput(value);
     setFormData(prev => ({ ...prev, rfq_no: '' }));
     setSelectedRFQ(null);
     setQuotationItems([]);
-
-    if (!value.trim()) {
-      setRfqSuggestions([]);
-      setShowRfqDropdown(false);
-      setRfqNotFound(false);
-      return;
-    }
-
-    const matches = rfqs.filter(r => r.rfq_no.toLowerCase().includes(value.toLowerCase()));
-    setRfqSuggestions(matches);
     setShowRfqDropdown(true);
-    setRfqNotFound(matches.length === 0);
   };
 
   const selectRFQ = (rfq) => {
+    rfqManualRef.current = false;
     setSelectedRFQ(rfq);
     setFormData(prev => ({ ...prev, rfq_no: rfq.rfq_no }));
     setRfqInput(rfq.rfq_no);

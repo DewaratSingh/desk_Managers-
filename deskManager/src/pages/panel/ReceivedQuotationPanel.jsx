@@ -1,4 +1,4 @@
-import { FileText, List, Edit2 } from 'lucide-react';
+import { FileText, List, Edit2, Building2, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const fmtDate = (d) => {
@@ -38,17 +38,39 @@ export default function ReceivedQuotationPanel({ receivedQuotation, tradeId }) {
 
       <div className="p-6 space-y-6">
         {/* Meta row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-5 border-b border-slate-100">
-          {[
-            { label: 'Quotation Date', value: fmtDate(receivedQuotation.quotation_date) },
-            { label: 'Seller Name',    value: receivedQuotation.buyer_name || '—' },
-            { label: 'Customer ID',    value: receivedQuotation.customer_id || '—' },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
-              <p className="text-sm font-semibold text-slate-800">{value}</p>
+        <div className="pb-5 border-b border-slate-100">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Quotation Date</p>
+            <p className="text-sm font-semibold text-slate-800">{fmtDate(receivedQuotation.quotation_date)}</p>
+          </div>
+        </div>
+
+        {/* Customer / Seller details */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pb-5 border-b border-slate-100">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
+              <Building2 size={11} /> Customer
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 space-y-0.5">
+              <p className="text-[10px] font-semibold text-slate-400">ID: <span className="text-slate-700">{receivedQuotation.customer_id}</span></p>
+              <p className="text-sm font-bold text-slate-900">{receivedQuotation.customer_name || '—'}</p>
+              {receivedQuotation.customer_address && (
+                <p className="text-[11px] font-medium text-slate-500 mt-2 pt-2 border-t border-slate-200/60 whitespace-pre-line leading-relaxed">
+                  {receivedQuotation.customer_address}
+                </p>
+              )}
             </div>
-          ))}
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
+              <User size={11} /> Seller / Contact
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 space-y-0.5">
+              <p className="text-sm font-bold text-slate-900">{receivedQuotation.buyer_name || '—'}</p>
+              <p className="text-[10px] font-semibold text-slate-400">{receivedQuotation.buyer_email || '—'}</p>
+              <p className="text-[10px] font-semibold text-slate-400">{receivedQuotation.buyer_phone || '—'}</p>
+            </div>
+          </div>
         </div>
 
         {/* Items table */}

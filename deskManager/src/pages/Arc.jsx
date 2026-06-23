@@ -97,7 +97,7 @@ export default function ArcView() {
       return;
     }
     try {
-      const res = await fetch(`/api/items?q=${encodeURIComponent(value)}`);
+      const res = await fetch(`/api/items?q=${encodeURIComponent(value)}&limit=5`);
       if (res.ok) {
         const data = await res.json();
         setSuggestions(data);

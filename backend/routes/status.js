@@ -2,10 +2,20 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
-// Get all statuses
+// Get statuses (supports searching and limit of 5 if q is provided)
 router.get('/', async (req, res) => {
+  const { q } = req.query || {};
   try {
-    const result = await pool.query('SELECT name FROM status ORDER BY name ASC');
+    let queryText = 'SELECT name FROM status';
+    let params = [];
+    if (q !== undefined) {
+      queryText += ' WHERE name ILIKE $1';
+      params.push(`%${q}%`);
+      queryText += ' ORDER BY name ASC LIMIT 5';
+    } else {
+      queryText += ' ORDER BY name ASC';
+    }
+    const result = await pool.query(queryText, params);
     res.json(result.rows.map(r => r.name));
   } catch (err) {
     console.error('Error fetching statuses:', err.message);

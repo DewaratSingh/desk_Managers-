@@ -61,14 +61,16 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
             item.id === "addRfq"
               ? location.pathname === "/addRfq" ||
                 location.pathname.startsWith("/updateRfq/")
-              : item.id === "quotation"
-                ? location.pathname === "/addQuotation" ||
-                  location.pathname.startsWith("/updateQuotation/") ||
-                  (location.pathname === "/" &&
-                    (activeTab === "quotation" ||
-                      activeTab === "addQuotation" ||
-                      activeTab === "updateQuotation"))
-                : location.pathname === "/" && activeTab === item.id;
+              : item.id === "purchase-order"
+                ? location.pathname === "/order"
+                : item.id === "quotation"
+                  ? location.pathname === "/addQuotation" ||
+                    location.pathname.startsWith("/updateQuotation/") ||
+                    (location.pathname === "/" &&
+                      (activeTab === "quotation" ||
+                        activeTab === "addQuotation" ||
+                        activeTab === "updateQuotation"))
+                  : location.pathname === "/" && activeTab === item.id;
           return (
             <button
               key={item.id}
@@ -78,6 +80,8 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout }) {
                 } else if (item.id === "quotation") {
                   setActiveTab("quotation");
                   navigate("/");
+                } else if (item.id === "purchase-order") {
+                  navigate("/order");
                 } else {
                   setActiveTab(item.id);
                   navigate("/");

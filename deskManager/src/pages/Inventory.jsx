@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Edit2,
@@ -37,21 +37,77 @@ export default function InventoryView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
+  
+  const [hasMore, setHasMore] = useState(true);
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
+  const [showRfqDropdown, setShowRfqDropdown] = useState(false);
+
+  const itemDropdownRef = useRef(null);
+  const rfqDropdownRef = useRef(null);
 
   const units = ['Piece', 'Kg', 'Meter', 'Box', 'Set', 'Liter', 'Ton', 'Nos'];
 
+  // Handle click outside autocomplete suggestions
   useEffect(() => {
-    fetchInventory();
-    fetchItems();
-    fetchRfqs();
+    function handleClickOutside(event) {
+      if (itemDropdownRef.current && !itemDropdownRef.current.contains(event.target)) {
+        setShowItemDropdown(false);
+      }
+      if (rfqDropdownRef.current && !rfqDropdownRef.current.contains(event.target)) {
+        setShowRfqDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchInventory = async () => {
+  // Debounced search for inventory list (offset-based)
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchInventory(false, searchQuery);
+    }, 200);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  // Debounced search for items (form datalist, limit 5)
+  useEffect(() => {
+    if (viewMode !== 'form') return;
+    const trimmed = formData.item_code.trim();
+    const delayDebounceFn = setTimeout(() => {
+      fetchItems(trimmed);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [formData.item_code, viewMode]);
+
+  // Debounced search for RFQs (form datalist, limit 5)
+  useEffect(() => {
+    if (viewMode !== 'form') return;
+    const trimmed = formData.rfq_no.trim();
+    const delayDebounceFn = setTimeout(() => {
+      fetchRfqs(trimmed);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [formData.rfq_no, viewMode]);
+
+  const fetchInventory = async (isLoadMore = false, query = searchQuery) => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/inventory');
+      const currentOffset = isLoadMore ? inventoryList.length : 0;
+      const res = await fetch(`/api/inventory?q=${encodeURIComponent(query)}&limit=20&offset=${currentOffset}`);
       if (res.ok) {
-        setInventoryList(await res.json());
+        const data = await res.json();
+        if (isLoadMore) {
+          setInventoryList(prev => [...prev, ...data]);
+        } else {
+          setInventoryList(data);
+        }
+        if (data.length < 20) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch inventory:', err);
@@ -60,9 +116,9 @@ export default function InventoryView() {
     }
   };
 
-  const fetchItems = async () => {
+  const fetchItems = async (query = '') => {
     try {
-      const res = await fetch('/api/items');
+      const res = await fetch(`/api/items?q=${encodeURIComponent(query)}&limit=5`);
       if (res.ok) {
         setItems(await res.json());
       }
@@ -71,15 +127,35 @@ export default function InventoryView() {
     }
   };
 
-  const fetchRfqs = async () => {
+  const fetchRfqs = async (query = '') => {
     try {
-      const res = await fetch('/api/rfqs');
+      const res = await fetch(`/api/rfqs?q=${encodeURIComponent(query)}&limit=5`);
       if (res.ok) {
         setRfqs(await res.json());
       }
     } catch (err) {
       console.error('Failed to fetch RFQs:', err);
     }
+  };
+
+  const handleItemInput = (val) => {
+    setFormData(prev => ({ ...prev, item_code: val }));
+    setShowItemDropdown(true);
+  };
+
+  const handleSelectItem = (item) => {
+    setFormData(prev => ({ ...prev, item_code: item.item_code }));
+    setShowItemDropdown(false);
+  };
+
+  const handleRfqInput = (val) => {
+    setFormData(prev => ({ ...prev, rfq_no: val }));
+    setShowRfqDropdown(true);
+  };
+
+  const handleSelectRfq = (rfq) => {
+    setFormData(prev => ({ ...prev, rfq_no: rfq.rfq_no }));
+    setShowRfqDropdown(false);
   };
 
   const set = (field) => (e) =>
@@ -179,16 +255,7 @@ export default function InventoryView() {
     }
   };
 
-  const filteredInventory = inventoryList.filter(item => {
-    const q = searchQuery.toLowerCase();
-    const itemCodeMatch = item.item_code ? item.item_code.toLowerCase().includes(q) : false;
-    const descMatch = item.description ? item.description.toLowerCase().includes(q) : false;
-    const locationMatch = item.location ? item.location.toLowerCase().includes(q) : false;
-    const rackMatch = item.rack ? item.rack.toLowerCase().includes(q) : false;
-    const shelfMatch = item.shelf_number ? item.shelf_number.toLowerCase().includes(q) : false;
-    const notesMatch = item.notes ? item.notes.toLowerCase().includes(q) : false;
-    return itemCodeMatch || descMatch || locationMatch || rackMatch || shelfMatch || notesMatch;
-  });
+  const filteredInventory = inventoryList;
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900">
@@ -251,7 +318,8 @@ export default function InventoryView() {
                 <span>No stock records found. Click "Add Inventory" to create one.</span>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
@@ -360,6 +428,25 @@ export default function InventoryView() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Show More Button */}
+              {hasMore && (
+                <div className="flex justify-center mt-5 animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => fetchInventory(true, searchQuery)}
+                    disabled={isLoading}
+                    className="flex items-center gap-1.5 px-5 py-2.5 bg-white border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? (
+                      <><RefreshCw size={12} className="animate-spin text-slate-400" /> Loading...</>
+                    ) : (
+                      'Show More'
+                    )}
+                  </button>
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>
@@ -389,17 +476,34 @@ export default function InventoryView() {
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                     Catalog Item <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    list="item-codes-datalist"
-                    required
-                    placeholder="Search by item code or description..."
-                    value={formData.item_code}
-                    onChange={set('item_code')}
-                    disabled={!!editingId}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                    autoComplete="off"
-                  />
+                  <div className="relative" ref={itemDropdownRef}>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Search by item code or description..."
+                      value={formData.item_code}
+                      onChange={(e) => handleItemInput(e.target.value)}
+                      onFocus={() => setShowItemDropdown(true)}
+                      disabled={!!editingId}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                      autoComplete="off"
+                    />
+                    {showItemDropdown && items.length > 0 && (
+                      <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto overflow-x-hidden animate-fade-in divide-y divide-slate-100">
+                        {items.map((item) => (
+                          <button
+                            key={item.item_code}
+                            type="button"
+                            onClick={() => handleSelectItem(item)}
+                            className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors text-xs cursor-pointer flex flex-col gap-0.5"
+                          >
+                            <div className="font-bold text-slate-800">{item.item_code}</div>
+                            <div className="text-[10px] text-slate-500 truncate font-semibold">{item.description}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   {editingId && (
                     <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
                       Item code cannot be changed once stock record is created.
@@ -463,15 +567,32 @@ export default function InventoryView() {
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                     Link to RFQ (Optional)
                   </label>
-                  <input
-                    type="text"
-                    list="rfq-nos-datalist"
-                    placeholder="Search by RFQ number..."
-                    value={formData.rfq_no}
-                    onChange={set('rfq_no')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
-                    autoComplete="off"
-                  />
+                  <div className="relative" ref={rfqDropdownRef}>
+                    <input
+                      type="text"
+                      placeholder="Search by RFQ number..."
+                      value={formData.rfq_no}
+                      onChange={(e) => handleRfqInput(e.target.value)}
+                      onFocus={() => setShowRfqDropdown(true)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                      autoComplete="off"
+                    />
+                    {showRfqDropdown && rfqs.length > 0 && (
+                      <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto overflow-x-hidden animate-fade-in divide-y divide-slate-100">
+                        {rfqs.map((rfq) => (
+                          <button
+                            key={rfq.rfq_no}
+                            type="button"
+                            onClick={() => handleSelectRfq(rfq)}
+                            className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors text-xs cursor-pointer flex flex-col gap-0.5"
+                          >
+                            <div className="font-bold text-slate-800">{rfq.rfq_no}</div>
+                            <div className="text-[10px] text-slate-500 truncate font-semibold">{rfq.customer_name}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -566,25 +687,9 @@ export default function InventoryView() {
       )}
 
       {/* Autocomplete Datalists */}
-      <datalist id="item-codes-datalist">
-        {items.map(item => (
-          <option key={item.item_code} value={item.item_code}>
-            {item.description ? `${item.description}` : ''}
-          </option>
-        ))}
-      </datalist>
-
       <datalist id="units-datalist">
         {units.map(u => (
           <option key={u} value={u} />
-        ))}
-      </datalist>
-
-      <datalist id="rfq-nos-datalist">
-        {rfqs.map(rfq => (
-          <option key={rfq.rfq_no} value={rfq.rfq_no}>
-            {rfq.customer_name ? `${rfq.customer_name}` : ''}
-          </option>
         ))}
       </datalist>
     </div>

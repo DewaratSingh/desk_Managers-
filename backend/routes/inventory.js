@@ -2,33 +2,40 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
-// Get inventory items (with optional search)
+// Get inventory items (with optional search, limit & offset)
 router.get('/', async (req, res) => {
   const { q } = req.query || {};
+  const limit = req.query.limit ? parseInt(req.query.limit) : null;
+  const offset = req.query.offset ? parseInt(req.query.offset) : 0;
   try {
-    let result;
+    let queryText = `
+      SELECT inv.*, it.description, it.drawing_number 
+      FROM inventory inv
+      LEFT JOIN items it ON inv.item_code = it.item_code
+    `;
+    const params = [];
     if (q) {
-      const searchQuery = `%${q}%`;
-      result = await pool.query(
-        `SELECT inv.*, it.description, it.drawing_number 
-         FROM inventory inv
-         LEFT JOIN items it ON inv.item_code = it.item_code
-         WHERE inv.item_code ILIKE $1 
-            OR inv.location ILIKE $1 
-            OR inv.rack ILIKE $1 
-            OR inv.shelf_number ILIKE $1
-            OR it.description ILIKE $1
-         ORDER BY inv.created_at DESC`,
-        [searchQuery]
-      );
-    } else {
-      result = await pool.query(
-        `SELECT inv.*, it.description, it.drawing_number 
-         FROM inventory inv
-         LEFT JOIN items it ON inv.item_code = it.item_code
-         ORDER BY inv.created_at DESC`
-      );
+      queryText += `
+        WHERE inv.item_code ILIKE $1 
+           OR inv.location ILIKE $1 
+           OR inv.rack ILIKE $1 
+           OR inv.shelf_number ILIKE $1
+           OR it.description ILIKE $1
+      `;
+      params.push(`%${q}%`);
     }
+    queryText += ` ORDER BY inv.created_at DESC`;
+
+    if (limit !== null) {
+      const limitParamIdx = params.length + 1;
+      const offsetParamIdx = params.length + 2;
+      queryText += ` LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}`;
+      params.push(limit, offset);
+    } else if (q) {
+      queryText += ` LIMIT 5`; // Default to 5 when searching
+    }
+
+    const result = await pool.query(queryText, params);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching inventory:', err.message);

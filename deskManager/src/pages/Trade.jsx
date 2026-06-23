@@ -9,6 +9,7 @@ import PoPanel        from './panel/PoPanel';
 import RoPanel        from './panel/RoPanel';
 import DeliveryPanel  from './panel/DeliveryPanel';
 import InvoicePanel   from './panel/InvoicePanel';
+import PaymentPanel   from './panel/PaymentPanel';
 
 // Status pill colours
 const statusStyle = (s) => {
@@ -36,7 +37,6 @@ const tradeTypeStyle = (type) => {
 function StatusUpdater({ tradeId, currentStatus, onStatusChanged }) {
   const [inputVal, setInputVal] = useState(currentStatus || '');
   const [suggestions, setSuggestions] = useState([]);
-  const [allStatuses, setAllStatuses] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -44,35 +44,31 @@ function StatusUpdater({ tradeId, currentStatus, onStatusChanged }) {
   const inputRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  // Load all statuses from DB on mount
-  useEffect(() => {
-    fetch('/api/statuses')
-      .then(r => r.json())
-      .then(data => setAllStatuses(Array.isArray(data) ? data : []))
-      .catch(console.error);
-  }, []);
-
   // Sync input when currentStatus changes from parent
   useEffect(() => {
     setInputVal(currentStatus || '');
   }, [currentStatus]);
 
+  // Debounced search query fetch for status suggestions
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/statuses?q=${encodeURIComponent(inputVal.trim())}`)
+        .then(r => r.json())
+        .then(data => setSuggestions(Array.isArray(data) ? data : []))
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [inputVal]);
+
   const handleInput = (val) => {
     setInputVal(val);
     setSaved(false);
     setError(null);
-    if (val.trim().length === 0) {
-      setSuggestions(allStatuses);
-    } else {
-      setSuggestions(
-        allStatuses.filter(s => s.toLowerCase().includes(val.trim().toLowerCase()))
-      );
-    }
     setShowDropdown(true);
   };
 
   const handleFocus = () => {
-    setSuggestions(inputVal.trim() ? allStatuses.filter(s => s.toLowerCase().includes(inputVal.trim().toLowerCase())) : allStatuses);
     setShowDropdown(true);
   };
 
@@ -103,7 +99,7 @@ function StatusUpdater({ tradeId, currentStatus, onStatusChanged }) {
       setShowDropdown(false);
       onStatusChanged(updated.status);
       // Also refresh suggestion list to include new custom status
-      setAllStatuses(prev => prev.includes(updated.status) ? prev : [...prev, updated.status].sort());
+      setSuggestions(prev => prev.includes(updated.status) ? prev : [...prev, updated.status]);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       setError(err.message);
@@ -193,7 +189,7 @@ function StatusUpdater({ tradeId, currentStatus, onStatusChanged }) {
 }
 
 export default function TradeView() {
-  const { tradeid } = useParams();
+  const { tradeid, deliveryId } = useParams();
   const navigate    = useNavigate();
 
   const [trade, setTrade]               = useState(null);
@@ -431,22 +427,67 @@ export default function TradeView() {
     });
   }
 
+  const hasPoOrRo = hasPoDoc || hasRoDoc;
+  if (hasPoOrRo) {
+    const calcPoTotal = (po) => {
+      if (!po) return 0;
+      const itemsBasic = (po.items || []).reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseInt(i.quantity) || 0), 0);
+      const gstTotal = parseFloat(po.gst) || 0;
+      const transport = parseFloat(po.transport) || 0;
+      const packing = parseFloat(po.packing_forward) || 0;
+      const other = parseFloat(po.other) || 0;
+      const basicVal = parseFloat(po.basic_value) || 0;
+      return itemsBasic + gstTotal + transport + packing + other + basicVal;
+    };
+    const expectedTotal = purchaseOrder ? calcPoTotal(purchaseOrder) : (releaseOrder ? calcPoTotal(releaseOrder) : 0);
+
+    let paymentLabel = '④ Payments';
+    if (isArc) {
+      paymentLabel = '② Payments';
+    } else if (!rfq) {
+      paymentLabel = '③ Payments';
+    }
+
+
+
   const showDelivery = isArc ? hasRoDoc : hasPoDoc;
 
   if (showDelivery) {
-    let deliveryLabel = '③ Delivery & Invoicing';
+    let deliveryLabel = '④ Delivery & Invoicing';
     if (isArc) {
-      deliveryLabel = '② Delivery & Invoicing';
+      deliveryLabel = '③ Delivery & Invoicing';
     } else if (rfq) {
-      deliveryLabel = '④ Delivery & Invoicing';
+      deliveryLabel = '⑤ Delivery & Invoicing';
     }
     panels.push({
       key: 'delivery',
       label: deliveryLabel,
-      component: <DeliveryPanel tradeId={trade.trade_id} deliveryNotes={deliveryNotes} invoices={invoices} grns={grns} payments={payments} onRefresh={() => fetchTradeDetails(trade.trade_id)} />
+      component: (
+        <DeliveryPanel
+          tradeId={trade.trade_id}
+          deliveryNotes={deliveryNotes}
+          invoices={invoices}
+          grns={grns}
+          payments={payments}
+          onRefresh={() => fetchTradeDetails(trade.trade_id)}
+          focusedDeliveryId={deliveryId}
+        />
+      )
     });
   }
-
+    panels.push({
+      key: 'payments',
+      label: paymentLabel,
+      component: (
+        <PaymentPanel
+          tradeId={trade.trade_id}
+          payments={payments}
+          expectedTotal={expectedTotal}
+          onRefresh={() => fetchTradeDetails(trade.trade_id)}
+        />
+      )
+    });
+  }
   // Show status updater when PO or RO exists
   const showStatusUpdater = hasPoDoc || hasRoDoc;
 

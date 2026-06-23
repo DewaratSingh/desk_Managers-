@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Truck, Plus, List, Edit2, FileText, CheckCircle2, AlertCircle,
@@ -246,6 +246,11 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
   const [loadingItems, setLoadingItems] = useState(false);
   const [items, setItems] = useState(dnItems || []);
 
+  useEffect(() => {
+    setItems(dnItems || []);
+    setShowForm(!noteGrn);
+  }, [deliveryNoteNo, dnItems, noteGrn]);
+
   const loadItems = async () => {
     if (items.length > 0) return; // already loaded
     setLoadingItems(true);
@@ -441,265 +446,35 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
   );
 }
 
-// ── Payment Section ───────────────────────────────────────────────────────────
-function PaymentSection({ tradeId, deliveryNoteNo, payments, onRefresh }) {
-  const today = new Date().toISOString().split('T')[0];
-  const notePayments = payments.filter(p => p.delivery_note_no === deliveryNoteNo);
-  const [showForm, setShowForm] = useState(false);
-  const [paymentNo, setPaymentNo] = useState('');
-  const [paymentDate, setPaymentDate] = useState(today);
-  const [amount, setAmount] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [editMode, setEditMode] = useState(null); // payment_no being edited
-
-  const totalPaid = notePayments.reduce((s, p) => s + (parseFloat(p.total_amount) || 0), 0);
-
-  const resetForm = () => {
-    setPaymentNo('');
-    setPaymentDate(today);
-    setAmount('');
-    setError(null);
-    setEditMode(null);
-  };
-
-  const handleEdit = (pmt) => {
-    setEditMode(pmt.payment_no);
-    setPaymentNo(pmt.payment_no);
-    setPaymentDate(pmt.payment_date ? pmt.payment_date.split('T')[0] : today);
-    setAmount(pmt.total_amount || '');
-    setShowForm(true);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    if (!paymentNo.trim()) { setError('Payment No is required'); return; }
-    if (!paymentDate) { setError('Payment Date is required'); return; }
-    if (!amount || parseFloat(amount) <= 0) { setError('Amount must be greater than 0'); return; }
-
-    setSaving(true);
-    try {
-      let res;
-      if (editMode) {
-        res = await fetch(`/api/payments/${encodeURIComponent(editMode)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_date: paymentDate, total_amount: parseFloat(amount) })
-        });
-      } else {
-        res = await fetch('/api/payments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            payment_no: paymentNo.trim(),
-            delivery_note_no: deliveryNoteNo,
-            trade_id: tradeId,
-            payment_date: paymentDate,
-            total_amount: parseFloat(amount)
-          })
-        });
-      }
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || 'Failed to save payment');
-      }
-      resetForm();
-      setShowForm(false);
-      onRefresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const form = (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Payment No */}
-        <div>
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
-            Payment No <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            value={paymentNo}
-            onChange={e => setPaymentNo(e.target.value)}
-            disabled={!!editMode}
-            placeholder={`PMT-${deliveryNoteNo}`}
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] disabled:bg-slate-50 disabled:text-slate-500 font-mono font-bold"
-          />
-        </div>
-        {/* Payment Date */}
-        <div>
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
-            Payment Date <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="date"
-            value={paymentDate}
-            onChange={e => setPaymentDate(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)]"
-          />
-        </div>
-        {/* Amount */}
-        <div>
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
-            Amount (₹) <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            placeholder="0.00"
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] font-mono font-bold"
-          />
-        </div>
-      </div>
-
-      {error && (
-        <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-          <AlertCircle size={13} className="shrink-0" /> {error}
-        </div>
-      )}
-
-      <div className="flex items-center justify-end gap-2">
-        {(editMode || notePayments.length > 0) && (
-          <button type="button" onClick={() => { resetForm(); setShowForm(false); }}
-            className="px-4 py-2 text-xs font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer">
-            Cancel
-          </button>
-        )}
-        <button
-          type="submit"
-          disabled={saving}
-          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-white font-bold text-xs rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-sm disabled:opacity-60"
-          style={{ backgroundColor: 'var(--theme-color)' }}
-        >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <DollarSign size={13} />}
-          {saving ? 'Saving…' : editMode ? 'Update Payment' : 'Record Payment'}
-        </button>
-      </div>
-    </form>
-  );
-
-  // ── No payments yet — show CTA or form ──
-  if (notePayments.length === 0) {
-    if (!showForm) {
-      return (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm space-y-4">
-          <div className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center mx-auto" style={{ color: 'var(--theme-color)' }}>
-            <DollarSign size={20} />
-          </div>
-          <div className="max-w-sm mx-auto space-y-1">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Next Step: Payment</h4>
-            <p className="text-[11px] text-slate-500 font-semibold text-center">
-              GRN submitted. Record the payment received against this delivery.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center gap-1.5 px-4.5 py-2 text-white font-bold text-xs rounded hover:opacity-90 transition-opacity cursor-pointer shadow-sm"
-            style={{ backgroundColor: 'var(--theme-color)' }}
-          >
-            <Plus size={12} /> Record Payment
-          </button>
-        </div>
-      );
-    }
-    return (
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
-          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-            <DollarSign size={14} style={{ color: 'var(--theme-color)' }} />
-            Record Payment
-          </span>
-        </div>
-        <div className="p-6">{form}</div>
-      </div>
-    );
-  }
-
-  // ── Existing payments list ──
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-      <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-          <DollarSign size={14} style={{ color: 'var(--theme-color)' }} />
-          Payment Records
-        </span>
-        {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold text-white rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-sm"
-            style={{ backgroundColor: 'var(--theme-color)' }}
-          >
-            <Plus size={10} /> Add Payment
-          </button>
-        )}
-      </div>
-
-      <div className="p-6 space-y-4">
-        {/* Payments table */}
-        <div className="border border-slate-200 rounded-lg overflow-x-auto">
-          <table className="w-full border-collapse text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="px-4 py-2.5">Payment No</th>
-                <th className="px-4 py-2.5">Date</th>
-                <th className="px-4 py-2.5 text-right">Amount</th>
-                <th className="px-4 py-2.5"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {notePayments.map(pmt => (
-                <tr key={pmt.payment_no} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-bold text-slate-800">{pmt.payment_no}</td>
-                  <td className="px-4 py-3 text-slate-600 font-medium">{fmtDate(pmt.payment_date)}</td>
-                  <td className="px-4 py-3 text-right font-mono font-black text-emerald-700">₹{fmt(pmt.total_amount)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleEdit(pmt)}
-                      className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-slate-600 border border-slate-300 rounded hover:bg-slate-50 transition-colors cursor-pointer"
-                    >
-                      <Edit2 size={9} /> Edit
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Total */}
-        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3">
-          <span className="text-xs font-bold text-emerald-800">Total Payments Received</span>
-          <span className="font-mono font-black text-emerald-800 text-sm">₹{fmt(totalPaid)}</span>
-        </div>
-
-        {/* Add / Edit form */}
-        {showForm && (
-          <div className="border border-slate-200 rounded-xl p-5 bg-slate-50/50 space-y-3">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-              {editMode ? `Editing ${editMode}` : 'New Payment Entry'}
-            </p>
-            {form}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = [], grns = [], payments = [], onRefresh }) {
+export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = [], grns = [], payments = [], onRefresh, focusedDeliveryId }) {
   const navigate = useNavigate();
-  const [selectedDnNo, setSelectedDnNo] = useState(null);
+
+  // Set default selection to focusedDeliveryId if it matches one of our delivery notes
+  const initialDnNo = deliveryNotes.some(dn => dn.delivery_note_no === focusedDeliveryId)
+    ? focusedDeliveryId
+    : (deliveryNotes[0] ? deliveryNotes[0].delivery_note_no : null);
+
+  const [selectedDnNo, setSelectedDnNo] = useState(initialDnNo);
+  const containerRef = useRef(null);
 
   const activeDnNo = selectedDnNo || (deliveryNotes[0] ? deliveryNotes[0].delivery_note_no : null);
   const activeNote = deliveryNotes.find(dn => dn.delivery_note_no === activeDnNo) || deliveryNotes[0];
+
+  useEffect(() => {
+    if (focusedDeliveryId && deliveryNotes.some(dn => dn.delivery_note_no === focusedDeliveryId)) {
+      setSelectedDnNo(focusedDeliveryId);
+    }
+  }, [focusedDeliveryId, deliveryNotes]);
+
+  useEffect(() => {
+    if (focusedDeliveryId && containerRef.current) {
+      // Small timeout to allow content/tab rendering to complete before scrolling
+      const t = setTimeout(() => {
+        containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [focusedDeliveryId]);
 
   const handleCreateRedirect = () => {
     navigate(`/addDeliveryNote?trade_id=${encodeURIComponent(tradeId)}`);
@@ -798,7 +573,19 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
       {/* Active Note details */}
       {activeNote && (
         <div className="space-y-4">
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div
+            ref={containerRef}
+            className={`bg-white border rounded-xl overflow-hidden shadow-sm transition-all duration-500 ${
+              focusedDeliveryId && activeNote.delivery_note_no === focusedDeliveryId
+                ? 'ring-2 ring-[var(--theme-color)] shadow-lg scale-[1.01]'
+                : 'border-slate-200'
+            }`}
+            style={
+              focusedDeliveryId && activeNote.delivery_note_no === focusedDeliveryId
+                ? { borderColor: 'var(--theme-color)' }
+                : undefined
+            }
+          >
             {/* Header */}
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
@@ -1047,15 +834,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
             />
           )}
 
-          {/* ── Payment Section (after GRN) ──────────────────────────────── */}
-          {noteInvoices.length > 0 && grns.some(g => g.delivery_note_no === activeDnNo) && (
-            <PaymentSection
-              tradeId={tradeId}
-              deliveryNoteNo={activeDnNo}
-              payments={payments}
-              onRefresh={onRefresh}
-            />
-          )}
+
         </div>
       )}
     </div>

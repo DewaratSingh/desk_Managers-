@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Printer, Edit2, Check, X, FileText,
   Package, Tag, Hash, ChevronRight
@@ -33,6 +34,7 @@ const statusColor = (s) => {
 function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, onClear }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -40,9 +42,56 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    const updateCoords = () => {
+      if (open && ref.current) {
+        const rect = ref.current.getBoundingClientRect();
+        setCoords({
+          top: rect.bottom,
+          left: rect.left,
+          width: rect.width
+        });
+      }
+    };
+
+    updateCoords();
+    if (open) {
+      window.addEventListener('scroll', updateCoords, true);
+      window.addEventListener('resize', updateCoords);
+    }
+    return () => {
+      window.removeEventListener('scroll', updateCoords, true);
+      window.removeEventListener('resize', updateCoords);
+    };
+  }, [open, value]);
+
   const filtered = value.trim()
     ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()))
     : suggestions;
+
+  const dropdownMenu = open && filtered.length > 0 ? (
+    <div
+      style={{
+        position: 'fixed',
+        top: `${coords.top + 4}px`,
+        left: `${coords.left}px`,
+        width: `${Math.max(192, coords.width)}px`,
+        zIndex: 9999,
+      }}
+      className="bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto"
+    >
+      {filtered.map((s) => (
+        <button
+          key={s}
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); onSelect(s); setOpen(false); }}
+          className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-blue-50 border-b border-slate-100 last:border-0 cursor-pointer transition-colors"
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <div className="relative" ref={ref}>
@@ -63,20 +112,7 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
           </button>
         )}
       </div>
-      {open && filtered.length > 0 && (
-        <div className="absolute z-50 top-full left-0 mt-1 w-48 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto">
-          {filtered.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); onSelect(s); setOpen(false); }}
-              className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-blue-50 border-b border-slate-100 last:border-0 cursor-pointer transition-colors"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      {dropdownMenu && createPortal(dropdownMenu, document.body)}
     </div>
   );
 }
@@ -104,8 +140,6 @@ export default function PurchaseOrderView() {
 
   useEffect(() => {
     fetchPo();
-    fetchStatuses();
-    fetchCustomers();
   }, [po_no]);
 
   const fetchPo = async () => {
@@ -118,23 +152,35 @@ export default function PurchaseOrderView() {
     finally { setIsLoading(false); }
   };
 
-  const fetchStatuses = async () => {
-    try {
-      const res = await fetch('/api/statuses');
-      if (res.ok) setStatuses(await res.json());
-    } catch (err) { console.error(err); }
-  };
+  // Debounced search for statuses (limit 5)
+  useEffect(() => {
+    const trimmed = editStatus.trim();
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/statuses?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setStatuses(data);
+        })
+        .catch(console.error);
+    }, 200);
 
-  const fetchCustomers = async () => {
-    try {
-      const res = await fetch('/api/customers');
-      if (res.ok) {
-        const data = await res.json();
-        // Build flat list of customer names for vendor search
-        setCustomers(data.map(c => c.name).filter(Boolean));
-      }
-    } catch (err) { console.error(err); }
-  };
+    return () => clearTimeout(delayDebounceFn);
+  }, [editStatus]);
+
+  // Debounced search for customers/vendors (limit 5)
+  useEffect(() => {
+    const trimmed = editVendor.trim();
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setCustomers(data.map(c => c.name).filter(Boolean));
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [editVendor]);
 
   const startEdit = (item) => {
     setEditingCode(item.item_code);
