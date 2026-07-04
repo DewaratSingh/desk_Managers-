@@ -37,4 +37,34 @@ router.post('/login', async (req, res) => {
   }
 });
 
+router.post('/change-password', async (req, res) => {
+  const { username, previousPassword, newPassword } = req.body || {};
+  if (!username || !previousPassword || !newPassword) {
+    return res.status(400).json({ error: 'Username, previous password, and new password are required.' });
+  }
+
+  try {
+    const oldHash = crypto.createHash('sha256').update(previousPassword).digest('hex');
+    const result = await pool.query(
+      'SELECT username FROM users WHERE username = $1 AND password_hash = $2',
+      [username, oldHash]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid username or previous password.' });
+    }
+
+    const newHash = crypto.createHash('sha256').update(newPassword).digest('hex');
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE username = $2',
+      [newHash, username]
+    );
+
+    res.json({ message: 'Password updated successfully.' });
+  } catch (err) {
+    console.error('Change password error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 module.exports = router;

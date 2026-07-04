@@ -34,7 +34,11 @@ const initializeDatabase = async () => {
     const defaultAdminHash = crypto.createHash('sha256').update('admin').digest('hex');
     await client.query(`
       INSERT INTO users (username, password_hash, role)
-      VALUES ('admin', $1, 'admin')
+      VALUES 
+        ('admin', $1, 'admin'),
+        ('admin1', $1, 'admin'),
+        ('admin2', $1, 'admin'),
+        ('admin3', $1, 'admin')
       ON CONFLICT (username) DO NOTHING;
     `, [defaultAdminHash]);
 
