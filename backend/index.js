@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const apiRouter = require('./routes/api');
 const { initializeDatabase } = require('./db');
+const { runBackup } = require('./backup/backup');
+
 
 const cors = require('cors');
 
@@ -28,6 +30,16 @@ app.listen(port, async () => {
 	try {
 		await initializeDatabase();
 		console.log('Database initialized');
+		
+		// Run backup immediately on startup
+		console.log('Server started: Triggering immediate startup database backup...');
+		try {
+			await runBackup();
+		} catch (err) {
+			console.error('Startup database backup error:', err.message);
+		}
+		
+
 	} catch (err) {
 		console.error('Database initialization error:', err.message);
 	}
