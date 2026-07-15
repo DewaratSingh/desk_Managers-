@@ -6,10 +6,10 @@ const { pool } = require('../db');
 router.get('/', async (req, res) => {
   const { q } = req.query || {};
   try {
-    let queryText = 'SELECT name FROM status';
-    let params = [];
+    let queryText = 'SELECT name FROM status WHERE company_id = $1';
+    let params = [req.user.company_id];
     if (q !== undefined) {
-      queryText += ' WHERE name ILIKE $1';
+      queryText += ' AND name ILIKE $2';
       params.push(`%${q}%`);
       queryText += ' ORDER BY name ASC LIMIT 5';
     } else {
@@ -28,7 +28,7 @@ router.post('/', async (req, res) => {
   const { name } = req.body || {};
   if (!name) return res.status(400).json({ error: 'name is required' });
   try {
-    await pool.query('INSERT INTO status (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name.trim().toLowerCase()]);
+    await pool.query('INSERT INTO status (name, company_id) VALUES ($1, $2) ON CONFLICT (name, company_id) DO NOTHING', [name.trim().toLowerCase(), req.user.company_id]);
     res.status(201).json({ name: name.trim().toLowerCase() });
   } catch (err) {
     console.error('Error adding status:', err.message);

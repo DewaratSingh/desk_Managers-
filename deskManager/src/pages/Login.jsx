@@ -46,7 +46,7 @@ export default function LoginView({ onLogin = () => {} }) {
       localStorage.setItem('loginTime', Date.now().toString())
       
       onLogin(data.user)
-      navigate('/')
+      navigate('/dashboard')
     } catch (err) {
       setApiError(err.message)
     } finally {

@@ -22,7 +22,7 @@ export default function Sidebar({ user, onLogout }) {
   const location = useLocation();
 
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/" },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
     { id: "purchase-order", label: "Order", icon: ClipboardList, path: "/order" },
     { id: "add-customer", label: "Party", icon: Building2, path: "/party" },
     { id: "add-buyer", label: "Contact", icon: UserPlus, path: "/buyer" },
@@ -30,6 +30,7 @@ export default function Sidebar({ user, onLogout }) {
     { id: "inventory", label: "Inventory", icon: Warehouse, path: "/inventory" },
     { id: "arc", label: "ARC", icon: FileSignature, path: "/arc" },
     { id: "gst-category", label: "GST Categories", icon: Percent, path: "/gst-category" },
+    { id: "users", label: "Users", icon: Users, path: "/users" },
   ];
 
   const NavContent = () => (
@@ -59,7 +60,7 @@ export default function Sidebar({ user, onLogout }) {
         {menuItems.map((item) => {
           const isActive =
             item.id === "dashboard"
-              ? location.pathname === "/" ||
+              ? location.pathname === "/dashboard" ||
                 location.pathname.startsWith("/trade/") ||
                 location.pathname === "/addRfq" ||
                 location.pathname.startsWith("/updateRfq/") ||

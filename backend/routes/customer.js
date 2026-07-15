@@ -9,11 +9,11 @@ router.get('/', async (req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : null;
     const offset = req.query.offset ? parseInt(req.query.offset) : 0;
     
-    let query = 'SELECT id, name, address, created_at FROM customers';
-    const params = [];
+    let query = 'SELECT customer_code as id, name, address, created_at FROM customers WHERE company_id = $1';
+    const params = [req.user.company_id];
     
     if (q) {
-      query += ' WHERE id ILIKE $1 OR name ILIKE $1 OR address ILIKE $1';
+      query += ' AND (customer_code ILIKE $2 OR name ILIKE $2 OR address ILIKE $2)';
       params.push(`%${q}%`);
     }
     
@@ -39,7 +39,10 @@ router.post('/', async (req, res) => {
   const { id, name, address } = req.body || {};
   if (!id || !name || !address) return res.status(400).json({ error: 'id, name and address required' });
   try {
-    const result = await pool.query('INSERT INTO customers (id, name, address) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING RETURNING *', [id, name, address]);
+    const result = await pool.query(
+      'INSERT INTO customers (customer_code, name, address, company_id) VALUES ($1, $2, $3, $4) ON CONFLICT (customer_code, company_id) DO NOTHING RETURNING customer_code as id, name, address', 
+      [id, name, address, req.user.company_id]
+    );
     if (result.rows.length === 0) return res.status(400).json({ error: 'Customer already exists' });
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -50,11 +53,14 @@ router.post('/', async (req, res) => {
 
 // Update a customer
 router.put('/:id', async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params; // this is the customer_code
   const { name, address } = req.body || {};
   if (!name || !address) return res.status(400).json({ error: 'name and address required' });
   try {
-    const result = await pool.query('UPDATE customers SET name = $1, address = $2 WHERE id = $3 RETURNING *', [name, address, id]);
+    const result = await pool.query(
+      'UPDATE customers SET name = $1, address = $2 WHERE customer_code = $3 AND company_id = $4 RETURNING customer_code as id, name, address', 
+      [name, address, id, req.user.company_id]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Customer not found' });
     res.json(result.rows[0]);
   } catch (err) {

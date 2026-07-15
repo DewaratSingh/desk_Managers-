@@ -1,8 +1,11 @@
 import { NavLink, Routes, Route } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
+import HomeView from './pages/Home'
+import SignupView from './pages/Signup'
 import LoginView from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import AddUserView from './pages/AddUser'
 import TradeView from './pages/Trade'
 import './App.css'
 import PurchaseOrderForm from './form/PurchaseOrderForm'
@@ -30,12 +33,14 @@ function App() {
       
       <Routes>
         {/* Public Routes */}
+        <Route path="/" element={<HomeView />} />
         <Route path="/login" element={<LoginView />} />
+        <Route path="/signup" element={<SignupView />} />
         
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/addPurchaseOrder" element={<PurchaseOrderForm />} />
             <Route path="/updatePurchaseOrder/:id" element={<PurchaseOrderForm />} />
             <Route path="/addReceivedPurchaseOrder" element={<ReceivedPurchaseOrderForm />} />
@@ -55,6 +60,7 @@ function App() {
             <Route path="/inventory" element={<InventoryView />} />
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
+            <Route path="/users" element={<AddUserView />} />
           </Route>
           <Route path="/addRfq" element={<RfqForm />} />
           <Route path="/updateRfq/:id" element={<RfqForm />} />
@@ -70,6 +76,7 @@ function App() {
           <Route path="/gst-category/form" element={<GstCategoryView />} />
           <Route path="/arc/form" element={<ArcView />} />
           <Route path="/inventory/form" element={<InventoryView />} />
+          <Route path="/users/form" element={<AddUserView />} />
         </Route>
 
         <Route

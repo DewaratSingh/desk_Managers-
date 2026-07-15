@@ -9,11 +9,11 @@ router.get('/', async (req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : null;
     const offset = req.query.offset ? parseInt(req.query.offset) : 0;
     
-    let query = 'SELECT id, type, rate, created_at FROM gst_rates';
-    const params = [];
+    let query = 'SELECT id, type, rate, created_at FROM gst_rates WHERE company_id = $1';
+    const params = [req.user.company_id];
     
     if (q) {
-      query += ' WHERE type ILIKE $1';
+      query += ' AND type ILIKE $2';
       params.push(`%${q}%`);
     }
     
@@ -40,8 +40,8 @@ router.post('/', async (req, res) => {
   if (!type || rate === undefined) return res.status(400).json({ error: 'type and rate required' });
   try {
     const result = await pool.query(
-      'INSERT INTO gst_rates (type, rate) VALUES ($1, $2) ON CONFLICT (type) DO NOTHING RETURNING *',
-      [type, parseFloat(rate)]
+      'INSERT INTO gst_rates (type, rate, company_id) VALUES ($1, $2, $3) ON CONFLICT (type, company_id) DO NOTHING RETURNING *',
+      [type, parseFloat(rate), req.user.company_id]
     );
     if (result.rows.length === 0) return res.status(400).json({ error: 'GST Type already exists' });
     res.status(201).json(result.rows[0]);
@@ -58,8 +58,8 @@ router.put('/:id', async (req, res) => {
   if (!type || rate === undefined) return res.status(400).json({ error: 'type and rate required' });
   try {
     const result = await pool.query(
-      'UPDATE gst_rates SET type = $1, rate = $2 WHERE id = $3 RETURNING *',
-      [type, parseFloat(rate), id]
+      'UPDATE gst_rates SET type = $1, rate = $2 WHERE id = $3 AND company_id = $4 RETURNING *',
+      [type, parseFloat(rate), id, req.user.company_id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'GST rate not found' });
     res.json(result.rows[0]);
@@ -73,7 +73,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query('DELETE FROM gst_rates WHERE id = $1 RETURNING *', [id]);
+    const result = await pool.query('DELETE FROM gst_rates WHERE id = $1 AND company_id = $2 RETURNING *', [id, req.user.company_id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'GST rate not found' });
     res.json({ message: 'Deleted successfully' });
   } catch (err) {

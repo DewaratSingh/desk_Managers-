@@ -8,11 +8,11 @@ router.get('/:delivery_note_no', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        dn.delivery_note_no, dn.po_no, dn.ro_no, dn.delivery_date,
-        dn.dispatch_doc_no, dn.dispatch_through, dn.motor_vehicle_no, dn.trade_id,
+        dn.delivery_note_no, po.po_no, ro.ro_no, dn.delivery_date,
+        dn.dispatch_doc_no, dn.dispatch_through, dn.motor_vehicle_no, t.trade_id,
         (
           SELECT COALESCE(json_agg(json_build_object(
-            'item_code', dni.item_code,
+            'item_code', i.item_code,
             'quantity', dni.quantity,
             'rate_per_piece', dni.rate_per_piece,
             'shipping_address', dni.shipping_address,
@@ -21,12 +21,15 @@ router.get('/:delivery_note_no', async (req, res) => {
             'drawing_number', i.drawing_number
           ) ORDER BY dni.id), '[]')
           FROM delivery_note_items dni
-          LEFT JOIN items i ON dni.item_code = i.item_code
-          WHERE dni.delivery_note_no = dn.delivery_note_no
+          LEFT JOIN items i ON dni.item_id = i.id AND i.company_id = dni.company_id
+          WHERE dni.delivery_note_id = dn.id AND dni.company_id = dn.company_id
         ) as items
       FROM delivery_notes dn
-      WHERE dn.delivery_note_no = $1
-    `, [delivery_note_no]);
+      LEFT JOIN purchase_orders po ON dn.po_id = po.id
+      LEFT JOIN release_orders ro ON dn.ro_id = ro.id
+      LEFT JOIN trades t ON dn.trade_id = t.id
+      WHERE dn.delivery_note_no = $1 AND dn.company_id = $2
+    `, [delivery_note_no, req.user.company_id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Delivery Note not found' });
@@ -41,15 +44,16 @@ router.get('/:delivery_note_no', async (req, res) => {
 // GET items from linked PO/RO to deliver, computing remaining quantities
 router.get('/items-lookup/:trade_id', async (req, res) => {
   const { trade_id } = req.params;
-  const { exclude_dn_no } = req.query;
+  const { exclude_dn_no } = req.query || {};
 
   try {
     // 1. Get the trade documents
-    const tradeRes = await pool.query('SELECT trade_type, documents FROM trades WHERE trade_id = $1', [trade_id]);
+    const tradeRes = await pool.query('SELECT id, trade_type, documents FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_id, req.user.company_id]);
     if (tradeRes.rows.length === 0) {
       return res.status(404).json({ error: 'Trade not found' });
     }
     const trade = tradeRes.rows[0];
+    const tradeDbId = trade.id;
     const docs = trade.documents || [];
 
     const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
@@ -64,9 +68,15 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
 
     let items = [];
     if (ro_no) {
+      const roRes = await pool.query('SELECT id FROM release_orders WHERE ro_no = $1 AND company_id = $2', [ro_no, req.user.company_id]);
+      if (roRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Release Order not found' });
+      }
+      const roDbId = roRes.rows[0].id;
+
       const roItemsRes = await pool.query(
         `SELECT
-          roi.item_code,
+          i.item_code,
           roi.quantity as original_qty,
           roi.unit_price as rate_per_piece,
           roi.shipping_address,
@@ -76,29 +86,35 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
           COALESCE((
             SELECT SUM(dni.quantity)
             FROM delivery_note_items dni
-            JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no
-            WHERE dn.trade_id = $1
-              AND dni.item_code = roi.item_code
+            JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $4
+              AND dni.item_id = roi.item_id
               AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
           ), 0) - COALESCE((
             SELECT SUM((elem->>'quantity')::numeric)
             FROM grns g
             CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-            WHERE g.trade_id = $1
-              AND elem->>'item_code' = roi.item_code
-              AND ($3::varchar IS NULL OR g.delivery_note_no != $3)
+            WHERE g.trade_id = $1 AND g.company_id = $4
+              AND elem->>'item_code' = i.item_code
+              AND ($3::varchar IS NULL OR (SELECT delivery_note_no FROM delivery_notes WHERE id = g.delivery_note_id) != $3)
           ), 0) as delivered_qty
         FROM release_order_items roi
-        LEFT JOIN items i ON roi.item_code = i.item_code
-        WHERE roi.ro_no = $2
+        LEFT JOIN items i ON roi.item_id = i.id AND i.company_id = roi.company_id
+        WHERE roi.ro_id = $2 AND roi.company_id = $4
         ORDER BY roi.id`,
-        [trade_id, ro_no, exclude_dn_no || null]
+        [tradeDbId, roDbId, exclude_dn_no || null, req.user.company_id]
       );
       items = roItemsRes.rows;
     } else if (po_no) {
+      const poRes = await pool.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
+      if (poRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Purchase Order not found' });
+      }
+      const poDbId = poRes.rows[0].id;
+
       const poItemsRes = await pool.query(
         `SELECT
-          poi.item_code,
+          i.item_code,
           poi.quantity as original_qty,
           poi.unit_price as rate_per_piece,
           poi.shipping_address,
@@ -108,23 +124,23 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
           COALESCE((
             SELECT SUM(dni.quantity)
             FROM delivery_note_items dni
-            JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no
-            WHERE dn.trade_id = $1
-              AND dni.item_code = poi.item_code
+            JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $4
+              AND dni.item_id = poi.item_id
               AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
           ), 0) - COALESCE((
             SELECT SUM((elem->>'quantity')::numeric)
             FROM grns g
             CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-            WHERE g.trade_id = $1
-              AND elem->>'item_code' = poi.item_code
-              AND ($3::varchar IS NULL OR g.delivery_note_no != $3)
+            WHERE g.trade_id = $1 AND g.company_id = $4
+              AND elem->>'item_code' = i.item_code
+              AND ($3::varchar IS NULL OR (SELECT delivery_note_no FROM delivery_notes WHERE id = g.delivery_note_id) != $3)
           ), 0) as delivered_qty
         FROM purchase_order_items poi
-        LEFT JOIN items i ON poi.item_code = i.item_code
-        WHERE poi.po_no = $2
+        LEFT JOIN items i ON poi.item_id = i.id AND i.company_id = poi.company_id
+        WHERE poi.po_id = $2 AND poi.company_id = $4
         ORDER BY poi.id`,
-        [trade_id, po_no, exclude_dn_no || null]
+        [tradeDbId, poDbId, exclude_dn_no || null, req.user.company_id]
       );
       items = poItemsRes.rows;
     }
@@ -178,17 +194,19 @@ router.post('/', async (req, res) => {
     await client.query('BEGIN');
 
     // 1. Check duplicate delivery_note_no
-    const dupCheck = await client.query('SELECT delivery_note_no FROM delivery_notes WHERE delivery_note_no = $1', [delivery_note_no]);
+    const dupCheck = await client.query('SELECT delivery_note_no FROM delivery_notes WHERE delivery_note_no = $1 AND company_id = $2', [delivery_note_no, req.user.company_id]);
     if (dupCheck.rows.length > 0) {
       throw new Error('Delivery Note number already exists');
     }
 
     // 2. Fetch trade details to resolve PO/RO
-    const tradeRes = await client.query('SELECT documents FROM trades WHERE trade_id = $1', [trade_id]);
+    const tradeRes = await client.query('SELECT id, trade_id, documents FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_id, req.user.company_id]);
     if (tradeRes.rows.length === 0) {
       throw new Error('Trade not found');
     }
     const trade = tradeRes.rows[0];
+    const tradeDbId = trade.id;
+    const trade_code = trade.trade_id;
     const docs = trade.documents || [];
 
     const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
@@ -197,46 +215,67 @@ router.post('/', async (req, res) => {
     const po_no = poDoc ? poDoc.id : null;
     const ro_no = roDoc ? roDoc.id : null;
 
+    let poDbId = null;
+    let roDbId = null;
+
+    if (po_no) {
+      const poRes = await client.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
+      if (poRes.rows.length > 0) poDbId = poRes.rows[0].id;
+    }
+    if (ro_no) {
+      const roRes = await client.query('SELECT id FROM release_orders WHERE ro_no = $1 AND company_id = $2', [ro_no, req.user.company_id]);
+      if (roRes.rows.length > 0) roDbId = roRes.rows[0].id;
+    }
+
     // 3. Insert Delivery Note header
-    await client.query(
-      `INSERT INTO delivery_notes (delivery_note_no, po_no, ro_no, delivery_date, dispatch_doc_no, dispatch_through, motor_vehicle_no, trade_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    const dnRes = await client.query(
+      `INSERT INTO delivery_notes (delivery_note_no, po_id, ro_id, delivery_date, dispatch_doc_no, dispatch_through, motor_vehicle_no, trade_id, company_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         delivery_note_no,
-        po_no,
-        ro_no,
+        poDbId,
+        roDbId,
         delivery_date,
         dispatch_doc_no || null,
         dispatch_through,
         motor_vehicle_no,
-        trade_id
+        tradeDbId,
+        req.user.company_id
       ]
     );
+    const dnDbId = dnRes.rows[0].id;
 
     // 4. Insert items
     for (const item of items) {
+      const itemRes = await client.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item.item_code, req.user.company_id]);
+      if (itemRes.rows.length === 0) {
+        throw new Error(`Item ${item.item_code} not found`);
+      }
+      const itemDbId = itemRes.rows[0].id;
+
       await client.query(
-        `INSERT INTO delivery_note_items (delivery_note_no, item_code, quantity, rate_per_piece, shipping_address, delivery_date)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
-          delivery_note_no,
-          item.item_code,
+          dnDbId,
+          itemDbId,
           parseInt(item.quantity) || 0,
           parseFloat(item.rate_per_piece) || 0,
           item.shipping_address || null,
-          item.delivery_date || null
+          item.delivery_date || null,
+          req.user.company_id
         ]
       );
     }
 
-    // 5. Append to trade documents (which calculates trade status to 'dn')
-    await appendDocToTrade(client, trade_id, 'DN', delivery_note_no);
+    // 5. Append to trade documents
+    await appendDocToTrade(client, trade_code, 'DN', delivery_note_no, req.user.company_id);
 
-    // Update trade delivery status based on delivered %
-    await updateTradeDeliveryStatus(client, trade_id);
+    // Update trade delivery status
+    await updateTradeDeliveryStatus(client, tradeDbId, req.user.company_id);
 
     await client.query('COMMIT');
-    res.status(201).json({ delivery_note_no, trade_id });
+    res.status(201).json({ delivery_note_no, trade_id: trade_code });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error creating Delivery Note:', err.message);
@@ -273,36 +312,44 @@ router.put('/:delivery_note_no', async (req, res) => {
     const updateHeader = await client.query(
       `UPDATE delivery_notes
        SET delivery_date = $1, dispatch_doc_no = $2, dispatch_through = $3, motor_vehicle_no = $4
-       WHERE delivery_note_no = $5 RETURNING *`,
-      [delivery_date, dispatch_doc_no || null, dispatch_through, motor_vehicle_no, delivery_note_no]
+       WHERE delivery_note_no = $5 AND company_id = $6 RETURNING id`,
+      [delivery_date, dispatch_doc_no || null, dispatch_through, motor_vehicle_no, delivery_note_no, req.user.company_id]
     );
 
     if (updateHeader.rows.length === 0) {
       throw new Error('Delivery Note not found');
     }
+    const dnDbId = updateHeader.rows[0].id;
 
     // 2. Rewrite items
-    await client.query('DELETE FROM delivery_note_items WHERE delivery_note_no = $1', [delivery_note_no]);
+    await client.query('DELETE FROM delivery_note_items WHERE delivery_note_id = $1 AND company_id = $2', [dnDbId, req.user.company_id]);
 
     for (const item of items) {
+      const itemRes = await client.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item.item_code, req.user.company_id]);
+      if (itemRes.rows.length === 0) {
+        throw new Error(`Item ${item.item_code} not found`);
+      }
+      const itemDbId = itemRes.rows[0].id;
+
       await client.query(
-        `INSERT INTO delivery_note_items (delivery_note_no, item_code, quantity, rate_per_piece, shipping_address, delivery_date)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
-          delivery_note_no,
-          item.item_code,
+          dnDbId,
+          itemDbId,
           parseInt(item.quantity) || 0,
           parseFloat(item.rate_per_piece) || 0,
           item.shipping_address || null,
-          item.delivery_date || null
+          item.delivery_date || null,
+          req.user.company_id
         ]
       );
     }
 
-    // Resolve trade_id and update trade delivery status based on delivered %
-    const dnRes = await client.query('SELECT trade_id FROM delivery_notes WHERE delivery_note_no = $1', [delivery_note_no]);
-    if (dnRes.rows.length > 0) {
-      await updateTradeDeliveryStatus(client, dnRes.rows[0].trade_id);
+    // Resolve trade_id and update trade delivery status
+    const dnRes = await client.query('SELECT trade_id FROM delivery_notes WHERE id = $1 AND company_id = $2', [dnDbId, req.user.company_id]);
+    if (dnRes.rows.length > 0 && dnRes.rows[0].trade_id) {
+      await updateTradeDeliveryStatus(client, dnRes.rows[0].trade_id, req.user.company_id);
     }
 
     await client.query('COMMIT');
@@ -316,7 +363,7 @@ router.put('/:delivery_note_no', async (req, res) => {
   }
 });
 
-async function updateTradeDeliveryStatus(client, trade_id) {
+async function updateTradeDeliveryStatus(client, trade_id, company_id) {
   if (!trade_id) return;
 
   const pctRes = await client.query(`
@@ -325,8 +372,8 @@ async function updateTradeDeliveryStatus(client, trade_id) {
     FROM (
       SELECT
         COALESCE(
-          (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.po_no = poi.po_no WHERE po.trade_id = $1),
-          (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.ro_no = roi.ro_no WHERE ro.trade_id = $1),
+          (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = $1 AND po.company_id = $2),
+          (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = $1 AND ro.company_id = $2),
           0
         )::numeric AS ordered_val,
         COALESCE(
@@ -337,15 +384,17 @@ async function updateTradeDeliveryStatus(client, trade_id) {
                   SELECT SUM((elem->>'quantity')::numeric)
                   FROM grns g
                   CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-                  WHERE g.delivery_note_no = dn.delivery_note_no
-                    AND elem->>'item_code' = dni.item_code
+                  WHERE g.delivery_note_id = dn.id
+                    AND elem->>'item_code' = i.item_code
+                    AND g.company_id = $2
                 ), 0)
               ) * poi.unit_price
             )
             FROM delivery_notes dn
-            JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no
-            JOIN purchase_order_items poi ON dn.po_no = poi.po_no AND dni.item_code = poi.item_code
-            WHERE dn.trade_id = $1
+            JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+            JOIN purchase_order_items poi ON dn.po_id = poi.po_id AND dni.item_id = poi.item_id
+            JOIN items i ON dni.item_id = i.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
           (
             SELECT SUM(
@@ -354,20 +403,22 @@ async function updateTradeDeliveryStatus(client, trade_id) {
                   SELECT SUM((elem->>'quantity')::numeric)
                   FROM grns g
                   CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-                  WHERE g.delivery_note_no = dn.delivery_note_no
-                    AND elem->>'item_code' = dni.item_code
+                  WHERE g.delivery_note_id = dn.id
+                    AND elem->>'item_code' = i.item_code
+                    AND g.company_id = $2
                 ), 0)
               ) * roi.unit_price
             )
             FROM delivery_notes dn
-            JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no
-            JOIN release_order_items roi ON dn.ro_no = roi.ro_no AND dni.item_code = roi.item_code
-            WHERE dn.trade_id = $1
+            JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+            JOIN release_order_items roi ON dn.ro_id = roi.ro_id AND dni.item_id = roi.item_id
+            JOIN items i ON dni.item_id = i.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
           0
         )::numeric AS delivered_val
     ) val_sub
-  `, [trade_id]);
+  `, [trade_id, company_id]);
 
   const pct = pctRes.rows.length > 0 ? parseFloat(pctRes.rows[0].pct) : 0;
   
@@ -379,12 +430,12 @@ async function updateTradeDeliveryStatus(client, trade_id) {
   }
 
   await client.query(
-    "INSERT INTO status (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
-    [statusName]
+    "INSERT INTO status (name, company_id) VALUES ($1, $2) ON CONFLICT (name, company_id) DO NOTHING",
+    [statusName, company_id]
   );
   await client.query(
-    "UPDATE trades SET status = $1 WHERE trade_id = $2",
-    [statusName, trade_id]
+    "UPDATE trades SET status = $1 WHERE id = $2 AND company_id = $3",
+    [statusName, trade_id, company_id]
   );
 }
 

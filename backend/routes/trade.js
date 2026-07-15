@@ -12,21 +12,21 @@ router.get('/', async (req, res) => {
     let query = `
       SELECT t.trade_id, t.status, t.trade_type, t.created_at, t.documents,
         COALESCE(
-          (SELECT r.rfq_no FROM rfqs r WHERE r.trade_id = t.trade_id LIMIT 1),
-          (SELECT rq.received_quotation_no FROM received_quotations rq WHERE rq.trade_id = t.trade_id LIMIT 1),
-          (SELECT ro.ro_no FROM release_orders ro WHERE ro.trade_id = t.trade_id LIMIT 1),
+          (SELECT r.rfq_no FROM rfqs r WHERE r.trade_id = t.id AND r.company_id = t.company_id LIMIT 1),
+          (SELECT rq.received_quotation_no FROM received_quotations rq WHERE rq.trade_id = t.id AND rq.company_id = t.company_id LIMIT 1),
+          (SELECT ro.ro_no FROM release_orders ro WHERE ro.trade_id = t.id AND ro.company_id = t.company_id LIMIT 1),
           '—'
         ) AS ref_id,
         COALESCE(
-          (SELECT r.customer_id FROM rfqs r WHERE r.trade_id = t.trade_id LIMIT 1),
-          (SELECT rq.customer_id FROM received_quotations rq WHERE rq.trade_id = t.trade_id LIMIT 1),
-          (SELECT ro.customer_id FROM release_orders ro WHERE ro.trade_id = t.trade_id LIMIT 1),
+          (SELECT c.customer_code FROM rfqs r JOIN customers c ON r.customer_id = c.id WHERE r.trade_id = t.id AND r.company_id = t.company_id LIMIT 1),
+          (SELECT c.customer_code FROM received_quotations rq JOIN customers c ON rq.customer_id = c.id WHERE rq.trade_id = t.id AND rq.company_id = t.company_id LIMIT 1),
+          (SELECT c.customer_code FROM release_orders ro JOIN customers c ON ro.customer_id = c.id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id LIMIT 1),
           '—'
         ) AS party_id,
         COALESCE(
-          (SELECT b.name FROM rfqs r JOIN buyers b ON r.buyer_id = b.id WHERE r.trade_id = t.trade_id LIMIT 1),
-          (SELECT b.name FROM received_quotations rq JOIN buyers b ON rq.buyer_id = b.id WHERE rq.trade_id = t.trade_id LIMIT 1),
-          (SELECT b.name FROM release_orders ro JOIN buyers b ON ro.buyer_id = b.id WHERE ro.trade_id = t.trade_id LIMIT 1),
+          (SELECT b.name FROM rfqs r JOIN buyers b ON r.buyer_id = b.id WHERE r.trade_id = t.id AND r.company_id = t.company_id LIMIT 1),
+          (SELECT b.name FROM received_quotations rq JOIN buyers b ON rq.buyer_id = b.id WHERE rq.trade_id = t.id AND rq.company_id = t.company_id LIMIT 1),
+          (SELECT b.name FROM release_orders ro JOIN buyers b ON ro.buyer_id = b.id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id LIMIT 1),
           '—'
         ) AS contact_name,
         (
@@ -34,8 +34,8 @@ router.get('/', async (req, res) => {
           FROM (
             SELECT
               COALESCE(
-                (SELECT SUM(poi.quantity) FROM purchase_orders po JOIN purchase_order_items poi ON po.po_no = poi.po_no WHERE po.trade_id = t.trade_id),
-                (SELECT SUM(roi.quantity) FROM release_orders ro JOIN release_order_items roi ON ro.ro_no = roi.ro_no WHERE ro.trade_id = t.trade_id),
+                (SELECT SUM(poi.quantity) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = t.id AND po.company_id = t.company_id),
+                (SELECT SUM(roi.quantity) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id),
                 0
               ) AS ordered_qty,
               COALESCE(
@@ -45,13 +45,15 @@ router.get('/', async (req, res) => {
                       SELECT SUM((elem->>'quantity')::numeric)
                       FROM grns g
                       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-                      WHERE g.delivery_note_no = dn.delivery_note_no
-                        AND elem->>'item_code' = dni.item_code
+                      WHERE g.delivery_note_id = dn.id
+                        AND elem->>'item_code' = i.item_code
+                        AND g.company_id = dn.company_id
                     ), 0)
                   )
                   FROM delivery_notes dn
-                  JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no
-                  WHERE dn.trade_id = t.trade_id
+                  JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+                  JOIN items i ON dni.item_id = i.id
+                  WHERE dn.trade_id = t.id AND dn.company_id = t.company_id
                 ),
                 0
               ) AS delivered_qty
@@ -59,30 +61,23 @@ router.get('/', async (req, res) => {
         ) AS delivered_pct
       FROM trades t
     `;
-    const conditions = [];
-    const params = [];
+    const conditions = ['t.company_id = $1'];
+    const params = [req.user.company_id];
 
     if (q) {
       const searchParam = `%${q}%`;
       const idx = params.length + 1;
       conditions.push(`(
         t.trade_id ILIKE $${idx}
-        OR EXISTS (SELECT 1 FROM purchase_orders po WHERE po.trade_id = t.trade_id AND po.po_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM release_orders ro WHERE ro.trade_id = t.trade_id AND ro.ro_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM delivery_notes dn WHERE dn.trade_id = t.trade_id AND dn.delivery_note_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM quotations q WHERE q.trade_id = t.trade_id AND q.quotation_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM received_quotations rq WHERE rq.trade_id = t.trade_id AND rq.received_quotation_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM rfqs r WHERE r.trade_id = t.trade_id AND r.rfq_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM invoices inv WHERE inv.trade_id = t.trade_id AND inv.invoice_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM grns g WHERE g.trade_id = t.trade_id AND g.grn_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM payments pay WHERE pay.trade_id = t.trade_id AND pay.payment_no ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM purchase_order_items poi JOIN purchase_orders po ON poi.po_no = po.po_no WHERE po.trade_id = t.trade_id AND poi.item_code ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM release_order_items roi JOIN release_orders ro ON roi.ro_no = ro.ro_no WHERE ro.trade_id = t.trade_id AND roi.item_code ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM quotation_items qi JOIN quotations q ON qi.quotation_no = q.quotation_no WHERE q.trade_id = t.trade_id AND qi.item_code ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM received_quotation_items rqi JOIN received_quotations rq ON rqi.received_quotation_no = rq.received_quotation_no WHERE rq.trade_id = t.trade_id AND rqi.item_code ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM rfq_items rfqi JOIN rfqs rfq ON rfqi.rfq_no = rfq.rfq_no WHERE rfq.trade_id = t.trade_id AND rfqi.item_code ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM delivery_note_items dni JOIN delivery_notes dn ON dni.delivery_note_no = dn.delivery_note_no WHERE dn.trade_id = t.trade_id AND dni.item_code ILIKE $${idx})
-        OR EXISTS (SELECT 1 FROM invoice_items ii JOIN invoices inv ON ii.invoice_no = inv.invoice_no WHERE inv.trade_id = t.trade_id AND ii.item_code ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM purchase_orders po WHERE po.trade_id = t.id AND po.company_id = t.company_id AND po.po_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM release_orders ro WHERE ro.trade_id = t.id AND ro.company_id = t.company_id AND ro.ro_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM delivery_notes dn WHERE dn.trade_id = t.id AND dn.company_id = t.company_id AND dn.delivery_note_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM quotations q WHERE q.trade_id = t.id AND q.company_id = t.company_id AND q.quotation_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM received_quotations rq WHERE rq.trade_id = t.id AND rq.company_id = t.company_id AND rq.received_quotation_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM rfqs r WHERE r.trade_id = t.id AND r.company_id = t.company_id AND r.rfq_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM invoices inv WHERE inv.trade_id = t.id AND inv.company_id = t.company_id AND inv.invoice_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM grns g WHERE g.trade_id = t.id AND g.company_id = t.company_id AND g.grn_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM payments pay WHERE pay.trade_id = t.id AND pay.company_id = t.company_id AND pay.payment_no ILIKE $${idx})
       )`);
       params.push(searchParam);
     }
@@ -124,7 +119,7 @@ router.get('/', async (req, res) => {
 router.get('/:trade_id', async (req, res) => {
   const { trade_id } = req.params;
   try {
-    const result = await pool.query('SELECT trade_id, documents, status, trade_type, created_at FROM trades WHERE trade_id = $1', [trade_id]);
+    const result = await pool.query('SELECT trade_id, documents, status, trade_type, created_at FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_id, req.user.company_id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Trade not found' });
     }
@@ -144,15 +139,15 @@ router.patch('/:trade_id/status', async (req, res) => {
   }
   const newStatus = status.trim().toLowerCase();
   try {
-    // Upsert the status into the status table so it's saved for future use
+    // Upsert the status into the status table
     await pool.query(
-      `INSERT INTO status (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
-      [newStatus]
+      `INSERT INTO status (name, company_id) VALUES ($1, $2) ON CONFLICT (name, company_id) DO NOTHING`,
+      [newStatus, req.user.company_id]
     );
     // Update the trade
     const result = await pool.query(
-      'UPDATE trades SET status = $1 WHERE trade_id = $2 RETURNING trade_id, status',
-      [newStatus, trade_id]
+      'UPDATE trades SET status = $1 WHERE trade_id = $2 AND company_id = $3 RETURNING trade_id, status',
+      [newStatus, trade_id, req.user.company_id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Trade not found' });
@@ -165,4 +160,3 @@ router.patch('/:trade_id/status', async (req, res) => {
 });
 
 module.exports = router;
-

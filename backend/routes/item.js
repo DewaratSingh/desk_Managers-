@@ -8,11 +8,11 @@ router.get('/', async (req, res) => {
   const limit = req.query.limit ? parseInt(req.query.limit) : null;
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
   try {
-    let query = `SELECT item_code, description, drawing_number, long_description, created_at FROM items`;
-    const params = [];
+    let query = `SELECT item_code, description, drawing_number, long_description, created_at FROM items WHERE company_id = $1`;
+    const params = [req.user.company_id];
     
     if (q) {
-      query += ` WHERE item_code ILIKE $1 OR description ILIKE $1 OR drawing_number ILIKE $1`;
+      query += ` AND (item_code ILIKE $2 OR description ILIKE $2 OR drawing_number ILIKE $2)`;
       params.push(`%${q}%`);
     }
     
@@ -39,8 +39,8 @@ router.post('/', async (req, res) => {
   if (!item_code || !description) return res.status(400).json({ error: 'item_code and description required' });
   try {
     const result = await pool.query(
-      'INSERT INTO items (item_code, description, drawing_number, long_description) VALUES ($1, $2, $3, $4) ON CONFLICT (item_code) DO NOTHING RETURNING *',
-      [item_code, description, drawing_number, long_description]
+      'INSERT INTO items (item_code, description, drawing_number, long_description, company_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (item_code, company_id) DO NOTHING RETURNING *',
+      [item_code, description, drawing_number, long_description, req.user.company_id]
     );
     if (result.rows.length === 0) return res.status(400).json({ error: 'Item code already exists' });
     res.status(201).json(result.rows[0]);
@@ -57,8 +57,8 @@ router.put('/:item_code', async (req, res) => {
   if (!description) return res.status(400).json({ error: 'description required' });
   try {
     const result = await pool.query(
-      'UPDATE items SET description = $1, drawing_number = $2, long_description = $3 WHERE item_code = $4 RETURNING *',
-      [description, drawing_number, long_description, item_code]
+      'UPDATE items SET description = $1, drawing_number = $2, long_description = $3 WHERE item_code = $4 AND company_id = $5 RETURNING *',
+      [description, drawing_number, long_description, item_code, req.user.company_id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
     res.json(result.rows[0]);
@@ -79,22 +79,24 @@ router.get('/:item_code/history', async (req, res) => {
         SELECT 
           'Quotation' as source,
           b.name as buyer_name,
-          r.customer_id,
+          c.customer_code as customer_id,
           q.quotation_date as date,
           COALESCE(t.status, q.status) as status,
           qi.unit_price,
           COALESCE(t.trade_type, 'sell') as trade_type,
-          r.trade_id
+          t.trade_id
         FROM quotation_items qi
-        JOIN quotations q ON qi.quotation_no = q.quotation_no
-        JOIN rfqs r ON q.rfq_no = r.rfq_no
+        JOIN quotations q ON qi.quotation_id = q.id
+        JOIN items i ON qi.item_id = i.id
+        JOIN rfqs r ON q.rfq_id = r.id
+        LEFT JOIN customers c ON r.customer_id = c.id
         LEFT JOIN buyers b ON r.buyer_id = b.id
-        LEFT JOIN trades t ON r.trade_id = t.trade_id
-        WHERE qi.item_code = $1
+        LEFT JOIN trades t ON r.trade_id = t.id
+        WHERE i.item_code = $1 AND q.company_id = $2
     `;
-    const params = [item_code];
+    const params = [item_code, req.user.company_id];
     if (exclude_rfq) {
-      query += ` AND r.rfq_no <> $2`;
+      query += ` AND r.rfq_no <> $3`;
       params.push(exclude_rfq);
     }
     
@@ -104,17 +106,19 @@ router.get('/:item_code/history', async (req, res) => {
         SELECT 
           'Received Quotation' as source,
           b.name as buyer_name,
-          rq.customer_id,
+          c.customer_code as customer_id,
           rq.quotation_date as date,
           COALESCE(t.status, 'active') as status,
           rqi.unit_price,
           COALESCE(t.trade_type, 'buy') as trade_type,
-          rq.trade_id
+          t.trade_id
         FROM received_quotation_items rqi
-        JOIN received_quotations rq ON rqi.received_quotation_no = rq.received_quotation_no
+        JOIN received_quotations rq ON rqi.received_quotation_id = rq.id
+        JOIN items i ON rqi.item_id = i.id
+        LEFT JOIN customers c ON rq.customer_id = c.id
         LEFT JOIN buyers b ON rq.buyer_id = b.id
-        LEFT JOIN trades t ON rq.trade_id = t.trade_id
-        WHERE rqi.item_code = $1
+        LEFT JOIN trades t ON rq.trade_id = t.id
+        WHERE i.item_code = $1 AND rq.company_id = $2
       ) as history
       ORDER BY date DESC
       LIMIT 15

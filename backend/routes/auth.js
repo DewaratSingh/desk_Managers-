@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
   try {
     const hash = crypto.createHash('sha256').update(password).digest('hex');
     const result = await pool.query(
-      'SELECT username, role FROM users WHERE username = $1 AND password_hash = $2',
+      'SELECT username, role, name, email, permissions, company_id FROM users WHERE username = $1 AND password_hash = $2',
       [username, hash]
     );
 
@@ -25,7 +25,7 @@ router.post('/login', async (req, res) => {
 
     const user = result.rows[0];
     const token = jwt.sign(
-      { username: user.username, role: user.role },
+      { username: user.username, role: user.role, permissions: user.permissions || [], company_id: user.company_id },
       JWT_SECRET,
       { expiresIn: '8h' }
     );
@@ -63,6 +63,52 @@ router.post('/change-password', async (req, res) => {
     res.json({ message: 'Password updated successfully.' });
   } catch (err) {
     console.error('Change password error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+router.post('/signup', async (req, res) => {
+  const { username, password, ownerName, companyName, phone, email } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required.' });
+  }
+
+  try {
+    // Check if username is already taken
+    const existing = await pool.query('SELECT username FROM users WHERE username = $1', [username]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Username is already taken.' });
+    }
+
+    // 1. Create the company first
+    const targetCompanyName = companyName && companyName.trim() ? companyName.trim() : `${username}'s Company`;
+    const companyResult = await pool.query(
+      'INSERT INTO companies (name) VALUES ($1) RETURNING id',
+      [targetCompanyName]
+    );
+    const companyId = companyResult.rows[0].id;
+
+    // 2. Hash password and insert user linked to the company (Owner gets admin role and empty permissions array)
+    const hash = crypto.createHash('sha256').update(password).digest('hex');
+    const role = 'admin'; 
+
+    const result = await pool.query(
+      `INSERT INTO users (username, password_hash, role, name, owner_name, company_name, phone, email, permissions, company_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) 
+       RETURNING username, role, name, owner_name, company_name, phone, email, permissions, company_id`,
+      [username, hash, role, ownerName || null, ownerName || null, targetCompanyName, phone || null, email || null, '[]', companyId]
+    );
+
+    const user = result.rows[0];
+    const token = jwt.sign(
+      { username: user.username, role: user.role, permissions: user.permissions || [], company_id: user.company_id },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    res.status(201).json({ token, user, message: 'User registered successfully.' });
+  } catch (err) {
+    console.error('Signup error:', err.message);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

@@ -9,11 +9,11 @@ router.get('/', async (req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : null;
     const offset = req.query.offset ? parseInt(req.query.offset) : 0;
     
-    let query = 'SELECT id, name, email, phone, created_at FROM buyers';
-    const params = [];
+    let query = 'SELECT id, name, email, phone, created_at FROM buyers WHERE company_id = $1';
+    const params = [req.user.company_id];
     
     if (q) {
-      query += ' WHERE name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1';
+      query += ' AND (name ILIKE $2 OR email ILIKE $2 OR phone ILIKE $2)';
       params.push(`%${q}%`);
     }
     
@@ -39,7 +39,7 @@ router.post('/', async (req, res) => {
   const { name, email, phone } = req.body || {};
   if (!name || !email || !phone) return res.status(400).json({ error: 'name, email and phone required' });
   try {
-    const result = await pool.query('INSERT INTO buyers (name, email, phone) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING RETURNING *', [name, email, phone]);
+    const result = await pool.query('INSERT INTO buyers (name, email, phone, company_id) VALUES ($1, $2, $3, $4) ON CONFLICT (email, company_id) DO NOTHING RETURNING *', [name, email, phone, req.user.company_id]);
     if (result.rows.length === 0) return res.status(400).json({ error: 'Buyer already exists with this email' });
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -54,7 +54,7 @@ router.put('/:id', async (req, res) => {
   const { name, email, phone } = req.body || {};
   if (!name || !email || !phone) return res.status(400).json({ error: 'name, email and phone required' });
   try {
-    const result = await pool.query('UPDATE buyers SET name = $1, email = $2, phone = $3 WHERE id = $4 RETURNING *', [name, email, phone, id]);
+    const result = await pool.query('UPDATE buyers SET name = $1, email = $2, phone = $3 WHERE id = $4 AND company_id = $5 RETURNING *', [name, email, phone, id, req.user.company_id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Buyer not found' });
     res.json(result.rows[0]);
   } catch (err) {

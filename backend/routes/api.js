@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth');
 const authRouter = require('./auth');
+const userRouter = require('./user');
 
 const customerRouter = require('./customer');
 const buyerRouter = require('./buyer');
@@ -32,6 +33,7 @@ router.use('/auth', authRouter);
 // Apply JWT authentication middleware to all routes registered below
 router.use(authMiddleware);
 
+router.use('/users', userRouter);
 router.use('/customers', customerRouter);
 router.use('/buyers', buyerRouter);
 router.use('/items', itemRouter);

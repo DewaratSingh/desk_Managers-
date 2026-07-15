@@ -2,14 +2,17 @@ const express = require('express');
 const router = express.Router();
 const { pool, appendDocToTrade } = require('../db');
 
-// ─── GET a single GRN by grn_no ───────────────────────────────────────────────
+// GET a single GRN by grn_no
 router.get('/:grn_no', async (req, res) => {
   const { grn_no } = req.params;
   try {
     const result = await pool.query(
-      `SELECT grn_no, delivery_note_no, trade_id, grn_date, has_rejection, rejection_items, created_at
-       FROM grns WHERE grn_no = $1`,
-      [grn_no]
+      `SELECT g.grn_no, dn.delivery_note_no, t.trade_id, g.grn_date, g.has_rejection, g.rejection_items, g.created_at
+       FROM grns g
+       LEFT JOIN delivery_notes dn ON g.delivery_note_id = dn.id
+       LEFT JOIN trades t ON g.trade_id = t.id
+       WHERE g.grn_no = $1 AND g.company_id = $2`,
+      [grn_no, req.user.company_id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'GRN not found' });
@@ -21,22 +24,28 @@ router.get('/:grn_no', async (req, res) => {
   }
 });
 
-// ─── GET items from a Delivery Note for GRN (with item descriptions) ───────────
+// GET items from a Delivery Note for GRN (with item descriptions)
 router.get('/items-lookup/:delivery_note_no', async (req, res) => {
   const { delivery_note_no } = req.params;
   try {
+    const dnRes = await pool.query('SELECT id FROM delivery_notes WHERE delivery_note_no = $1 AND company_id = $2', [delivery_note_no, req.user.company_id]);
+    if (dnRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Delivery Note not found' });
+    }
+    const dnDbId = dnRes.rows[0].id;
+
     const result = await pool.query(
       `SELECT
-         dni.item_code,
+         i.item_code,
          dni.quantity,
          dni.rate_per_piece,
          i.description,
          i.drawing_number
        FROM delivery_note_items dni
-       LEFT JOIN items i ON dni.item_code = i.item_code
-       WHERE dni.delivery_note_no = $1
+       LEFT JOIN items i ON dni.item_id = i.id AND i.company_id = dni.company_id
+       WHERE dni.delivery_note_id = $1 AND dni.company_id = $2
        ORDER BY dni.id`,
-      [delivery_note_no]
+      [dnDbId, req.user.company_id]
     );
     res.json({ items: result.rows });
   } catch (err) {
@@ -45,7 +54,7 @@ router.get('/items-lookup/:delivery_note_no', async (req, res) => {
   }
 });
 
-// ─── CREATE a GRN ─────────────────────────────────────────────────────────────
+// CREATE a GRN
 router.post('/', async (req, res) => {
   const {
     grn_no,
@@ -65,39 +74,49 @@ router.post('/', async (req, res) => {
     await client.query('BEGIN');
 
     // 1. Check duplicate
-    const dup = await client.query('SELECT grn_no FROM grns WHERE grn_no = $1', [grn_no]);
+    const dup = await client.query('SELECT grn_no FROM grns WHERE grn_no = $1 AND company_id = $2', [grn_no, req.user.company_id]);
     if (dup.rows.length > 0) {
       throw new Error('GRN number already exists');
     }
 
     // 2. Verify delivery note exists
-    const dnCheck = await client.query('SELECT delivery_note_no FROM delivery_notes WHERE delivery_note_no = $1', [delivery_note_no]);
+    const dnCheck = await client.query('SELECT id, trade_id FROM delivery_notes WHERE delivery_note_no = $1 AND company_id = $2', [delivery_note_no, req.user.company_id]);
     if (dnCheck.rows.length === 0) {
       throw new Error('Delivery Note not found');
     }
+    const dnDbId = dnCheck.rows[0].id;
+    const tradeDbId = dnCheck.rows[0].trade_id;
+
+    // Get trade code string
+    const tradeRes = await client.query('SELECT trade_id FROM trades WHERE id = $1 AND company_id = $2', [tradeDbId, req.user.company_id]);
+    if (tradeRes.rows.length === 0) {
+      throw new Error('Trade not found');
+    }
+    const trade_code = tradeRes.rows[0].trade_id;
 
     // 3. Insert GRN
     await client.query(
-      `INSERT INTO grns (grn_no, delivery_note_no, trade_id, grn_date, has_rejection, rejection_items)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO grns (grn_no, delivery_note_id, trade_id, grn_date, has_rejection, rejection_items, company_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         grn_no,
-        delivery_note_no,
-        trade_id,
+        dnDbId,
+        tradeDbId,
         grn_date,
         has_rejection || false,
-        JSON.stringify(rejection_items || [])
+        JSON.stringify(rejection_items || []),
+        req.user.company_id
       ]
     );
 
     // 4. Append to trade documents
-    await appendDocToTrade(client, trade_id, 'GRN', grn_no);
+    await appendDocToTrade(client, trade_code, 'GRN', grn_no, req.user.company_id);
 
-    // Update trade delivery status based on delivered %
-    await updateTradeDeliveryStatus(client, trade_id);
+    // Update trade delivery status
+    await updateTradeDeliveryStatus(client, tradeDbId, req.user.company_id);
 
     await client.query('COMMIT');
-    res.status(201).json({ grn_no, trade_id });
+    res.status(201).json({ grn_no, trade_id: trade_code });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error creating GRN:', err.message);
@@ -107,7 +126,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// ─── UPDATE an existing GRN ───────────────────────────────────────────────────
+// UPDATE an existing GRN
 router.put('/:grn_no', async (req, res) => {
   const { grn_no } = req.params;
   const { grn_date, has_rejection, rejection_items } = req.body || {};
@@ -123,16 +142,17 @@ router.put('/:grn_no', async (req, res) => {
     const result = await client.query(
       `UPDATE grns
        SET grn_date = $1, has_rejection = $2, rejection_items = $3
-       WHERE grn_no = $4 RETURNING *`,
-      [grn_date, has_rejection || false, JSON.stringify(rejection_items || []), grn_no]
+       WHERE grn_no = $4 AND company_id = $5 RETURNING trade_id`,
+      [grn_date, has_rejection || false, JSON.stringify(rejection_items || []), grn_no, req.user.company_id]
     );
 
     if (result.rows.length === 0) {
       throw new Error('GRN not found');
     }
+    const tradeDbId = result.rows[0].trade_id;
 
-    // Update trade delivery status based on delivered %
-    await updateTradeDeliveryStatus(client, result.rows[0].trade_id);
+    // Update trade delivery status
+    await updateTradeDeliveryStatus(client, tradeDbId, req.user.company_id);
 
     await client.query('COMMIT');
     res.json({ grn_no });
@@ -145,7 +165,7 @@ router.put('/:grn_no', async (req, res) => {
   }
 });
 
-async function updateTradeDeliveryStatus(client, trade_id) {
+async function updateTradeDeliveryStatus(client, trade_id, company_id) {
   if (!trade_id) return;
 
   const pctRes = await client.query(`
@@ -154,8 +174,8 @@ async function updateTradeDeliveryStatus(client, trade_id) {
     FROM (
       SELECT
         COALESCE(
-          (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.po_no = poi.po_no WHERE po.trade_id = $1),
-          (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.ro_no = roi.ro_no WHERE ro.trade_id = $1),
+          (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = $1 AND po.company_id = $2),
+          (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = $1 AND ro.company_id = $2),
           0
         )::numeric AS ordered_val,
         COALESCE(
@@ -166,15 +186,17 @@ async function updateTradeDeliveryStatus(client, trade_id) {
                   SELECT SUM((elem->>'quantity')::numeric)
                   FROM grns g
                   CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-                  WHERE g.delivery_note_no = dn.delivery_note_no
-                    AND elem->>'item_code' = dni.item_code
+                  WHERE g.delivery_note_id = dn.id
+                    AND elem->>'item_code' = i.item_code
+                    AND g.company_id = $2
                 ), 0)
               ) * poi.unit_price
             )
             FROM delivery_notes dn
-            JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no
-            JOIN purchase_order_items poi ON dn.po_no = poi.po_no AND dni.item_code = poi.item_code
-            WHERE dn.trade_id = $1
+            JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+            JOIN purchase_order_items poi ON dn.po_id = poi.po_id AND dni.item_id = poi.item_id
+            JOIN items i ON dni.item_id = i.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
           (
             SELECT SUM(
@@ -183,20 +205,22 @@ async function updateTradeDeliveryStatus(client, trade_id) {
                   SELECT SUM((elem->>'quantity')::numeric)
                   FROM grns g
                   CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-                  WHERE g.delivery_note_no = dn.delivery_note_no
-                    AND elem->>'item_code' = dni.item_code
+                  WHERE g.delivery_note_id = dn.id
+                    AND elem->>'item_code' = i.item_code
+                    AND g.company_id = $2
                 ), 0)
               ) * roi.unit_price
             )
             FROM delivery_notes dn
-            JOIN delivery_note_items dni ON dn.delivery_note_no = dni.delivery_note_no
-            JOIN release_order_items roi ON dn.ro_no = roi.ro_no AND dni.item_code = roi.item_code
-            WHERE dn.trade_id = $1
+            JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+            JOIN release_order_items roi ON dn.ro_id = roi.ro_id AND dni.item_id = roi.item_id
+            JOIN items i ON dni.item_id = i.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
           0
         )::numeric AS delivered_val
     ) val_sub
-  `, [trade_id]);
+  `, [trade_id, company_id]);
 
   const pct = pctRes.rows.length > 0 ? parseFloat(pctRes.rows[0].pct) : 0;
   
@@ -208,12 +232,12 @@ async function updateTradeDeliveryStatus(client, trade_id) {
   }
 
   await client.query(
-    "INSERT INTO status (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
-    [statusName]
+    "INSERT INTO status (name, company_id) VALUES ($1, $2) ON CONFLICT (name, company_id) DO NOTHING",
+    [statusName, company_id]
   );
   await client.query(
-    "UPDATE trades SET status = $1 WHERE trade_id = $2",
-    [statusName, trade_id]
+    "UPDATE trades SET status = $1 WHERE id = $2 AND company_id = $3",
+    [statusName, trade_id, company_id]
   );
 }
 
