@@ -639,11 +639,13 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                         <th className="px-4 py-2.5 text-right">Rate</th>
                         <th className="px-4 py-2.5 text-right">Total</th>
                         <th className="px-4 py-2.5">Shipping Destination</th>
+                        <th className="px-4 py-2.5 text-center">Next Activity</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
                       {activeItems.map((item, idx) => {
                         const total = (parseFloat(item.rate_per_piece) || 0) * (parseInt(item.quantity) || 0);
+                        const hasActivity = item.next_activity && (item.next_activity.inventory || item.next_activity.sell || item.next_activity.process);
                         return (
                           <tr key={idx} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3">
@@ -663,6 +665,28 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                             <td className="px-4 py-3 text-right font-mono font-black text-slate-900">₹{fmt(total)}</td>
                             <td className="px-4 py-3 text-slate-600 font-medium max-w-[180px] truncate" title={item.shipping_address}>
                               {item.shipping_address || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <div className="flex flex-col gap-1 items-center">
+                                {item.next_activity?.inventory && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700">
+                                    Inventory: {item.next_activity.inventory.quantity} (P-ID: {item.next_activity.inventory.P_item_id || '—'})
+                                  </span>
+                                )}
+                                {item.next_activity?.sell && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-700">
+                                    Sell: {item.next_activity.sell.quantity} (Trade: {item.next_activity.sell.tradeID || '—'})
+                                  </span>
+                                )}
+                                {item.next_activity?.process && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 border border-amber-200 text-amber-700">
+                                    Process: {item.next_activity.process.quantity} (Trade: {item.next_activity.process.tradeID || '—'})
+                                  </span>
+                                )}
+                                {!hasActivity && (
+                                  <span className="text-slate-400 font-semibold">—</span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );

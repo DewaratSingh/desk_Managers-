@@ -72,7 +72,7 @@ router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        po.po_no, q.quotation_no, po.po_date, po.delivery_date,
+        po.po_no, COALESCE(q.quotation_no, rq.received_quotation_no) AS quotation_no, po.po_date, po.delivery_date,
         po.gst, po.transport, po.other, po.basic_value, po.packing_forward,
         t.trade_id, po.created_at,
         t.trade_type,
@@ -111,6 +111,7 @@ router.get('/', async (req, res) => {
         ) as items
       FROM purchase_orders po
       LEFT JOIN quotations q ON po.quotation_id = q.id
+      LEFT JOIN received_quotations rq ON po.received_quotation_id = rq.id
       LEFT JOIN trades t ON po.trade_id = t.id
       WHERE po.company_id = $1
       ORDER BY po.created_at DESC
@@ -141,7 +142,7 @@ router.get('/:po_no', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        po.po_no, q.quotation_no, po.po_date,
+        po.po_no, COALESCE(q.quotation_no, rq.received_quotation_no) AS quotation_no, po.po_date,
         po.gst, po.transport, po.other, po.basic_value, po.packing_forward,
         po.delivery_date, t.trade_id,
         (
@@ -179,6 +180,7 @@ router.get('/:po_no', async (req, res) => {
         ) as items
       FROM purchase_orders po
       LEFT JOIN quotations q ON po.quotation_id = q.id
+      LEFT JOIN received_quotations rq ON po.received_quotation_id = rq.id
       LEFT JOIN trades t ON po.trade_id = t.id
       WHERE po.po_no = $1 AND po.company_id = $2
     `, [po_no, req.user.company_id]);
@@ -209,10 +211,11 @@ router.post('/', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Resolve trade_id and quotation_id from the quotation (checking company_id)
+    // Resolve trade_id, quotation_id, and received_quotation_id from the quotation (checking company_id)
     let tradeDbId = null;
     let trade_code = null;
     let quotationDbId = null;
+    let receivedQuotationDbId = null;
     if (quotation_no) {
       let qRes = await client.query(
         'SELECT q.id, q.trade_id, t.trade_id as trade_code FROM quotations q LEFT JOIN trades t ON q.trade_id = t.id WHERE q.quotation_no = $1 AND q.company_id = $2',
@@ -228,7 +231,7 @@ router.post('/', async (req, res) => {
           [quotation_no, req.user.company_id]
         );
         if (qRes.rows.length > 0) {
-          quotationDbId = qRes.rows[0].id;
+          receivedQuotationDbId = qRes.rows[0].id;
           tradeDbId = qRes.rows[0].trade_id;
           trade_code = qRes.rows[0].trade_code;
         }
@@ -251,11 +254,12 @@ router.post('/', async (req, res) => {
     // Insert PO header
     const poRes = await client.query(
       `INSERT INTO purchase_orders
-        (po_no, quotation_id, po_date, gst, transport, other, basic_value, packing_forward, delivery_date, trade_id, company_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        (po_no, quotation_id, received_quotation_id, po_date, gst, transport, other, basic_value, packing_forward, delivery_date, trade_id, company_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
       [
         po_no,
         quotationDbId || null,
+        receivedQuotationDbId || null,
         po_date,
         totalGst,
         parseFloat(transport)       || 0,

@@ -47,6 +47,19 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get next received quotation reference number
+router.get('/next-no', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT COUNT(*) FROM received_quotations WHERE company_id = $1', [req.user.company_id]);
+    const count = parseInt(result.rows[0].count) || 0;
+    const nextNo = `RQ-${String(count + 1).padStart(4, '0')}`;
+    res.json({ nextNo });
+  } catch (err) {
+    console.error('Error fetching next received quotation no:', err.message);
+    res.status(500).json({ error: 'Failed to generate next received quotation number' });
+  }
+});
+
 // Get a single received quotation
 router.get('/:received_quotation_no', async (req, res) => {
   const { received_quotation_no } = req.params;
@@ -87,15 +100,23 @@ router.get('/:received_quotation_no', async (req, res) => {
 // Create a new received quotation
 router.post('/', async (req, res) => {
   const { received_quotation_no, buyer_id, customer_id, quotation_date, terms_and_conditions, items } = req.body || {};
-  if (!received_quotation_no || !buyer_id || !customer_id || !quotation_date) {
-    return res.status(400).json({ error: 'received_quotation_no, buyer_id, customer_id and quotation_date are required' });
+  if (!buyer_id || !customer_id || !quotation_date) {
+    return res.status(400).json({ error: 'buyer_id, customer_id and quotation_date are required' });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const final_rq_no = received_quotation_no;
+    // Generate received_quotation_no if not provided
+    let final_rq_no = received_quotation_no;
+    if (!final_rq_no || !final_rq_no.trim()) {
+      const countRes = await client.query('SELECT COUNT(*) FROM received_quotations WHERE company_id = $1', [req.user.company_id]);
+      const count = parseInt(countRes.rows[0].count) || 0;
+      final_rq_no = `RQ-${String(count + 1).padStart(4, '0')}`;
+    } else {
+      final_rq_no = final_rq_no.trim();
+    }
 
     // Check duplicate received_quotation_no
     const dupCheck = await client.query('SELECT received_quotation_no FROM received_quotations WHERE received_quotation_no = $1 AND company_id = $2', [final_rq_no, req.user.company_id]);

@@ -9,13 +9,13 @@ router.get('/', async (req, res) => {
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
   try {
     let queryText = `
-      SELECT inv.id, it.item_code, inv.quantity_in_stock, inv.rack, inv.shelf_number,
-             inv.location, inv.unit, inv.allocated_quantity, r.rfq_no, inv.notes,
+      SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
+             inv.location, t.trade_id, inv.message,
              inv.company_id, inv.created_at, inv.updated_at,
              it.description, it.drawing_number 
       FROM inventory inv
-      LEFT JOIN items it ON inv.item_id = it.id
-      LEFT JOIN rfqs r ON inv.rfq_id = r.id
+      LEFT JOIN items it ON inv.item_code = it.id
+      LEFT JOIN trades t ON inv.trade_id = t.id
       WHERE inv.company_id = $1
     `;
     const params = [req.user.company_id];
@@ -25,7 +25,8 @@ router.get('/', async (req, res) => {
            OR inv.location ILIKE $2 
            OR inv.rack ILIKE $2 
            OR inv.shelf_number ILIKE $2
-           OR it.description ILIKE $2)
+           OR it.description ILIKE $2
+           OR t.trade_id ILIKE $2)
       `;
       params.push(`%${q}%`);
     }
@@ -52,31 +53,17 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const {
     item_code,
-    quantity_in_stock,
+    quantity,
+    price,
     rack,
     shelf_number,
     location,
-    unit,
-    allocated_quantity,
-    rfq_no,
-    notes
+    trade_id,
+    message
   } = req.body || {};
 
   if (!item_code) {
     return res.status(400).json({ error: 'item_code is required' });
-  }
-  if (quantity_in_stock === undefined || quantity_in_stock === null || isNaN(parseFloat(quantity_in_stock))) {
-    return res.status(400).json({ error: 'Valid quantity_in_stock is required' });
-  }
-
-  const parsedQty = parseFloat(quantity_in_stock);
-  const parsedAllocated = allocated_quantity ? parseInt(allocated_quantity, 10) : 0;
-
-  if (parsedQty < 0) {
-    return res.status(400).json({ error: 'Quantity in stock cannot be negative' });
-  }
-  if (parsedAllocated < 0) {
-    return res.status(400).json({ error: 'Allocated quantity cannot be negative' });
   }
 
   try {
@@ -87,42 +74,41 @@ router.post('/', async (req, res) => {
     }
     const itemDbId = itemRes.rows[0].id;
 
-    // Resolve rfqDbId
-    let rfqDbId = null;
-    if (rfq_no) {
-      const rfqRes = await pool.query('SELECT id FROM rfqs WHERE rfq_no = $1 AND company_id = $2', [rfq_no, req.user.company_id]);
-      if (rfqRes.rows.length > 0) {
-        rfqDbId = rfqRes.rows[0].id;
+    // Resolve tradeDbId
+    let tradeDbId = null;
+    if (trade_id) {
+      const tradeRes = await pool.query('SELECT id FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_id, req.user.company_id]);
+      if (tradeRes.rows.length > 0) {
+        tradeDbId = tradeRes.rows[0].id;
       }
     }
 
     const result = await pool.query(
       `INSERT INTO inventory (
-        item_id, quantity_in_stock, rack, shelf_number, location, unit, allocated_quantity, rfq_id, notes, company_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         itemDbId,
-        parsedQty,
+        parseInt(quantity) || 0,
+        parseFloat(price) || 0.00,
         rack || null,
         shelf_number || null,
         location || null,
-        unit || 'Piece',
-        parsedAllocated,
-        rfqDbId,
-        notes || null,
+        tradeDbId,
+        message || null,
         req.user.company_id
       ]
     );
 
     // Fetch the inserted record with joined details
     const joinedRes = await pool.query(
-      `SELECT inv.id, it.item_code, inv.quantity_in_stock, inv.rack, inv.shelf_number,
-              inv.location, inv.unit, inv.allocated_quantity, r.rfq_no, inv.notes,
+      `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
+              inv.location, t.trade_id, inv.message,
               inv.company_id, inv.created_at, inv.updated_at,
               it.description, it.drawing_number 
        FROM inventory inv
-       LEFT JOIN items it ON inv.item_id = it.id
-       LEFT JOIN rfqs r ON inv.rfq_id = r.id
+       LEFT JOIN items it ON inv.item_code = it.id
+       LEFT JOIN trades t ON inv.trade_id = t.id
        WHERE inv.id = $1 AND inv.company_id = $2`,
       [result.rows[0].id, req.user.company_id]
     );
@@ -139,31 +125,17 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const {
     item_code,
-    quantity_in_stock,
+    quantity,
+    price,
     rack,
     shelf_number,
     location,
-    unit,
-    allocated_quantity,
-    rfq_no,
-    notes
+    trade_id,
+    message
   } = req.body || {};
 
   if (!item_code) {
     return res.status(400).json({ error: 'item_code is required' });
-  }
-  if (quantity_in_stock === undefined || quantity_in_stock === null || isNaN(parseFloat(quantity_in_stock))) {
-    return res.status(400).json({ error: 'Valid quantity_in_stock is required' });
-  }
-
-  const parsedQty = parseFloat(quantity_in_stock);
-  const parsedAllocated = allocated_quantity ? parseInt(allocated_quantity, 10) : 0;
-
-  if (parsedQty < 0) {
-    return res.status(400).json({ error: 'Quantity in stock cannot be negative' });
-  }
-  if (parsedAllocated < 0) {
-    return res.status(400).json({ error: 'Allocated quantity cannot be negative' });
   }
 
   try {
@@ -174,39 +146,37 @@ router.put('/:id', async (req, res) => {
     }
     const itemDbId = itemRes.rows[0].id;
 
-    // Resolve rfqDbId
-    let rfqDbId = null;
-    if (rfq_no) {
-      const rfqRes = await pool.query('SELECT id FROM rfqs WHERE rfq_no = $1 AND company_id = $2', [rfq_no, req.user.company_id]);
-      if (rfqRes.rows.length > 0) {
-        rfqDbId = rfqRes.rows[0].id;
+    // Resolve tradeDbId
+    let tradeDbId = null;
+    if (trade_id) {
+      const tradeRes = await pool.query('SELECT id FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_id, req.user.company_id]);
+      if (tradeRes.rows.length > 0) {
+        tradeDbId = tradeRes.rows[0].id;
       }
     }
 
     const result = await pool.query(
       `UPDATE inventory 
-       SET item_id = $1, 
-           quantity_in_stock = $2, 
-           rack = $3, 
-           shelf_number = $4, 
-           location = $5, 
-           unit = $6, 
-           allocated_quantity = $7, 
-           rfq_id = $8, 
-           notes = $9,
+       SET item_code = $1, 
+           quantity = $2, 
+           price = $3,
+           rack = $4, 
+           shelf_number = $5, 
+           location = $6, 
+           trade_id = $7, 
+           message = $8,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $10 AND company_id = $11 
+       WHERE id = $9 AND company_id = $10 
        RETURNING id`,
       [
         itemDbId,
-        parsedQty,
+        parseInt(quantity) || 0,
+        parseFloat(price) || 0.00,
         rack || null,
         shelf_number || null,
         location || null,
-        unit || 'Piece',
-        parsedAllocated,
-        rfqDbId,
-        notes || null,
+        tradeDbId,
+        message || null,
         id,
         req.user.company_id
       ]
@@ -218,13 +188,13 @@ router.put('/:id', async (req, res) => {
 
     // Fetch updated record with joined details
     const joinedRes = await pool.query(
-      `SELECT inv.id, it.item_code, inv.quantity_in_stock, inv.rack, inv.shelf_number,
-              inv.location, inv.unit, inv.allocated_quantity, r.rfq_no, inv.notes,
+      `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
+              inv.location, t.trade_id, inv.message,
               inv.company_id, inv.created_at, inv.updated_at,
               it.description, it.drawing_number 
        FROM inventory inv
-       LEFT JOIN items it ON inv.item_id = it.id
-       LEFT JOIN rfqs r ON inv.rfq_id = r.id
+       LEFT JOIN items it ON inv.item_code = it.id
+       LEFT JOIN trades t ON inv.trade_id = t.id
        WHERE inv.id = $1 AND inv.company_id = $2`,
       [id, req.user.company_id]
     );

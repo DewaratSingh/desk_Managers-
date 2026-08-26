@@ -240,6 +240,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         po_no VARCHAR(100) NOT NULL,
         quotation_id INTEGER REFERENCES quotations(id) ON DELETE SET NULL,
+        received_quotation_id INTEGER REFERENCES received_quotations(id) ON DELETE SET NULL,
         contract_ref VARCHAR(255),
         po_date DATE NOT NULL,
         gst DECIMAL(12, 2) DEFAULT 0.00,
@@ -255,6 +256,12 @@ const initializeDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (po_no, company_id)
       );
+    `);
+
+    // Alter table to add column dynamically in case table already exists
+    await client.query(`
+      ALTER TABLE purchase_orders 
+      ADD COLUMN IF NOT EXISTS received_quotation_id INTEGER REFERENCES received_quotations(id) ON DELETE SET NULL;
     `);
 
     // 15. Purchase Order Items Table
@@ -353,6 +360,10 @@ const initializeDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (delivery_note_id, item_id)
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE delivery_note_items ADD COLUMN IF NOT EXISTS next_activity JSONB;
     `);
 
     // 20. Invoices Table
@@ -466,22 +477,38 @@ const initializeDatabase = async () => {
       );
     `);
 
-    // 28. Inventory Table
+    // Drop old inventory table to recreate with new schema matching p-item structure
+    await client.query(`DROP TABLE IF EXISTS inventory CASCADE;`);
+
+    // 28. Inventory Table (Updated to match p-item style + position columns + trade_id)
     await client.query(`
       CREATE TABLE IF NOT EXISTS inventory (
         id SERIAL PRIMARY KEY,
-        item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity_in_stock DECIMAL(12, 2) NOT NULL CHECK (quantity_in_stock >= 0.0),
+        item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        message TEXT,
         rack VARCHAR(255),
         shelf_number VARCHAR(255),
         location VARCHAR(255),
-        unit VARCHAR(50) DEFAULT 'Piece',
-        allocated_quantity INTEGER DEFAULT 0 CHECK (allocated_quantity >= 0),
-        rfq_id INTEGER REFERENCES rfqs(id) ON DELETE SET NULL,
-        notes TEXT,
+        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        quantity INTEGER DEFAULT 0,
+        price DECIMAL(12, 2) DEFAULT 0.00,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 27. P_item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS P_item (
+        id SERIAL PRIMARY KEY,
+        item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        process INTEGER[] DEFAULT '{}',
+        message TEXT,
+        quantity INTEGER DEFAULT 0,
+        price DECIMAL(12, 2) DEFAULT 0.00,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 

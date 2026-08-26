@@ -17,14 +17,13 @@ import { toast } from 'react-toastify';
 
 const EMPTY_FORM = {
   item_code: '',
-  quantity_in_stock: '',
-  unit: 'Piece',
+  quantity: '',
+  price: '',
   location: '',
   rack: '',
   shelf_number: '',
-  allocated_quantity: '0',
-  rfq_no: '',
-  notes: ''
+  trade_id: '',
+  message: ''
 };
 
 export default function InventoryView() {
@@ -34,43 +33,57 @@ export default function InventoryView() {
   const [viewMode, setViewMode] = useState(isFormRoute ? 'form' : 'list');
   const [inventoryList, setInventoryList] = useState([]);
   const [items, setItems] = useState([]);
-  const [rfqs, setRfqs] = useState([]);
+  const [trades, setTrades] = useState([]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
+  const [linkMetadata, setLinkMetadata] = useState(null);
   
   const [hasMore, setHasMore] = useState(true);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
-  const [showRfqDropdown, setShowRfqDropdown] = useState(false);
+  const [showTradeDropdown, setShowTradeDropdown] = useState(false);
 
   const itemDropdownRef = useRef(null);
-  const rfqDropdownRef = useRef(null);
-
-  const units = ['Piece', 'Kg', 'Meter', 'Box', 'Set', 'Liter', 'Ton', 'Nos'];
+  const tradeDropdownRef = useRef(null);
 
   useEffect(() => {
     if (isFormRoute) {
       setViewMode('form');
-      if (location.state?.editingInventory) {
+      if (location.state?.autofill) {
+        const fill = location.state.autofill;
+        setEditingId(null);
+        setFormData({
+          item_code: fill.item_code || '',
+          quantity: fill.quantity || '',
+          price: fill.price || '',
+          location: fill.existingDetails?.location || '',
+          rack: fill.existingDetails?.rack || '',
+          shelf_number: fill.existingDetails?.shelf_number || '',
+          trade_id: fill.trade_id || '',
+          message: fill.existingDetails?.message || `Linked to P-Item: ${fill.p_id}`
+        });
+        setLinkMetadata(fill);
+      } else if (location.state?.editingInventory) {
         const item = location.state.editingInventory;
         setEditingId(item.id);
         setFormData({
           item_code: item.item_code || '',
-          quantity_in_stock: item.quantity_in_stock || '',
-          unit: item.unit || 'Piece',
+          quantity: item.quantity || '',
+          price: item.price || '',
           location: item.location || '',
           rack: item.rack || '',
           shelf_number: item.shelf_number || '',
-          allocated_quantity: item.allocated_quantity || '0',
-          rfq_no: item.rfq_no || '',
-          notes: item.notes || ''
+          trade_id: item.trade_id || '',
+          message: item.message || ''
         });
+        setLinkMetadata(null);
       } else {
         setEditingId(null);
         setFormData(EMPTY_FORM);
+        setLinkMetadata(null);
       }
     } else {
       setViewMode('list');
@@ -83,8 +96,8 @@ export default function InventoryView() {
       if (itemDropdownRef.current && !itemDropdownRef.current.contains(event.target)) {
         setShowItemDropdown(false);
       }
-      if (rfqDropdownRef.current && !rfqDropdownRef.current.contains(event.target)) {
-        setShowRfqDropdown(false);
+      if (tradeDropdownRef.current && !tradeDropdownRef.current.contains(event.target)) {
+        setShowTradeDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -112,16 +125,16 @@ export default function InventoryView() {
     return () => clearTimeout(delayDebounceFn);
   }, [formData.item_code, viewMode]);
 
-  // Debounced search for RFQs (form datalist, limit 5)
+  // Debounced search for Trades (form datalist, limit 5)
   useEffect(() => {
     if (viewMode !== 'form') return;
-    const trimmed = formData.rfq_no.trim();
+    const trimmed = formData.trade_id.trim();
     const delayDebounceFn = setTimeout(() => {
-      fetchRfqs(trimmed);
+      fetchTrades(trimmed);
     }, 200);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [formData.rfq_no, viewMode]);
+  }, [formData.trade_id, viewMode]);
 
   const fetchInventory = async (isLoadMore = false, query = searchQuery) => {
     setIsLoading(true);
@@ -159,14 +172,14 @@ export default function InventoryView() {
     }
   };
 
-  const fetchRfqs = async (query = '') => {
+  const fetchTrades = async (query = '') => {
     try {
-      const res = await fetch(`/api/rfqs?q=${encodeURIComponent(query)}&limit=5`);
+      const res = await fetch(`/api/trades?q=${encodeURIComponent(query)}&limit=5`);
       if (res.ok) {
-        setRfqs(await res.json());
+        setTrades(await res.json());
       }
     } catch (err) {
-      console.error('Failed to fetch RFQs:', err);
+      console.error('Failed to fetch Trades:', err);
     }
   };
 
@@ -180,14 +193,14 @@ export default function InventoryView() {
     setShowItemDropdown(false);
   };
 
-  const handleRfqInput = (val) => {
-    setFormData(prev => ({ ...prev, rfq_no: val }));
-    setShowRfqDropdown(true);
+  const handleTradeInput = (val) => {
+    setFormData(prev => ({ ...prev, trade_id: val }));
+    setShowTradeDropdown(true);
   };
 
-  const handleSelectRfq = (rfq) => {
-    setFormData(prev => ({ ...prev, rfq_no: rfq.rfq_no }));
-    setShowRfqDropdown(false);
+  const handleSelectTrade = (trade) => {
+    setFormData(prev => ({ ...prev, trade_id: trade.trade_id }));
+    setShowTradeDropdown(false);
   };
 
   const set = (field) => (e) =>
@@ -233,13 +246,32 @@ export default function InventoryView() {
       toast.warn('Please select an item');
       return;
     }
-    if (formData.quantity_in_stock === '' || isNaN(parseFloat(formData.quantity_in_stock))) {
-      toast.warn('Please enter a valid quantity in stock');
+    if (formData.quantity === '' || isNaN(parseInt(formData.quantity))) {
+      toast.warn('Please enter a valid quantity');
       return;
     }
 
     setIsSaving(true);
     try {
+      if (linkMetadata) {
+        navigate(linkMetadata.returnUrl, {
+          state: {
+            returnState: linkMetadata.returnState,
+            updatedQty: parseInt(formData.quantity) || 0,
+            inventoryDetails: {
+              price: parseFloat(formData.price) || 0.00,
+              rack: formData.rack,
+              shelf_number: formData.shelf_number,
+              location: formData.location,
+              message: formData.message
+            }
+          }
+        });
+        toast.success('Inventory stock configured in memory!');
+        setIsSaving(false);
+        return;
+      }
+
       const url = editingId ? `/api/inventory/${editingId}` : '/api/inventory';
       const method = editingId ? 'PUT' : 'POST';
 
@@ -258,6 +290,17 @@ export default function InventoryView() {
           setInventoryList(prev => [saved, ...prev]);
           toast.success('Inventory record added successfully!');
         }
+        
+        if (linkMetadata) {
+          navigate(linkMetadata.returnUrl, {
+            state: {
+              returnState: linkMetadata.returnState,
+              updatedQty: parseInt(formData.quantity) || 0
+            }
+          });
+          return;
+        }
+
         handleBackToDirectory();
       } else {
         const errData = await res.json();
@@ -271,8 +314,6 @@ export default function InventoryView() {
     }
   };
 
-  const filteredInventory = inventoryList;
-
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900">
       {viewMode === 'list' ? (
@@ -282,7 +323,7 @@ export default function InventoryView() {
             <div>
               <h1 className="text-2xl font-bold text-slate-900 m-0">Inventory Stock</h1>
               <p className="text-xs text-slate-500 mt-1">
-                Monitor and manage physical item stock levels, warehouse locations, and allocations.
+                Monitor and manage physical item stock levels, warehouse locations, and pricing.
               </p>
             </div>
             <button
@@ -305,7 +346,7 @@ export default function InventoryView() {
             <Search size={18} className="text-slate-400 shrink-0" />
             <input
               type="text"
-              placeholder="Search by item code, description, location, rack, shelf..."
+              placeholder="Search by item code, location, rack, shelf, trade ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setSearchFocused(true)}
@@ -319,7 +360,7 @@ export default function InventoryView() {
             <div className="bg-slate-50 px-5 py-3.5 border-b border-slate-300 flex justify-between items-center">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <ListFilter size={14} style={{ color: 'var(--theme-color)' }} />
-                Stock Records ({filteredInventory.length})
+                Stock Records ({inventoryList.length})
               </span>
             </div>
 
@@ -328,7 +369,7 @@ export default function InventoryView() {
                 <RefreshCw size={24} className="animate-spin text-slate-400" />
                 Loading inventory...
               </div>
-            ) : filteredInventory.length === 0 ? (
+            ) : inventoryList.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-sm font-medium flex flex-col items-center justify-center gap-2">
                 <Package size={32} className="text-slate-300" />
                 <span>No stock records found. Click "Add Inventory" to create one.</span>
@@ -336,27 +377,20 @@ export default function InventoryView() {
             ) : (
               <>
                 <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                      <th className="px-5 py-3">Item Details</th>
-                      <th className="px-5 py-3">Location Details</th>
-                      <th className="px-5 py-3 text-right">In Stock</th>
-                      <th className="px-5 py-3 text-right">Allocated</th>
-                      <th className="px-5 py-3 text-right">Available</th>
-                      <th className="px-5 py-3">Linked RFQ</th>
-                      <th className="px-5 py-3">Notes</th>
-                      <th className="px-5 py-3 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
-                    {filteredInventory.map((item) => {
-                      const qty = parseFloat(item.quantity_in_stock) || 0;
-                      const allocated = parseInt(item.allocated_quantity) || 0;
-                      const available = qty - allocated;
-                      const hasLowStock = available <= 0;
-
-                      return (
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                        <th className="px-5 py-3">Item Details</th>
+                        <th className="px-5 py-3">Location Details</th>
+                        <th className="px-5 py-3 text-right">Quantity</th>
+                        <th className="px-5 py-3 text-right">Price</th>
+                        <th className="px-5 py-3">Trade ID</th>
+                        <th className="px-5 py-3">Message</th>
+                        <th className="px-5 py-3 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {inventoryList.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                           {/* Item details */}
                           <td className="px-5 py-4 min-w-[200px]">
@@ -389,34 +423,31 @@ export default function InventoryView() {
                             )}
                           </td>
 
-                          {/* Stock numbers */}
+                          {/* Quantity */}
                           <td className="px-5 py-4 text-right font-black text-slate-900">
-                            {qty} <span className="text-[10px] font-bold text-slate-400">{item.unit || 'Piece'}</span>
-                          </td>
-                          <td className="px-5 py-4 text-right font-bold text-slate-500">
-                            {allocated}
-                          </td>
-                          <td className="px-5 py-4 text-right">
-                            <span className={`font-black ${hasLowStock ? 'text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded' : 'text-green-600'}`}>
-                              {available}
-                            </span>
+                            {item.quantity || 0}
                           </td>
 
-                          {/* Linked RFQ */}
+                          {/* Price */}
+                          <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
+                            ₹{parseFloat(item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Linked Trade ID */}
                           <td className="px-5 py-4 font-mono font-bold text-slate-800">
-                            {item.rfq_no ? (
+                            {item.trade_id ? (
                               <span className="flex items-center gap-1 text-[11px]">
                                 <Tag size={10} className="text-slate-400" />
-                                {item.rfq_no}
+                                {item.trade_id}
                               </span>
                             ) : (
                               <span className="text-slate-300">—</span>
                             )}
                           </td>
 
-                          {/* Notes */}
-                          <td className="px-5 py-4 text-slate-500 max-w-[200px] truncate" title={item.notes}>
-                            {item.notes || '—'}
+                          {/* Message */}
+                          <td className="px-5 py-4 text-slate-500 max-w-[200px] truncate" title={item.message}>
+                            {item.message || '—'}
                           </td>
 
                           {/* Actions */}
@@ -439,29 +470,28 @@ export default function InventoryView() {
                             </div>
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Show More Button */}
-              {hasMore && (
-                <div className="flex justify-center mt-5 animate-fade-in">
-                  <button
-                    type="button"
-                    onClick={() => fetchInventory(true, searchQuery)}
-                    disabled={isLoading}
-                    className="flex items-center gap-1.5 px-5 py-2.5 bg-white border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isLoading ? (
-                      <><RefreshCw size={12} className="animate-spin text-slate-400" /> Loading...</>
-                    ) : (
-                      'Show More'
-                    )}
-                  </button>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
+
+                {/* Show More Button */}
+                {hasMore && (
+                  <div className="flex justify-center mt-5 animate-fade-in">
+                    <button
+                      type="button"
+                      onClick={() => fetchInventory(true, searchQuery)}
+                      disabled={isLoading}
+                      className="flex items-center gap-1.5 px-5 py-2.5 bg-white border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? (
+                        <><RefreshCw size={12} className="animate-spin text-slate-400" /> Loading...</>
+                      ) : (
+                        'Show More'
+                      )}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -485,6 +515,12 @@ export default function InventoryView() {
 
           <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-5">
+              {linkMetadata && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs font-bold text-indigo-700 flex items-center gap-2">
+                  <Tag size={14} className="shrink-0" />
+                  <span>Linked P-Item ID: {linkMetadata.p_id}</span>
+                </div>
+              )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Item Code Selection */}
@@ -527,83 +563,32 @@ export default function InventoryView() {
                   )}
                 </div>
 
-                {/* Unit Select */}
+                {/* Link to Trade ID */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Unit of Measurement
+                    Link to Trade ID (Optional)
                   </label>
-                  <input
-                    type="text"
-                    list="units-datalist"
-                    required
-                    placeholder="Search or type unit..."
-                    value={formData.unit}
-                    onChange={set('unit')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Quantity in stock */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Quantity In Stock <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    required
-                    min="0"
-                    placeholder="e.g. 500"
-                    value={formData.quantity_in_stock}
-                    onChange={set('quantity_in_stock')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
-                  />
-                </div>
-
-                {/* Allocated Quantity */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Allocated Quantity
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 50"
-                    value={formData.allocated_quantity}
-                    onChange={set('allocated_quantity')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
-                  />
-                </div>
-
-                {/* RFQ No Link */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Link to RFQ (Optional)
-                  </label>
-                  <div className="relative" ref={rfqDropdownRef}>
+                  <div className="relative" ref={tradeDropdownRef}>
                     <input
                       type="text"
-                      placeholder="Search by RFQ number..."
-                      value={formData.rfq_no}
-                      onChange={(e) => handleRfqInput(e.target.value)}
-                      onFocus={() => setShowRfqDropdown(true)}
+                      placeholder="Search by Trade ID..."
+                      value={formData.trade_id}
+                      onChange={(e) => handleTradeInput(e.target.value)}
+                      onFocus={() => setShowTradeDropdown(true)}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
                       autoComplete="off"
                     />
-                    {showRfqDropdown && rfqs.length > 0 && (
+                    {showTradeDropdown && trades.length > 0 && (
                       <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto overflow-x-hidden animate-fade-in divide-y divide-slate-100">
-                        {rfqs.map((rfq) => (
+                        {trades.map((t) => (
                           <button
-                            key={rfq.rfq_no}
+                            key={t.trade_id}
                             type="button"
-                            onClick={() => handleSelectRfq(rfq)}
+                            onClick={() => handleSelectTrade(t)}
                             className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors text-xs cursor-pointer flex flex-col gap-0.5"
                           >
-                            <div className="font-bold text-slate-800">{rfq.rfq_no}</div>
-                            <div className="text-[10px] text-slate-500 truncate font-semibold">{rfq.customer_name}</div>
+                            <div className="font-bold text-slate-800 font-mono">{t.trade_id}</div>
+                            <div className="text-[10px] text-slate-500 truncate font-semibold">Type: {t.trade_type} | Status: {t.status}</div>
                           </button>
                         ))}
                       </div>
@@ -612,9 +597,44 @@ export default function InventoryView() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Quantity */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                    Quantity <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    placeholder="e.g. 500"
+                    value={formData.quantity}
+                    onChange={set('quantity')}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                  />
+                </div>
+
+                {/* Price */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                    Price (₹) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    min="0"
+                    placeholder="e.g. 15.50"
+                    value={formData.price}
+                    onChange={set('price')}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                  />
+                </div>
+              </div>
+
               {/* Location details */}
               <div className="border-t border-slate-200 pt-4 mt-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Warehouse Location</h3>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Warehouse Position</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
@@ -657,16 +677,16 @@ export default function InventoryView() {
                 </div>
               </div>
 
-              {/* Notes */}
+              {/* Message */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                  Internal Remarks / Notes
+                  Message / Remarks
                 </label>
                 <textarea
                   rows={3}
                   placeholder="Enter any specific storage instructions or details..."
-                  value={formData.notes}
-                  onChange={set('notes')}
+                  value={formData.message}
+                  onChange={set('message')}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] resize-y"
                 />
               </div>
@@ -701,13 +721,6 @@ export default function InventoryView() {
           </div>
         </div>
       )}
-
-      {/* Autocomplete Datalists */}
-      <datalist id="units-datalist">
-        {units.map(u => (
-          <option key={u} value={u} />
-        ))}
-      </datalist>
     </div>
   );
 }

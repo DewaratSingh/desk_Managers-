@@ -18,7 +18,8 @@ router.get('/:delivery_note_no', async (req, res) => {
             'shipping_address', dni.shipping_address,
             'delivery_date', dni.delivery_date,
             'description', i.description,
-            'drawing_number', i.drawing_number
+            'drawing_number', i.drawing_number,
+            'next_activity', dni.next_activity
           ) ORDER BY dni.id), '[]')
           FROM delivery_note_items dni
           LEFT JOIN items i ON dni.item_id = i.id AND i.company_id = dni.company_id
@@ -253,9 +254,50 @@ router.post('/', async (req, res) => {
       }
       const itemDbId = itemRes.rows[0].id;
 
+      let pItemId = null;
+      if (item.inv_qty > 0) {
+        // Insert into P_item
+        const pRes = await client.query(
+          `INSERT INTO P_item (item_code, process, message, quantity, price, company_id)
+           VALUES ($1, ARRAY[$2]::INTEGER[], $3, $4, $5, $6) RETURNING id`,
+          [
+            itemDbId,
+            tradeDbId,
+            item.inv_details?.message || `Added from DN: ${delivery_note_no}`,
+            parseInt(item.inv_qty) || 0,
+            parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00,
+            req.user.company_id
+          ]
+        );
+        pItemId = pRes.rows[0].id;
+
+        // Insert into inventory
+        await client.query(
+          `INSERT INTO inventory (item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            itemDbId,
+            parseInt(item.inv_qty) || 0,
+            parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00,
+            item.inv_details?.rack || null,
+            item.inv_details?.shelf_number || null,
+            item.inv_details?.location || null,
+            tradeDbId,
+            item.inv_details?.message || null,
+            req.user.company_id
+          ]
+        );
+      }
+
+      const next_activity = {
+        inventory: item.inv_qty > 0 ? { quantity: parseInt(item.inv_qty), P_item_id: pItemId } : null,
+        sell: item.sell_qty > 0 ? { quantity: parseInt(item.sell_qty), tradeID: trade_code } : null,
+        process: item.process_qty > 0 ? { quantity: parseInt(item.process_qty), tradeID: trade_code } : null
+      };
+
       await client.query(
-        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           dnDbId,
           itemDbId,
@@ -263,7 +305,8 @@ router.post('/', async (req, res) => {
           parseFloat(item.rate_per_piece) || 0,
           item.shipping_address || null,
           item.delivery_date || null,
-          req.user.company_id
+          req.user.company_id,
+          JSON.stringify(next_activity)
         ]
       );
     }
@@ -321,7 +364,16 @@ router.put('/:delivery_note_no', async (req, res) => {
     }
     const dnDbId = updateHeader.rows[0].id;
 
-    // 2. Rewrite items
+    // 2. Resolve trade ID and trade code
+    let tradeDbId = null;
+    let trade_code = null;
+    const tradeRes = await client.query('SELECT t.id, t.trade_id FROM delivery_notes dn JOIN trades t ON dn.trade_id = t.id WHERE dn.delivery_note_no = $1 AND dn.company_id = $2', [delivery_note_no, req.user.company_id]);
+    if (tradeRes.rows.length > 0) {
+      tradeDbId = tradeRes.rows[0].id;
+      trade_code = tradeRes.rows[0].trade_id;
+    }
+
+    // 3. Rewrite items
     await client.query('DELETE FROM delivery_note_items WHERE delivery_note_id = $1 AND company_id = $2', [dnDbId, req.user.company_id]);
 
     for (const item of items) {
@@ -331,9 +383,50 @@ router.put('/:delivery_note_no', async (req, res) => {
       }
       const itemDbId = itemRes.rows[0].id;
 
+      let pItemId = null;
+      if (item.inv_qty > 0) {
+        // Insert into P_item
+        const pRes = await client.query(
+          `INSERT INTO P_item (item_code, process, message, quantity, price, company_id)
+           VALUES ($1, ARRAY[$2]::INTEGER[], $3, $4, $5, $6) RETURNING id`,
+          [
+            itemDbId,
+            tradeDbId,
+            item.inv_details?.message || `Updated from DN: ${delivery_note_no}`,
+            parseInt(item.inv_qty) || 0,
+            parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00,
+            req.user.company_id
+          ]
+        );
+        pItemId = pRes.rows[0].id;
+
+        // Insert into inventory
+        await client.query(
+          `INSERT INTO inventory (item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            itemDbId,
+            parseInt(item.inv_qty) || 0,
+            parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00,
+            item.inv_details?.rack || null,
+            item.inv_details?.shelf_number || null,
+            item.inv_details?.location || null,
+            tradeDbId,
+            item.inv_details?.message || null,
+            req.user.company_id
+          ]
+        );
+      }
+
+      const next_activity = {
+        inventory: item.inv_qty > 0 ? { quantity: parseInt(item.inv_qty), P_item_id: pItemId } : null,
+        sell: item.sell_qty > 0 ? { quantity: parseInt(item.sell_qty), tradeID: trade_code } : null,
+        process: item.process_qty > 0 ? { quantity: parseInt(item.process_qty), tradeID: trade_code } : null
+      };
+
       await client.query(
-        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           dnDbId,
           itemDbId,
@@ -341,15 +434,15 @@ router.put('/:delivery_note_no', async (req, res) => {
           parseFloat(item.rate_per_piece) || 0,
           item.shipping_address || null,
           item.delivery_date || null,
-          req.user.company_id
+          req.user.company_id,
+          JSON.stringify(next_activity)
         ]
       );
     }
 
     // Resolve trade_id and update trade delivery status
-    const dnRes = await client.query('SELECT trade_id FROM delivery_notes WHERE id = $1 AND company_id = $2', [dnDbId, req.user.company_id]);
-    if (dnRes.rows.length > 0 && dnRes.rows[0].trade_id) {
-      await updateTradeDeliveryStatus(client, dnRes.rows[0].trade_id, req.user.company_id);
+    if (tradeDbId) {
+      await updateTradeDeliveryStatus(client, tradeDbId, req.user.company_id);
     }
 
     await client.query('COMMIT');
