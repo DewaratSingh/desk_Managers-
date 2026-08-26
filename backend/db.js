@@ -19,28 +19,18 @@ const initializeDatabase = async () => {
   try {
     console.log('Successfully connected to PostgreSQL. Initializing tables...');
 
-    // Drop all tables CASCADE to rebuild with natural composite keys
-    console.log('Dropping all tables CASCADE to start fresh...');
-    const tablesToDrop = [
-      'quotation_received_quotations', 'rfq_items', 'quotation_items', 'received_quotation_items',
-      'purchase_order_items', 'release_order_items', 'delivery_note_items', 'invoice_items',
-      'payments', 'grns', 'invoices', 'delivery_notes', 'purchase_orders', 'release_orders',
-      'quotations', 'received_quotations', 'rfqs', 'trades', 'arc_items', 'inventory', 'items', 'buyers',
-      'customers', 'users', 'status', 'units', 'gst_rates', 'companies'
-    ];
-    for (const t of tablesToDrop) {
-      try {
-        await client.query(`DROP TABLE IF EXISTS ${t} CASCADE;`);
-      } catch (err) {
-        // Table might not exist yet
-      }
-    }
+
 
     // 1. Companies Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS companies (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
+        owner_name VARCHAR(255),
+        owner_username VARCHAR(100),
+        phone VARCHAR(50),
+        email VARCHAR(255),
+        address TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -52,6 +42,7 @@ const initializeDatabase = async () => {
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(50) DEFAULT 'operator',
         name VARCHAR(255),
+        surname VARCHAR(255),
         owner_name VARCHAR(255),
         company_name VARCHAR(255),
         phone VARCHAR(50),
@@ -66,7 +57,9 @@ const initializeDatabase = async () => {
     let defaultCompanyId = null;
     const compCheck = await client.query('SELECT id FROM companies WHERE name = $1', ['Shreeji Industries']);
     if (compCheck.rows.length === 0) {
-      const res = await client.query("INSERT INTO companies (name) VALUES ('Shreeji Industries') RETURNING id");
+      const res = await client.query(
+        "INSERT INTO companies (name, owner_name, phone, email) VALUES ('Shreeji Industries', 'Shreeji Owner', '0000000000', 'info@shreeji.com') RETURNING id"
+      );
       defaultCompanyId = res.rows[0].id;
     } else {
       defaultCompanyId = compCheck.rows[0].id;

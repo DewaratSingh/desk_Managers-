@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import {
   Search,
   Edit2,
@@ -327,7 +328,7 @@ export default function ArcView() {
                           </span>
                         </td>
                         <td className="px-5 py-3.5 font-semibold text-slate-500 font-mono">
-                          {arc.drawing_number ? `DRW: ${arc.drawing_number}` : '—'}
+                          {arc.drawing_number ? ` ${arc.drawing_number}` : '—'}
                         </td>
                         <td className="px-5 py-3.5 font-semibold text-slate-700 max-w-xs truncate" title={arc.description}>
                           {arc.description}

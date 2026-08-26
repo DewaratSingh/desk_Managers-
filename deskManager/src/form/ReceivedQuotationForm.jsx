@@ -26,6 +26,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [nextRqNo, setNextRqNo] = useState('');
 
   const {
     activeRqId,
@@ -80,6 +81,18 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const fetchNextNo = async () => {
+    try {
+      const res = await fetch('/api/received-quotations/next-no');
+      if (res.ok) {
+        const data = await res.json();
+        setNextRqNo(data.nextNo);
+      }
+    } catch (err) {
+      console.error('Error fetching next received quotation no:', err);
+    }
+  };
+
   // Edit or Create mode selection
   useEffect(() => {
     if (activeRqId !== editingNo) {
@@ -87,6 +100,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
         fetchQuotationDetails(editingNo);
       } else {
         resetRqState(null);
+        fetchNextNo();
         const randomTerm = DEFAULT_TERMS[Math.floor(Math.random() * DEFAULT_TERMS.length)];
         setFormData(prev => ({
           ...prev,
@@ -305,11 +319,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
     setIsLoading(true);
     setError(null);
 
-    if (!formData.received_quotation_no?.trim()) {
-      setError('Please enter a valid Quotation ID.');
-      setIsLoading(false);
-      return;
-    }
+
     if (!formData.buyer_id) {
       setError('Please select a valid vendor Name.');
       setIsLoading(false);
@@ -418,12 +428,11 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
               {/* Quotation No & Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>Quotation ID <b className="text-red-500">*</b></label>
+                  <label className={labelCls}>Quotation ID</label>
                   <input
                     type="text"
-                    required
                     disabled={!!editingNo}
-                    placeholder="Enter received quotation ID..."
+                    placeholder={nextRqNo ? `e.g. RQ-XXXX (Leave blank for ${nextRqNo})` : "Enter received quotation ID..."}
                     value={formData.received_quotation_no}
                     onChange={set('received_quotation_no')}
                     className={inputCls}
@@ -431,7 +440,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                     onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                   />
                   <p className="text-[10px] text-slate-400 font-semibold mt-1.5 pl-1">
-                    {editingNo ? 'Reference ID cannot be modified.' : 'Enter unique incoming quotation number.'}
+                    {editingNo ? 'Reference ID cannot be modified.' : 'Leave blank to automatically generate Quotation ID.'}
                   </p>
                 </div>
                 <div>
@@ -508,7 +517,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
 
               {/* Customer Lookup */}
               <div ref={customerRef} className="relative">
-                <label className={labelCls}>Seller Vendor <b className="text-red-500">*</b></label>
+                <label className={labelCls}>Party <b className="text-red-500">*</b></label>
                 <input
                   type="text"
                   required

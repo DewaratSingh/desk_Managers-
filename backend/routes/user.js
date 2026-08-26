@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/users - Create a new user in the company
+// POST /api/users - Create a new user or link an existing one to the company
 router.post('/', async (req, res) => {
   const companyId = req.user.company_id;
   if (!companyId) {
@@ -30,31 +30,54 @@ router.post('/', async (req, res) => {
   }
 
   const { username, password, name, email, phone, role, permissions } = req.body || {};
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required.' });
+  if (!username) {
+    return res.status(400).json({ error: 'Username is required.' });
   }
 
   try {
-    // Check if user already exists
-    const existing = await pool.query('SELECT username FROM users WHERE username = $1', [username]);
-    if (existing.rows.length > 0) {
-      return res.status(400).json({ error: 'Username is already taken.' });
-    }
+    // Fetch company name of the logged-in user's company
+    const companyRes = await pool.query('SELECT name FROM companies WHERE id = $1', [companyId]);
+    const companyName = companyRes.rows.length > 0 ? companyRes.rows[0].name : null;
 
-    const hash = crypto.createHash('sha256').update(password).digest('hex');
-    const userRole = role || 'operator';
+    // Check if user already exists in the system
+    const existing = await pool.query('SELECT username, company_id FROM users WHERE username = $1', [username]);
     const userPerms = Array.isArray(permissions) ? JSON.stringify(permissions) : '[]';
 
+    if (existing.rows.length > 0) {
+      const existingUser = existing.rows[0];
+      if (existingUser.company_id === companyId) {
+        return res.status(400).json({ error: 'User is already enrolled in your company.' });
+      }
+      if (existingUser.company_id !== null) {
+        return res.status(400).json({ error: 'Username is already taken.' });
+      }
+
+      // Link the existing user to this company and set permissions
+      const result = await pool.query(
+        `UPDATE users 
+         SET company_id = $1, company_name = $2, permissions = $3::jsonb 
+         WHERE username = $4 
+         RETURNING username, role, name, email, phone, permissions, company_id, company_name, created_at`,
+        [companyId, companyName, userPerms, username]
+      );
+      return res.status(200).json(result.rows[0]);
+    }
+
+    // Otherwise, create a brand-new user (default password = username)
+    const userPassword = password || username;
+    const hash = crypto.createHash('sha256').update(userPassword).digest('hex');
+    const userRole = role || 'operator';
+
     const result = await pool.query(
-      `INSERT INTO users (username, password_hash, role, name, email, phone, permissions, company_id) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) 
-       RETURNING username, role, name, email, phone, permissions, company_id, created_at`,
-      [username, hash, userRole, name || null, email || null, phone || null, userPerms, companyId]
+      `INSERT INTO users (username, password_hash, role, name, email, phone, permissions, company_id, company_name) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9) 
+       RETURNING username, role, name, email, phone, permissions, company_id, company_name, created_at`,
+      [username, hash, userRole, name || null, email || null, phone || null, userPerms, companyId, companyName]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('Create user error:', err.message);
+    console.error('Add user error:', err.message);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
@@ -68,29 +91,23 @@ router.put('/:username', async (req, res) => {
     return res.status(400).json({ error: 'Company ID not found in session.' });
   }
 
-  const { password, name, email, phone, role, permissions } = req.body || {};
+  const { permissions } = req.body || {};
 
   try {
     // Verify target user is in the same company
-    const existing = await pool.query('SELECT username, password_hash FROM users WHERE username = $1 AND company_id = $2', [targetUsername, companyId]);
+    const existing = await pool.query('SELECT username FROM users WHERE username = $1 AND company_id = $2', [targetUsername, companyId]);
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'User not found in your company.' });
     }
 
-    let passwordHash = existing.rows[0].password_hash;
-    if (password && password.trim() !== '') {
-      passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-    }
-
-    const userRole = role || 'operator';
     const userPerms = Array.isArray(permissions) ? JSON.stringify(permissions) : '[]';
 
     const result = await pool.query(
       `UPDATE users 
-       SET password_hash = $1, role = $2, name = $3, email = $4, phone = $5, permissions = $6::jsonb 
-       WHERE username = $7 AND company_id = $8 
-       RETURNING username, role, name, email, phone, permissions, company_id, created_at`,
-      [passwordHash, userRole, name || null, email || null, phone || null, userPerms, targetUsername, companyId]
+       SET permissions = $1::jsonb 
+       WHERE username = $2 AND company_id = $3 
+       RETURNING username, role, name, email, phone, permissions, company_id, company_name, created_at`,
+      [userPerms, targetUsername, companyId]
     );
 
     res.json(result.rows[0]);
@@ -116,7 +133,10 @@ router.delete('/:username', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'DELETE FROM users WHERE username = $1 AND company_id = $2 RETURNING username',
+      `UPDATE users 
+       SET company_id = NULL, company_name = NULL, permissions = '[]'::jsonb 
+       WHERE username = $1 AND company_id = $2 
+       RETURNING username`,
       [targetUsername, companyId]
     );
 
@@ -124,7 +144,7 @@ router.delete('/:username', async (req, res) => {
       return res.status(404).json({ error: 'User not found in your company.' });
     }
 
-    res.json({ message: 'User deleted successfully.', username: targetUsername });
+    res.json({ message: 'User removed from company successfully.', username: targetUsername });
   } catch (err) {
     console.error('Delete user error:', err.message);
     res.status(500).json({ error: 'Internal server error.' });

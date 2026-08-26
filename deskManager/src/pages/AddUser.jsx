@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Edit2,
@@ -13,12 +13,7 @@ import {
 import { toast } from 'react-toastify';
 
 const EMPTY_FORM = {
-  name: '',
-  email: '',
-  phone: '',
   username: '',
-  password: '',
-  role: 'operator',
   permissions: []
 };
 
@@ -45,7 +40,7 @@ export default function AddUserView() {
 
   useEffect(() => {
     // Get currently logged in user context
-    const userStr = localStorage.getItem('user');
+    const userStr = sessionStorage.getItem('user');
     if (userStr) {
       setCurrentUser(JSON.parse(userStr));
     }
@@ -58,12 +53,7 @@ export default function AddUserView() {
         const u = location.state.editingUser;
         setEditingId(u.username);
         setFormData({
-          name: u.name || '',
-          email: u.email || '',
-          phone: u.phone || '',
           username: u.username || '',
-          password: '', // blank by default on edit
-          role: u.role || 'operator',
           permissions: Array.isArray(u.permissions) ? u.permissions : []
         });
       } else {
@@ -100,8 +90,8 @@ export default function AddUserView() {
 
   const handleAddUser = async (e) => {
     e.preventDefault();
-    if (!formData.username.trim() || (!editingId && !formData.password.trim())) {
-      toast.error('Username and password are required');
+    if (!formData.username.trim()) {
+      toast.error('Username is required');
       return;
     }
 
@@ -113,34 +103,32 @@ export default function AddUserView() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            password: formData.password || undefined,
-            name: formData.name,
-            email: formData.email,
-            phone: formData.phone,
-            role: formData.role,
             permissions: formData.permissions
           })
         });
         if (res.ok) {
-          toast.success('User details updated successfully!');
+          toast.success('User permissions updated successfully!');
           navigate(-1);
         } else {
           const errData = await res.json();
           toast.error(errData.error || 'Failed to update user');
         }
       } else {
-        // Create user
+        // Create user (password defaults to username in the backend)
         const res = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
+          body: JSON.stringify({
+            username: formData.username,
+            permissions: formData.permissions
+          })
         });
         if (res.ok) {
-          toast.success('User account created successfully!');
+          toast.success('User added successfully!');
           navigate(-1);
         } else {
           const errData = await res.json();
-          toast.error(errData.error || 'Failed to create user');
+          toast.error(errData.error || 'Failed to add user');
         }
       }
     } catch (err) {
@@ -194,8 +182,7 @@ export default function AddUserView() {
 
   const filteredUsers = users.filter(u =>
     u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.name && u.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
+    (u.company_name && u.company_name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const renderPermissionsBadge = (u) => {
@@ -230,7 +217,7 @@ export default function AddUserView() {
             <div>
               <h1 className="text-2xl font-bold text-slate-900 m-0">User Accounts</h1>
               <p className="text-xs text-slate-500 mt-1">
-                Manage operator accounts, roles, and granular file access permissions.
+                Manage operator accounts and granular file access permissions.
               </p>
             </div>
             <button
@@ -253,7 +240,7 @@ export default function AddUserView() {
             <Search size={18} className="text-slate-400 shrink-0" />
             <input
               type="text"
-              placeholder="Search users by name, username, or email..."
+              placeholder="Search users by username or company..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setSearchFocused(true)}
@@ -285,9 +272,8 @@ export default function AddUserView() {
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
                       <th className="px-5 py-3">Username</th>
-                      <th className="px-5 py-3">Name</th>
-                      <th className="px-5 py-3">Email / Phone</th>
-                      <th className="px-5 py-3">Role</th>
+                      <th className="px-5 py-3">Company ID</th>
+                      <th className="px-5 py-3">Company Name</th>
                       <th className="px-5 py-3">Permissions Scope</th>
                       <th className="px-5 py-3 text-right">Actions</th>
                     </tr>
@@ -301,21 +287,11 @@ export default function AddUserView() {
                         <td className="px-5 py-3.5 font-bold text-slate-950 font-mono">
                           {u.username}
                         </td>
+                        <td className="px-5 py-3.5 font-semibold text-slate-500 font-mono">
+                          {u.company_id || '-'}
+                        </td>
                         <td className="px-5 py-3.5 font-semibold text-slate-800">
-                          {u.name || '-'}
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-500 font-medium">
-                          <div>{u.email || '-'}</div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{u.phone || ''}</div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded border ${
-                            u.role === 'admin' 
-                              ? 'text-indigo-600 bg-indigo-50 border-indigo-200' 
-                              : 'text-slate-600 bg-slate-50 border-slate-200'
-                          }`}>
-                            {u.role}
-                          </span>
+                          {u.company_name || '-'}
                         </td>
                         <td className="px-5 py-3.5 max-w-xs">
                           {renderPermissionsBadge(u)}
@@ -358,154 +334,58 @@ export default function AddUserView() {
             Back to Users Directory
           </button>
           <h1 className="text-2xl font-bold text-slate-900 m-0">
-            {editingId ? `Update User Info: ${editingId}` : 'Add New User'}
+            {editingId ? `Update Permissions for: ${editingId}` : 'Add New User'}
           </h1>
 
           <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleAddUser} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Username */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Username <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    disabled={!!editingId}
-                    placeholder="e.g. jsmith"
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
-                    onFocus={(e) => !editingId && (e.target.style.borderColor = 'var(--theme-color)')}
-                    onBlur={(e) => !editingId && (e.target.style.borderColor = 'rgb(203, 213, 225)')}
-                  />
-                </div>
-
-                {/* Password */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Password {editingId ? '(leave blank to keep unchanged)' : <span className="text-red-500">*</span>}
-                  </label>
-                  <input
-                    type="password"
-                    required={!editingId}
-                    placeholder={editingId ? '••••••••' : 'Enter password'}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Name */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Full Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Jane Smith"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
-                </div>
-
-                {/* Role */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Role <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
-                  >
-                    <option value="operator">Operator (Standard)</option>
-                    <option value="admin">Administrator (Full Access)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Email */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="e.g. jane@company.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
-                </div>
-
-                {/* Phone */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    Phone Number
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 9876543210"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
-                </div>
+              
+              {/* Username */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Username <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  disabled={!!editingId}
+                  placeholder="e.g. jsmith"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-400 border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                  onFocus={(e) => !editingId && (e.target.style.borderColor = 'var(--theme-color)')}
+                  onBlur={(e) => !editingId && (e.target.style.borderColor = 'rgb(203, 213, 225)')}
+                />
               </div>
 
               {/* Permissions Checklist */}
-              {formData.role !== 'admin' && (
-                <div className="pt-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
-                    Access Permissions Scope
-                  </label>
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
-                    <p className="text-[11px] text-slate-400 font-semibold mb-2">Select files and features this operator can manage:</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {AVAILABLE_PERMISSIONS.map((perm) => {
-                        const isChecked = formData.permissions.includes(perm.value);
-                        return (
-                          <label
-                            key={perm.value}
-                            className="flex items-center gap-2.5 p-2 bg-white rounded-lg border border-slate-200 hover:border-slate-300 cursor-pointer text-xs font-semibold text-slate-700 transition-colors select-none"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => togglePermission(perm.value)}
-                              className="w-4 h-4 accent-red-600 rounded cursor-pointer"
-                            />
-                            <span>{perm.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
+              <div className="pt-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
+                  Access Permissions Scope
+                </label>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
+                  <p className="text-[11px] text-slate-400 font-semibold mb-2">Select files and features this operator can manage:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {AVAILABLE_PERMISSIONS.map((perm) => {
+                      const isChecked = formData.permissions.includes(perm.value);
+                      return (
+                        <label
+                          key={perm.value}
+                          className="flex items-center gap-2.5 p-2 bg-white rounded-lg border border-slate-200 hover:border-slate-300 cursor-pointer text-xs font-semibold text-slate-700 transition-colors select-none"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => togglePermission(perm.value)}
+                            className="w-4 h-4 accent-red-600 rounded cursor-pointer"
+                          />
+                          <span>{perm.label}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
-
-              {formData.role === 'admin' && (
-                <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700">
-                  <ShieldAlert size={20} className="shrink-0" />
-                  <p className="text-xs font-semibold">
-                    Administrator role automatically grants unrestricted full permissions across the console.
-                  </p>
-                </div>
-              )}
+              </div>
 
               {/* Buttons */}
               <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
@@ -527,7 +407,7 @@ export default function AddUserView() {
                   {isLoading ? (
                     <><RefreshCw size={14} className="animate-spin" /> Processing...</>
                   ) : editingId ? (
-                    <><RefreshCw size={14} /> Update User</>
+                    <><RefreshCw size={14} /> Save Permissions</>
                   ) : (
                     <><Plus size={14} /> Create User</>
                   )}

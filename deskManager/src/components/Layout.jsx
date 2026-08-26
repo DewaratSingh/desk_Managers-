@@ -4,12 +4,16 @@ import Sidebar from './Sidebar';
 
 export default function Layout() {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem('user') || '{"username":"admin","role":"admin"}');
+  const userStr = sessionStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : { username: 'admin', role: 'admin' };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('loginTime');
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
+    sessionStorage.removeItem('user');
     navigate('/login');
   };
 

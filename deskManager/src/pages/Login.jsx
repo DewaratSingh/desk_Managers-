@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 // Inline SVGs are used for icons to avoid adding peer-dependent packages
 import logoImg from '../assets/image.jpeg'
 
@@ -41,9 +41,8 @@ export default function LoginView({ onLogin = () => {} }) {
         throw new Error(data.error || 'Failed to sign in')
       }
       
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('loginTime', Date.now().toString())
+      sessionStorage.setItem('user', JSON.stringify(data.user))
+      sessionStorage.setItem('token', data.token)
       
       onLogin(data.user)
       navigate('/dashboard')
@@ -99,11 +98,9 @@ export default function LoginView({ onLogin = () => {} }) {
       <div className="w-full max-w-sm relative z-10 transition-all duration-300">
         <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-2xl p-6 md:p-8 shadow-md shadow-slate-200/30 transition-all duration-200">
           <div className="flex flex-col items-center mb-6 text-center">
-            <img src={logoImg} alt="Shreeji Industries Logo" style={{ width: 'var(--logo-size)', height: 'var(--logo-size)' }} className="object-contain mb-4" />
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-1">Shreeji Industries</h2>
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--theme-color)' }}>
-              {isChangingPassword ? 'Password Setup' : 'DeskManager'}
-            </p>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-1">
+              {isChangingPassword ? 'Password Setup' : 'Sign In'}
+            </h2>
           </div>
 
           {(validationError || apiError) && (
@@ -247,10 +244,7 @@ export default function LoginView({ onLogin = () => {} }) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-400 px-1">
-                <span>Session persists on this device</span>
-                <span>LAN Access Only</span>
-              </div>
+             
 
               <button type="submit" disabled={isLoading} className="w-full flex items-center justify-center gap-2 py-3 px-4 text-white font-semibold text-sm rounded-xl transition-all active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer" style={{ backgroundColor: 'var(--theme-color)' }}>
                 {isLoading ? (
@@ -266,7 +260,7 @@ export default function LoginView({ onLogin = () => {} }) {
                 )}
               </button>
 
-              <div className="text-center mt-4">
+              <div className="text-center mt-4 flex flex-col gap-2">
                 <button
                   type="button"
                   disabled={isLoading}
@@ -276,16 +270,21 @@ export default function LoginView({ onLogin = () => {} }) {
                     setApiError('')
                     setSuccessMessage('')
                   }}
-                  className="text-xs font-semibold text-slate-500 hover:text-blue-500 transition-colors cursor-pointer"
+                  className="text-xs font-semibold text-slate-500 hover:text-red-500 transition-colors cursor-pointer"
                 >
                   Change Password?
                 </button>
+                <div className="text-xs text-slate-500">
+                  Don't have an account?{' '}
+                  <Link to="/signup" className="font-bold text-red-500 hover:underline">
+                    Sign Up
+                  </Link>
+                </div>
               </div>
             </form>
           )}
         </div>
 
-        <p className="text-center mt-8 text-sm font-semibold text-slate-400">Operator Console &bull; DeskManager v1.1.0</p>
       </div>
     </div>
   )

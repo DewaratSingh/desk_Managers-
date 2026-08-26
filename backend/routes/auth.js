@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
   try {
     const hash = crypto.createHash('sha256').update(password).digest('hex');
     const result = await pool.query(
-      'SELECT username, role, name, email, permissions, company_id FROM users WHERE username = $1 AND password_hash = $2',
+      'SELECT username, role, name, surname, email, phone, permissions, company_id FROM users WHERE username = $1 AND password_hash = $2',
       [username, hash]
     );
 
@@ -24,17 +24,38 @@ router.post('/login', async (req, res) => {
     }
 
     const user = result.rows[0];
+    if (!user.company_id) {
+      return res.status(400).json({ error: 'no company enrolled' });
+    }
+
+    const companyResult = await pool.query('SELECT name FROM companies WHERE id = $1', [user.company_id]);
+    if (companyResult.rows.length > 0) {
+      user.company_name = companyResult.rows[0].name;
+    }
     const token = jwt.sign(
-      { username: user.username, role: user.role, permissions: user.permissions || [], company_id: user.company_id },
+      { user_id: user.username, company_id: user.company_id },
       JWT_SECRET,
       { expiresIn: '8h' }
     );
+
+    res.cookie('token', token, {
+      maxAge: 8 * 60 * 60 * 1000,
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      path: '/'
+    });
 
     res.json({ token, user });
   } catch (err) {
     console.error('Login error:', err.message);
     res.status(500).json({ error: 'Internal server error.' });
   }
+});
+
+router.post('/logout', (req, res) => {
+  res.clearCookie('token', { path: '/' });
+  res.json({ message: 'Logged out successfully.' });
 });
 
 router.post('/change-password', async (req, res) => {
@@ -68,7 +89,21 @@ router.post('/change-password', async (req, res) => {
 });
 
 router.post('/signup', async (req, res) => {
-  const { username, password, ownerName, companyName, phone, email } = req.body || {};
+  const {
+    username,
+    password,
+    name,
+    surname,
+    phone,
+    email,
+    openCompany,
+    companyName,
+    companyEmail,
+    companyAddress,
+    companyPhone,
+    companyOwnerName
+  } = req.body || {};
+
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required.' });
   }
@@ -80,33 +115,58 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ error: 'Username is already taken.' });
     }
 
-    // 1. Create the company first
-    const targetCompanyName = companyName && companyName.trim() ? companyName.trim() : `${username}'s Company`;
-    const companyResult = await pool.query(
-      'INSERT INTO companies (name) VALUES ($1) RETURNING id',
-      [targetCompanyName]
-    );
-    const companyId = companyResult.rows[0].id;
+    let companyId = null;
+    let targetCompanyName = null;
+    let targetOwnerName = null;
+    let role = 'operator';
 
-    // 2. Hash password and insert user linked to the company (Owner gets admin role and empty permissions array)
+    if (openCompany) {
+      if (!companyName || !companyName.trim()) {
+        return res.status(400).json({ error: 'Company name is required to open a company.' });
+      }
+
+      targetCompanyName = companyName.trim();
+      targetOwnerName = companyOwnerName && companyOwnerName.trim() ? companyOwnerName.trim() : username;
+      role = 'admin';
+
+      // 1. Create the company
+      const companyResult = await pool.query(
+        'INSERT INTO companies (name, owner_name, owner_username, phone, email, address) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [
+          targetCompanyName,
+          targetOwnerName,
+          username,
+          companyPhone ? companyPhone.trim() : null,
+          companyEmail ? companyEmail.trim() : null,
+          companyAddress ? companyAddress.trim() : null
+        ]
+      );
+      companyId = companyResult.rows[0].id;
+    }
+
+    // 2. Hash password and insert user (linked to the company if openCompany was checked)
     const hash = crypto.createHash('sha256').update(password).digest('hex');
-    const role = 'admin'; 
 
     const result = await pool.query(
-      `INSERT INTO users (username, password_hash, role, name, owner_name, company_name, phone, email, permissions, company_id) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) 
-       RETURNING username, role, name, owner_name, company_name, phone, email, permissions, company_id`,
-      [username, hash, role, ownerName || null, ownerName || null, targetCompanyName, phone || null, email || null, '[]', companyId]
+      `INSERT INTO users (username, password_hash, role, name, surname, owner_name, company_name, phone, email, permissions, company_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11) 
+       RETURNING username, role, name, surname, owner_name, company_name, phone, email, permissions, company_id`,
+      [
+        username,
+        hash,
+        role,
+        name ? name.trim() : null,
+        surname ? surname.trim() : null,
+        targetOwnerName,
+        targetCompanyName,
+        phone ? phone.trim() : null,
+        email ? email.trim() : null,
+        '[]',
+        companyId
+      ]
     );
 
-    const user = result.rows[0];
-    const token = jwt.sign(
-      { username: user.username, role: user.role, permissions: user.permissions || [], company_id: user.company_id },
-      JWT_SECRET,
-      { expiresIn: '8h' }
-    );
-
-    res.status(201).json({ token, user, message: 'User registered successfully.' });
+    res.status(201).json({ message: 'User registered successfully.' });
   } catch (err) {
     console.error('Signup error:', err.message);
     res.status(500).json({ error: 'Internal server error.' });
