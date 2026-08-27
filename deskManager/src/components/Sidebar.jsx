@@ -14,7 +14,8 @@ import {
   LogOut,
   Building2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Hammer
 } from "lucide-react";
 import logoImg from "../assets/image.jpeg";
 
@@ -41,6 +42,7 @@ export default function Sidebar({ user, onLogout }) {
     { id: "add-buyer", label: "Contact", icon: UserPlus, path: "/buyer" },
     { id: "add-item", label: "Item", icon: Package, path: "/item" },
     { id: "inventory", label: "Inventory", icon: Warehouse, path: "/inventory" },
+    { id: "manufacture", label: "Manufacture", icon: Hammer, path: "/manufacture" },
     { id: "arc", label: "ARC", icon: FileSignature, path: "/arc" },
     { id: "gst-category", label: "GST Categories", icon: Percent, path: "/gst-category" },
     { id: "users", label: "Users", icon: Users, path: "/users" },

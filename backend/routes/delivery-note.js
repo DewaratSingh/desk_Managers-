@@ -274,22 +274,28 @@ router.post('/', async (req, res) => {
 
       // Check if this item has a linked P_item record we need to append the process trade to
       if (item.linked_p_item_id) {
+        const tradeTag = `trade:${trade_code}:${parseFloat(item.rate_per_piece) || 0.00}`;
         await client.query(
           `UPDATE P_item 
-           SET process = array_append(COALESCE(process, '{}'::integer[]), $1) 
+           SET process = array_append(COALESCE(process, '{}'::text[]), $1::text) 
            WHERE id = $2 AND company_id = $3`,
-          [tradeDbId, parseInt(item.linked_p_item_id), req.user.company_id]
+          [tradeTag, parseInt(item.linked_p_item_id), req.user.company_id]
         );
       }
 
       let pItemId = null;
       if (item.inv_qty > 0) {
-        const processList = [tradeDbId];
+        const processList = [];
+        processList.push(`trade:${trade_code}:${parseFloat(item.rate_per_piece) || 0.00}`);
+
         if (Array.isArray(item.linked_process_trades)) {
-          item.linked_process_trades.forEach(id => {
-            const parsed = parseInt(id);
-            if (!isNaN(parsed) && !processList.includes(parsed)) {
-              processList.push(parsed);
+          item.linked_process_trades.forEach(tag => {
+            if (typeof tag === 'string') {
+              if (tag.includes(':')) {
+                processList.push(tag);
+              } else {
+                processList.push(`trade:${tag}:${parseFloat(item.rate_per_piece) || 0.00}`);
+              }
             }
           });
         }
@@ -297,7 +303,7 @@ router.post('/', async (req, res) => {
         // Insert into P_item
         const pRes = await client.query(
           `INSERT INTO P_item (item_code, process, message, quantity, price, company_id)
-           VALUES ($1, $2::INTEGER[], $3, $4, $5, $6) RETURNING id`,
+           VALUES ($1, $2::TEXT[], $3, $4, $5, $6) RETURNING id`,
           [
             itemDbId,
             processList,
@@ -441,22 +447,28 @@ router.put('/:delivery_note_no', async (req, res) => {
 
       // Check if this item has a linked P_item record we need to append the process trade to
       if (item.linked_p_item_id) {
+        const tradeTag = `trade:${trade_code}:${parseFloat(item.rate_per_piece) || 0.00}`;
         await client.query(
           `UPDATE P_item 
-           SET process = array_append(COALESCE(process, '{}'::integer[]), $1) 
+           SET process = array_append(COALESCE(process, '{}'::text[]), $1::text) 
            WHERE id = $2 AND company_id = $3`,
-          [tradeDbId, parseInt(item.linked_p_item_id), req.user.company_id]
+          [tradeTag, parseInt(item.linked_p_item_id), req.user.company_id]
         );
       }
 
       let pItemId = null;
       if (item.inv_qty > 0) {
-        const processList = [tradeDbId];
+        const processList = [];
+        processList.push(`trade:${trade_code}:${parseFloat(item.rate_per_piece) || 0.00}`);
+
         if (Array.isArray(item.linked_process_trades)) {
-          item.linked_process_trades.forEach(id => {
-            const parsed = parseInt(id);
-            if (!isNaN(parsed) && !processList.includes(parsed)) {
-              processList.push(parsed);
+          item.linked_process_trades.forEach(tag => {
+            if (typeof tag === 'string') {
+              if (tag.includes(':')) {
+                processList.push(tag);
+              } else {
+                processList.push(`trade:${tag}:${parseFloat(item.rate_per_piece) || 0.00}`);
+              }
             }
           });
         }
@@ -464,7 +476,7 @@ router.put('/:delivery_note_no', async (req, res) => {
         // Insert into P_item
         const pRes = await client.query(
           `INSERT INTO P_item (item_code, process, message, quantity, price, company_id)
-           VALUES ($1, $2::INTEGER[], $3, $4, $5, $6) RETURNING id`,
+           VALUES ($1, $2::TEXT[], $3, $4, $5, $6) RETURNING id`,
           [
             itemDbId,
             processList,

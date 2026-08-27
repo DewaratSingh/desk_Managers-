@@ -25,6 +25,8 @@ import AddCustomerView from './pages/AddCustomer'
 import AddBuyerView from './pages/AddBuyer'
 import AddItemView from './pages/AddItem'
 import InventoryView from './pages/Inventory'
+import ManufactureForm from './form/ManufactureForm'
+import ManufactureList from './pages/ManufactureList'
 import ArcView from './pages/Arc'
 import GstCategoryView from './pages/GstCategory'
 
@@ -60,6 +62,8 @@ function App() {
             <Route path="/item" element={<AddItemView />} />
             <Route path="/inventory" element={<InventoryView />} />
             <Route path="/inventory/sell" element={<SellStockForm />} />
+            <Route path="/inventory/manufacture" element={<ManufactureForm />} />
+            <Route path="/manufacture" element={<ManufactureList />} />
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />

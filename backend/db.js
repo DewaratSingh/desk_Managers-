@@ -490,7 +490,7 @@ const initializeDatabase = async () => {
       CREATE TABLE IF NOT EXISTS P_item (
         id SERIAL PRIMARY KEY,
         item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        process INTEGER[] DEFAULT '{}',
+        process TEXT[] DEFAULT '{}',
         message TEXT,
         quantity INTEGER DEFAULT 0,
         price DECIMAL(12, 2) DEFAULT 0.00,
@@ -522,6 +522,37 @@ const initializeDatabase = async () => {
     await client.query(`
       ALTER TABLE inventory 
       ADD COLUMN IF NOT EXISTS p_item_id INTEGER REFERENCES P_item(id) ON DELETE SET NULL;
+    `);
+
+    // Migrate P_item.process to TEXT[] if not already done
+    await client.query(`
+      ALTER TABLE P_item ALTER COLUMN process TYPE TEXT[] USING process::text[];
+    `);
+
+    // Create manufacturing Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS manufacturing (
+        id SERIAL PRIMARY KEY,
+        source_item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        source_p_item_id INTEGER REFERENCES P_item(id) ON DELETE SET NULL,
+        source_inventory_id INTEGER REFERENCES inventory(id) ON DELETE SET NULL,
+        target_item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        possible_cost_per_unit DECIMAL(12, 2) NOT NULL CHECK (possible_cost_per_unit >= 0),
+        quantity_used INTEGER NOT NULL CHECK (quantity_used > 0),
+        possible_quantity_produced INTEGER NOT NULL CHECK (possible_quantity_produced > 0),
+        start_date DATE NOT NULL,
+        possible_end_date DATE,
+        message TEXT,
+        process TEXT[] DEFAULT '{}',
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Migration to add process column to manufacturing table as TEXT[] if it doesn't exist
+    await client.query(`
+      ALTER TABLE manufacturing ADD COLUMN IF NOT EXISTS process TEXT[] DEFAULT '{}';
+      ALTER TABLE manufacturing ALTER COLUMN process TYPE TEXT[] USING process::text[];
     `);
 
     // Seed default units

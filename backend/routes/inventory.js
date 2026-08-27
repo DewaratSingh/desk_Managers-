@@ -13,10 +13,14 @@ router.get('/', async (req, res) => {
              inv.location, t.trade_id, inv.message, inv.p_item_id,
              inv.company_id, inv.created_at, inv.updated_at,
              it.description, it.drawing_number,
+             p.process AS process_history,
              (
-               SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
-               FROM trades t_proc
-               WHERE t_proc.id = ANY(p.process)
+               SELECT COALESCE(json_agg(parts[2]), '[]'::json)
+               FROM (
+                 SELECT regexp_split_to_array(elem, ':') AS parts
+                 FROM unnest(COALESCE(p.process, '{}'::text[])) AS elem
+               ) sub
+               WHERE parts[1] = 'trade'
              ) AS process_list
       FROM inventory inv
       LEFT JOIN items it ON inv.item_code = it.id
@@ -48,7 +52,26 @@ router.get('/', async (req, res) => {
     }
 
     const result = await pool.query(queryText, params);
-    res.json(result.rows);
+    const mappedRows = result.rows.map(row => {
+      const history = Array.isArray(row.process_history) ? row.process_history : [];
+      let calculatedPrice = 0.00;
+      let hasCosts = false;
+      const historyObjects = history.map(str => {
+        const parts = (str || '').split(':');
+        const type = parts[0] || '';
+        const ref = parts[1] || '';
+        const cost = parseFloat(parts[2]) || 0.00;
+        if (cost > 0) hasCosts = true;
+        calculatedPrice += cost;
+        return { type, Process: type === 'trade' ? `Trade ${ref}` : ref, cost };
+      });
+      return {
+        ...row,
+        process_history: historyObjects,
+        calculated_price: hasCosts ? calculatedPrice : parseFloat(row.price || 0.00)
+      };
+    });
+    res.json(mappedRows);
   } catch (err) {
     console.error('Error fetching inventory:', err.message);
     res.status(500).json({ error: 'Failed to fetch inventory' });
@@ -114,10 +137,14 @@ router.post('/', async (req, res) => {
               inv.location, t.trade_id, inv.message, inv.p_item_id,
               inv.company_id, inv.created_at, inv.updated_at,
               it.description, it.drawing_number,
+              p.process AS process_history,
               (
-                SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
-                FROM trades t_proc
-                WHERE t_proc.id = ANY(p.process)
+                SELECT COALESCE(json_agg(parts[2]), '[]'::json)
+                FROM (
+                  SELECT regexp_split_to_array(elem, ':') AS parts
+                  FROM unnest(COALESCE(p.process, '{}'::text[])) AS elem
+                ) sub
+                WHERE parts[1] = 'trade'
               ) AS process_list
        FROM inventory inv
        LEFT JOIN items it ON inv.item_code = it.id
@@ -127,7 +154,28 @@ router.post('/', async (req, res) => {
       [result.rows[0].id, req.user.company_id]
     );
 
-    res.status(201).json(joinedRes.rows[0]);
+    const row = joinedRes.rows[0];
+    if (row) {
+      const history = Array.isArray(row.process_history) ? row.process_history : [];
+      let calculatedPrice = 0.00;
+      let hasCosts = false;
+      const historyObjects = history.map(str => {
+        const parts = (str || '').split(':');
+        const type = parts[0] || '';
+        const ref = parts[1] || '';
+        const cost = parseFloat(parts[2]) || 0.00;
+        if (cost > 0) hasCosts = true;
+        calculatedPrice += cost;
+        return { type, Process: type === 'trade' ? `Trade ${ref}` : ref, cost };
+      });
+      res.status(201).json({
+        ...row,
+        process_history: historyObjects,
+        calculated_price: hasCosts ? calculatedPrice : parseFloat(row.price || 0.00)
+      });
+    } else {
+      res.status(201).json(row);
+    }
   } catch (err) {
     console.error('Error creating inventory entry:', err.message);
     res.status(500).json({ error: 'Failed to create inventory entry' });
@@ -311,10 +359,14 @@ router.put('/:id', async (req, res) => {
               inv.location, t.trade_id, inv.message, inv.p_item_id,
               inv.company_id, inv.created_at, inv.updated_at,
               it.description, it.drawing_number,
+              p.process AS process_history,
               (
-                SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
-                FROM trades t_proc
-                WHERE t_proc.id = ANY(p.process)
+                SELECT COALESCE(json_agg(parts[2]), '[]'::json)
+                FROM (
+                  SELECT regexp_split_to_array(elem, ':') AS parts
+                  FROM unnest(COALESCE(p.process, '{}'::text[])) AS elem
+                ) sub
+                WHERE parts[1] = 'trade'
               ) AS process_list
        FROM inventory inv
        LEFT JOIN items it ON inv.item_code = it.id
@@ -324,7 +376,28 @@ router.put('/:id', async (req, res) => {
       [id, req.user.company_id]
     );
 
-    res.json(joinedRes.rows[0]);
+    const row = joinedRes.rows[0];
+    if (row) {
+      const history = Array.isArray(row.process_history) ? row.process_history : [];
+      let calculatedPrice = 0.00;
+      let hasCosts = false;
+      const historyObjects = history.map(str => {
+        const parts = (str || '').split(':');
+        const type = parts[0] || '';
+        const ref = parts[1] || '';
+        const cost = parseFloat(parts[2]) || 0.00;
+        if (cost > 0) hasCosts = true;
+        calculatedPrice += cost;
+        return { type, Process: type === 'trade' ? `Trade ${ref}` : ref, cost };
+      });
+      res.json({
+        ...row,
+        process_history: historyObjects,
+        calculated_price: hasCosts ? calculatedPrice : parseFloat(row.price || 0.00)
+      });
+    } else {
+      res.json(row);
+    }
   } catch (err) {
     console.error('Error updating inventory entry:', err.message);
     res.status(500).json({ error: 'Failed to update inventory entry' });

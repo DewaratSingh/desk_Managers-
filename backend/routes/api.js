@@ -22,6 +22,7 @@ const inventoryRouter = require('./inventory');
 const grnRouter = require('./grn');
 const paymentRouter = require('./payment');
 const pItemRouter = require('./p-item');
+const manufacturingRouter = require('./manufacturing');
 
 // Simple health check for API
 router.get('/health', (req, res) => {
@@ -53,5 +54,6 @@ router.use('/inventory', inventoryRouter);
 router.use('/grns', grnRouter);
 router.use('/payments', paymentRouter);
 router.use('/p-items', pItemRouter);
+router.use('/manufacturing', manufacturingRouter);
 
 module.exports = router;

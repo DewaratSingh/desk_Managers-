@@ -41,6 +41,7 @@ export default function InventoryView() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [linkMetadata, setLinkMetadata] = useState(null);
+  const [processHistory, setProcessHistory] = useState([]);
   
   const [hasMore, setHasMore] = useState(true);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
@@ -72,7 +73,7 @@ export default function InventoryView() {
         setFormData({
           item_code: item.item_code || '',
           quantity: item.quantity || '',
-          price: item.price || '',
+          price: (item.calculated_price && parseFloat(item.calculated_price) > 0 ? item.calculated_price : item.price) || '',
           location: item.location || '',
           rack: item.rack || '',
           shelf_number: item.shelf_number || '',
@@ -80,6 +81,7 @@ export default function InventoryView() {
           message: item.message || '',
           p_item_id: item.p_item_id || ''
         });
+        setProcessHistory(Array.isArray(item.process_history) ? item.process_history : []);
         setLinkMetadata(null);
       } else {
         setEditingId(null);
@@ -305,7 +307,7 @@ export default function InventoryView() {
                 Monitor and manage physical item stock levels, warehouse locations, and pricing.
               </p>
             </div>
-            <button
+            {/* <button
               onClick={handleOpenAddForm}
               className="px-4 py-2 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
               style={{ backgroundColor: 'var(--theme-color)' }}
@@ -314,7 +316,7 @@ export default function InventoryView() {
             >
               <Plus size={16} />
               Add Inventory
-            </button>
+            </button> */}
           </div>
 
           {/* Search Bar */}
@@ -351,7 +353,7 @@ export default function InventoryView() {
             ) : inventoryList.length === 0 ? (
               <div className="p-16 text-center text-slate-400 text-sm font-medium flex flex-col items-center justify-center gap-2">
                 <Package size={32} className="text-slate-300" />
-                <span>No stock records found. Click "Add Inventory" to create one.</span>
+                <span>No stock records found.</span>
               </div>
             ) : (
               <>
@@ -410,7 +412,7 @@ export default function InventoryView() {
 
                           {/* Price */}
                           <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                            ₹{parseFloat(item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                             ₹{parseFloat(item.calculated_price && parseFloat(item.calculated_price) > 0 ? item.calculated_price : (item.price || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </td>
 
                           {/* Linked Trade ID */}
@@ -699,6 +701,54 @@ export default function InventoryView() {
                 />
               </div>
 
+              {/* Process History (Cost Centers) */}
+              {editingId && processHistory.length > 0 && (
+                <div className="border-t border-slate-200 pt-4 mt-2">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Tag size={11} />
+                    Cost Center Trace
+                  </h3>
+                  <div className="space-y-1.5">
+                    {processHistory.map((hist, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between px-3 py-2 rounded-lg"
+                        style={{
+                          background: hist.type === 'trade'
+                            ? 'linear-gradient(90deg,#eff6ff,#f8faff)'
+                            : 'linear-gradient(90deg,#f0fdf4,#f8faff)',
+                          border: hist.type === 'trade' ? '1px solid #bfdbfe' : '1px solid #bbf7d0'
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded"
+                            style={{
+                              background: hist.type === 'trade' ? '#dbeafe' : '#dcfce7',
+                              color: hist.type === 'trade' ? '#1d4ed8' : '#15803d'
+                            }}
+                          >
+                            {hist.type}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700 capitalize">
+                            {hist.Process}
+                          </span>
+                        </div>
+                        <span className="text-xs font-black font-mono text-slate-800">
+                          ₹{parseFloat(hist.cost || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center px-3 pt-2 border-t border-slate-200 mt-1">
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Total Cost</span>
+                      <span className="text-sm font-black font-mono text-slate-900">
+                        ₹{processHistory.reduce((sum, h) => sum + (parseFloat(h.cost) || 0), 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Submit Buttons */}
               <div className="pt-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-3">
                 <div className="flex gap-2">
@@ -706,6 +756,15 @@ export default function InventoryView() {
                     <>
                       <button
                         type="button"
+                        onClick={() => navigate('/inventory/manufacture', {
+                          state: {
+                            item_code: formData.item_code,
+                            p_item_id: formData.p_item_id,
+                            inventory_id: editingId,
+                            quantity: formData.quantity,
+                            price: formData.price
+                          }
+                        })}
                         className="px-4 py-2 text-xs font-extrabold rounded text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
                       >
                         Manufacture
