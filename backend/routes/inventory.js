@@ -10,12 +10,18 @@ router.get('/', async (req, res) => {
   try {
     let queryText = `
       SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-             inv.location, t.trade_id, inv.message,
+             inv.location, t.trade_id, inv.message, inv.p_item_id,
              inv.company_id, inv.created_at, inv.updated_at,
-             it.description, it.drawing_number 
+             it.description, it.drawing_number,
+             (
+               SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
+               FROM trades t_proc
+               WHERE t_proc.id = ANY(p.process)
+             ) AS process_list
       FROM inventory inv
       LEFT JOIN items it ON inv.item_code = it.id
       LEFT JOIN trades t ON inv.trade_id = t.id
+      LEFT JOIN P_item p ON inv.p_item_id = p.id
       WHERE inv.company_id = $1
     `;
     const params = [req.user.company_id];
@@ -59,7 +65,8 @@ router.post('/', async (req, res) => {
     shelf_number,
     location,
     trade_id,
-    message
+    message,
+    p_item_id
   } = req.body || {};
 
   if (!item_code) {
@@ -85,8 +92,8 @@ router.post('/', async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO inventory (
-        item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, p_item_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
       [
         itemDbId,
         parseInt(quantity) || 0,
@@ -96,19 +103,26 @@ router.post('/', async (req, res) => {
         location || null,
         tradeDbId,
         message || null,
-        req.user.company_id
+        req.user.company_id,
+        p_item_id ? parseInt(p_item_id) : null
       ]
     );
 
     // Fetch the inserted record with joined details
     const joinedRes = await pool.query(
       `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-              inv.location, t.trade_id, inv.message,
+              inv.location, t.trade_id, inv.message, inv.p_item_id,
               inv.company_id, inv.created_at, inv.updated_at,
-              it.description, it.drawing_number 
+              it.description, it.drawing_number,
+              (
+                SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
+                FROM trades t_proc
+                WHERE t_proc.id = ANY(p.process)
+              ) AS process_list
        FROM inventory inv
        LEFT JOIN items it ON inv.item_code = it.id
        LEFT JOIN trades t ON inv.trade_id = t.id
+       LEFT JOIN P_item p ON inv.p_item_id = p.id
        WHERE inv.id = $1 AND inv.company_id = $2`,
       [result.rows[0].id, req.user.company_id]
     );
@@ -117,6 +131,108 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error('Error creating inventory entry:', err.message);
     res.status(500).json({ error: 'Failed to create inventory entry' });
+  }
+});
+
+// GET eligible trades for sell
+router.get('/sell/eligible-trades', async (req, res) => {
+  const { item_code, q } = req.query || {};
+  if (!item_code) {
+    return res.status(400).json({ error: 'item_code is required' });
+  }
+
+  try {
+    let queryText = `
+      SELECT 
+        t.id AS trade_db_id,
+        t.trade_id,
+        t.trade_type,
+        COALESCE(po.po_no, ro.ro_no) AS po_no,
+        po.id AS po_id,
+        ro.id AS ro_id,
+        COALESCE(poi.quantity, roi.quantity) AS order_qty,
+        COALESCE(poi.unit_price, roi.unit_price) AS po_price,
+        COALESCE(poi.shipping_address, roi.shipping_address) AS shipping_address,
+        COALESCE(poi.delivery_date, roi.delivery_date) AS delivery_date,
+        COALESCE(poi.item_id, roi.item_id) AS item_id,
+        -- Calculate delivered quantity
+        COALESCE((
+          SELECT SUM(dni.quantity)
+          FROM delivery_note_items dni
+          JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+          WHERE dn.trade_id = t.id 
+            AND dni.item_id = COALESCE(poi.item_id, roi.item_id) 
+            AND dn.company_id = t.company_id
+        ), 0) AS delivered_qty
+      FROM trades t
+      LEFT JOIN purchase_orders po ON po.trade_id = t.id AND po.company_id = t.company_id
+      LEFT JOIN purchase_order_items poi ON poi.po_id = po.id AND poi.company_id = t.company_id AND poi.item_id = (SELECT id FROM items WHERE item_code = $1 AND company_id = $2)
+      LEFT JOIN release_orders ro ON ro.trade_id = t.id AND ro.company_id = t.company_id
+      LEFT JOIN release_order_items roi ON roi.ro_id = ro.id AND roi.company_id = t.company_id AND roi.item_id = (SELECT id FROM items WHERE item_code = $1 AND company_id = $2)
+      WHERE t.company_id = $2
+        AND LOWER(t.trade_type) IN ('sell', 'arc')
+        AND (poi.item_id IS NOT NULL OR roi.item_id IS NOT NULL)
+        AND COALESCE(poi.quantity, roi.quantity) > COALESCE((
+          SELECT SUM(dni.quantity)
+          FROM delivery_note_items dni
+          JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+          WHERE dn.trade_id = t.id AND dni.item_id = COALESCE(poi.item_id, roi.item_id) AND dn.company_id = t.company_id
+        ), 0)
+    `;
+
+    const params = [item_code.trim(), req.user.company_id];
+    if (q) {
+      queryText += ` AND t.trade_id ILIKE $3`;
+      params.push(`%${q}%`);
+    }
+
+    queryText += ` ORDER BY t.created_at DESC LIMIT 10`;
+
+    const result = await pool.query(queryText, params);
+    
+    // Map items to calculate remaining_qty
+    const mapped = result.rows.map(row => {
+      const orderQty = parseInt(row.order_qty) || 0;
+      const deliveredQty = parseInt(row.delivered_qty) || 0;
+      const remainingQty = Math.max(0, orderQty - deliveredQty);
+      return {
+        ...row,
+        order_qty: orderQty,
+        delivered_qty: deliveredQty,
+        remaining_qty: remainingQty
+      };
+    });
+
+    res.json(mapped);
+  } catch (err) {
+    console.error('Error fetching eligible trades:', err.message);
+    res.status(500).json({ error: 'Failed to fetch eligible trades' });
+  }
+});
+
+// GET inventory availability for a specific item code
+router.get('/item/:item_code/availability', async (req, res) => {
+  const { item_code } = req.params;
+  try {
+    const itemRes = await pool.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item_code, req.user.company_id]);
+    if (itemRes.rows.length === 0) {
+      return res.json({ available_qty: 0, price: 0 });
+    }
+    const itemDbId = itemRes.rows[0].id;
+    const invRes = await pool.query(
+      `SELECT COALESCE(SUM(quantity), 0) AS total_qty, 
+              COALESCE(AVG(price), 0.00) AS avg_price 
+       FROM inventory 
+       WHERE item_code = $1 AND company_id = $2`,
+      [itemDbId, req.user.company_id]
+    );
+    res.json({
+      available_qty: parseInt(invRes.rows[0].total_qty) || 0,
+      price: parseFloat(invRes.rows[0].avg_price) || 0.00
+    });
+  } catch (err) {
+    console.error('Error fetching inventory availability:', err.message);
+    res.status(500).json({ error: 'Failed to fetch inventory availability' });
   }
 });
 
@@ -131,7 +247,8 @@ router.put('/:id', async (req, res) => {
     shelf_number,
     location,
     trade_id,
-    message
+    message,
+    p_item_id
   } = req.body || {};
 
   if (!item_code) {
@@ -165,8 +282,9 @@ router.put('/:id', async (req, res) => {
            location = $6, 
            trade_id = $7, 
            message = $8,
+           p_item_id = $9,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9 AND company_id = $10 
+       WHERE id = $10 AND company_id = $11 
        RETURNING id`,
       [
         itemDbId,
@@ -177,6 +295,7 @@ router.put('/:id', async (req, res) => {
         location || null,
         tradeDbId,
         message || null,
+        p_item_id ? parseInt(p_item_id) : null,
         id,
         req.user.company_id
       ]
@@ -189,12 +308,18 @@ router.put('/:id', async (req, res) => {
     // Fetch updated record with joined details
     const joinedRes = await pool.query(
       `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-              inv.location, t.trade_id, inv.message,
+              inv.location, t.trade_id, inv.message, inv.p_item_id,
               inv.company_id, inv.created_at, inv.updated_at,
-              it.description, it.drawing_number 
+              it.description, it.drawing_number,
+              (
+                SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
+                FROM trades t_proc
+                WHERE t_proc.id = ANY(p.process)
+              ) AS process_list
        FROM inventory inv
        LEFT JOIN items it ON inv.item_code = it.id
        LEFT JOIN trades t ON inv.trade_id = t.id
+       LEFT JOIN P_item p ON inv.p_item_id = p.id
        WHERE inv.id = $1 AND inv.company_id = $2`,
       [id, req.user.company_id]
     );

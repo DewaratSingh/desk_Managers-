@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, RefreshCw, Tag, ShoppingCart, Cpu } from 'lucide-react';
+import { AlertCircle, ArrowLeft, RefreshCw, Tag, ShoppingCart, Cpu, Package } from 'lucide-react';
 
 const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider";
 const inputCls = "w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs placeholder:text-slate-400 font-semibold focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
@@ -33,6 +33,7 @@ export default function DeliveryNoteForm() {
   // Table items state
   // Each item: { item_code, description, drawing_number, original_qty, delivered_qty, remaining_qty, rate_per_piece, shipping_address, selected: bool, delivery_qty: number, inv_qty, sell_qty, process_qty, inv_details }
   const [items, setItems] = useState([]);
+  const [tradeType, setTradeType] = useState('sell');
 
   useEffect(() => {
     if (location.state?.returnState) {
@@ -40,6 +41,7 @@ export default function DeliveryNoteForm() {
       const updatedQty = location.state.updatedQty;
       
       setTradeId(returnState.tradeId);
+      setTradeType(returnState.tradeType || 'sell');
       setFormData(returnState.formData);
       
       const mapped = returnState.items.map(it => {
@@ -77,6 +79,7 @@ export default function DeliveryNoteForm() {
         const noteData = await noteRes.json();
 
         setTradeId(noteData.trade_id);
+        setTradeType(noteData.trade_type || 'sell');
         setFormData({
           delivery_note_no: noteData.delivery_note_no,
           delivery_date: noteData.delivery_date ? noteData.delivery_date.split('T')[0] : '',
@@ -91,13 +94,28 @@ export default function DeliveryNoteForm() {
         const lookupData = await lookupRes.json();
 
         // Merge noteData items into lookupData items
-        const mergedItems = lookupData.items.map(lookupItem => {
+        const mergedItems = await Promise.all(lookupData.items.map(async (lookupItem) => {
           const dnItem = (noteData.items || []).find(di => di.item_code === lookupItem.item_code);
           const isSelected = !!dnItem;
           const deliveryQty = dnItem ? parseInt(dnItem.quantity) || 0 : lookupItem.remaining_qty;
           
           // Re-calculate remaining_qty for editing to include this note's quantity
           const remainingLimit = lookupItem.remaining_qty + (dnItem ? parseInt(dnItem.quantity) || 0 : 0);
+
+          let inventory_qty = 0;
+          let inventory_price = 0;
+          if (detectedTradeType === 'sell' || detectedTradeType === 'ARC') {
+            try {
+              const res = await fetch(`/api/inventory/item/${encodeURIComponent(lookupItem.item_code)}/availability`);
+              if (res.ok) {
+                const invData = await res.json();
+                inventory_qty = invData.available_qty;
+                inventory_price = invData.price;
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
 
           return {
             ...lookupItem,
@@ -107,9 +125,11 @@ export default function DeliveryNoteForm() {
             inv_qty: 0,
             sell_qty: 0,
             process_qty: 0,
-            inv_details: null
+            inv_details: null,
+            inventory_qty,
+            inventory_price
           };
-        });
+        }));
 
         setItems(mergedItems);
       } else {
@@ -120,16 +140,44 @@ export default function DeliveryNoteForm() {
         const lookupRes = await fetch(`/api/delivery-notes/items-lookup/${encodeURIComponent(queryTradeId)}`);
         if (!lookupRes.ok) throw new Error('Failed to load item schema for trade');
         const lookupData = await lookupRes.json();
+        const detectedTradeType = lookupData.trade_type || 'sell';
+        setTradeType(detectedTradeType);
 
-        // Set items: default check all items with remaining quantity > 0
-        const initialItems = lookupData.items.map(item => ({
-          ...item,
-          selected: item.remaining_qty > 0,
-          delivery_qty: item.remaining_qty,
-          inv_qty: 0,
-          sell_qty: 0,
-          process_qty: 0,
-          inv_details: null
+        // Check if there is autofillSell in state
+        const autofillSell = location.state?.autofillSell;
+
+        // Set items: default check false, delivery quantity 0 unless autofilled
+        const initialItems = await Promise.all(lookupData.items.map(async (item) => {
+          const isAutofill = autofillSell && item.item_code === autofillSell.item_code;
+          
+          let inventory_qty = 0;
+          let inventory_price = 0;
+          if (detectedTradeType === 'sell' || detectedTradeType === 'ARC') {
+            try {
+              const res = await fetch(`/api/inventory/item/${encodeURIComponent(item.item_code)}/availability`);
+              if (res.ok) {
+                const invData = await res.json();
+                inventory_qty = invData.available_qty;
+                inventory_price = invData.price;
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
+
+          return {
+            ...item,
+            selected: isAutofill ? true : false,
+            delivery_qty: isAutofill ? autofillSell.delivery_qty : 0,
+            inv_qty: 0,
+            sell_qty: 0,
+            process_qty: 0,
+            inv_details: null,
+            linked_inventory_id: isAutofill ? autofillSell.inventory_id : null,
+            linked_p_item_id: isAutofill ? autofillSell.p_item_id : null,
+            inventory_qty,
+            inventory_price
+          };
         }));
 
         setItems(initialItems);
@@ -162,9 +210,19 @@ export default function DeliveryNoteForm() {
     const parsedVal = parseInt(value, 10) || 0;
     setItems(prev => prev.map((item, idx) => {
       if (idx !== index) return item;
+      
+      // For SELL/ARC trades, validate against inventory level
+      if (tradeType === 'sell' || tradeType === 'ARC') {
+        if (parsedVal > (item.inventory_qty || 0)) {
+          alert(`Quantity for item ${item.item_code} cannot exceed available stock of ${item.inventory_qty || 0}.`);
+          return item; // Do not update
+        }
+      }
+
       return {
         ...item,
-        delivery_qty: parsedVal
+        delivery_qty: parsedVal,
+        selected: parsedVal > 0 ? true : item.selected
       };
     }));
   };
@@ -183,6 +241,7 @@ export default function DeliveryNoteForm() {
           returnState: {
             formData,
             tradeId,
+            tradeType,
             editingNo,
             items,
             selectedItemCode: item.item_code
@@ -193,25 +252,22 @@ export default function DeliveryNoteForm() {
   };
 
   const handleSellClick = (item, idx) => {
-    const qty = window.prompt(`Enter quantity to Sell (max: ${item.remaining_qty}):`, item.sell_qty || 0);
-    if (qty === null) return;
-    const parsed = parseInt(qty);
-    if (isNaN(parsed) || parsed < 0 || parsed > item.remaining_qty) {
-      alert("Invalid quantity!");
-      return;
-    }
-    setItems(prev => prev.map((it, index) => {
-      if (index !== idx) return it;
-      const sell_qty = parsed;
-      const inv_qty = it.inv_qty || 0;
-      const process_qty = it.process_qty || 0;
-      return {
-        ...it,
-        selected: true,
-        sell_qty,
-        delivery_qty: inv_qty + sell_qty + process_qty
-      };
-    }));
+    navigate('/inventory/sell', {
+      state: {
+        item_code: item.item_code,
+        quantity: item.remaining_qty,
+        price: item.rate_per_piece,
+        source: 'delivery_note',
+        returnState: {
+          formData,
+          tradeId,
+          tradeType,
+          editingNo,
+          items,
+          selectedItemCode: item.item_code
+        }
+      }
+    });
   };
 
   const handleProcessClick = (item, idx) => {
@@ -266,13 +322,19 @@ export default function DeliveryNoteForm() {
 
     // Verify quantities
     for (const item of selectedList) {
-      if (item.delivery_qty <= 0) {
-        setError(`Quantity for item ${item.item_code} must be greater than 0.`);
+      if (item.delivery_qty < 0) {
+        setError(`Quantity for item ${item.item_code} cannot be negative.`);
         return;
       }
       if (item.delivery_qty > item.remaining_qty) {
         setError(`Quantity for item ${item.item_code} cannot exceed remaining limit of ${item.remaining_qty}.`);
         return;
+      }
+      if (tradeType === 'sell' || tradeType === 'ARC') {
+        if (item.delivery_qty > (item.inventory_qty || 0)) {
+          setError(`Quantity for item ${item.item_code} cannot exceed available stock of ${item.inventory_qty || 0}.`);
+          return;
+        }
       }
     }
 
@@ -290,7 +352,10 @@ export default function DeliveryNoteForm() {
           inv_qty: item.inv_qty || 0,
           sell_qty: item.sell_qty || 0,
           process_qty: item.process_qty || 0,
-          inv_details: item.inv_details || null
+          inv_details: item.inv_details || null,
+          linked_process_trades: item.linked_process_trades || [],
+          linked_inventory_id: item.linked_inventory_id || null,
+          linked_p_item_id: item.linked_p_item_id || null
         }))
       };
 
@@ -308,8 +373,46 @@ export default function DeliveryNoteForm() {
         throw new Error(errData.error || 'Failed to save Delivery Note');
       }
 
-      // Redirect to trade details page
-      navigate(`/trade/${encodeURIComponent(tradeId)}`);
+      // Dynamic redirect handling based on sell allocation source
+      const autofillSell = location.state?.autofillSell;
+      if (autofillSell && autofillSell.source === 'delivery_note' && autofillSell.returnState) {
+        const ret = autofillSell.returnState;
+        const updatedItems = ret.items.map(it => {
+          if (it.item_code === ret.selectedItemCode) {
+            const currentSellQty = autofillSell.delivery_qty;
+            const currentInvQty = it.inv_qty || 0;
+            const currentProcessQty = it.process_qty || 0;
+            const updatedProcessTrades = [...(it.linked_process_trades || [])];
+            if (autofillSell.trade_db_id && !updatedProcessTrades.includes(autofillSell.trade_db_id)) {
+              updatedProcessTrades.push(autofillSell.trade_db_id);
+            }
+
+            return {
+              ...it,
+              selected: true,
+              sell_qty: currentSellQty,
+              delivery_qty: currentInvQty + currentSellQty + currentProcessQty,
+              linked_process_trades: updatedProcessTrades
+            };
+          }
+          return it;
+        });
+
+        const newReturnState = {
+          ...ret,
+          items: updatedItems
+        };
+
+        const returnUrl = ret.editingNo 
+          ? `/updateDeliveryNote/${encodeURIComponent(ret.editingNo)}` 
+          : '/addDeliveryNote';
+
+        navigate(returnUrl, { state: { returnState: newReturnState } });
+      } else if (autofillSell && autofillSell.source === 'inventory') {
+        navigate('/inventory');
+      } else {
+        navigate(`/trade/${encodeURIComponent(tradeId)}`);
+      }
     } catch (err) {
       console.error(err);
       setError(err.message || 'Error occurred while saving Delivery Note.');
@@ -468,7 +571,7 @@ export default function DeliveryNoteForm() {
                     <th className="px-3 py-2 text-right w-16">Remaining</th>
                     <th className="px-3 py-2 text-right w-20">Delivery Qty</th>
                     <th className="px-3 py-2 text-right w-20">Price</th>
-                    <th className="px-3 py-2 text-center w-[280px]">Action</th>
+                    {tradeType === 'buy' && <th className="px-3 py-2 text-center w-[280px]">Action</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -502,6 +605,17 @@ export default function DeliveryNoteForm() {
                         )}
                         {/* Display allocations preview */}
                         <div className="flex flex-wrap gap-1 mt-1">
+                          {(tradeType === 'sell' || tradeType === 'ARC') && (
+                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm ${
+                              item.inventory_qty > 0 
+                                ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' 
+                                : 'bg-rose-50 border border-rose-200 text-rose-700'
+                            }`}>
+                              <Package size={8} /> 
+                              Available: {item.inventory_qty || 0} 
+                              {item.inventory_qty > 0 && ` (Cost: ₹${parseFloat(item.inventory_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })})`}
+                            </span>
+                          )}
                           {item.inv_qty > 0 && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 shadow-sm animate-fade-in">
                               <Tag size={8} /> In Inventory: {item.inv_qty}
@@ -526,40 +640,36 @@ export default function DeliveryNoteForm() {
                         <input
                           type="number"
                           value={item.delivery_qty}
-                          min="1"
+                          min="0"
                           max={item.remaining_qty}
-                          disabled={true}
+                          disabled={tradeType === 'buy'}
+                          onChange={(e) => handleItemQtyChange(idx, e.target.value)}
                           className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                         />
                       </td>
                       <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-800">
                         ₹{parseFloat(item.rate_per_piece || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="px-3 py-1.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleAddInInventory(item)}
-                            className="px-2 py-0.5 text-[9px] font-extrabold rounded text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
-                          >
-                            {item.inv_qty > 0 ? 'Update Inventory' : 'Add in inventory'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSellClick(item, idx)}
-                            className="px-2 py-0.5 text-[9px] font-extrabold rounded text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
-                          >
-                            {item.sell_qty > 0 ? 'Update Sell' : 'Sell'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleProcessClick(item, idx)}
-                            className="px-2 py-0.5 text-[9px] font-extrabold rounded text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
-                          >
-                            {item.process_qty > 0 ? 'Update Process' : 'Process'}
-                          </button>
-                        </div>
-                      </td>
+                      {tradeType === 'buy' && (
+                        <td className="px-3 py-1.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleAddInInventory(item)}
+                              className="px-2 py-0.5 text-[9px] font-extrabold rounded text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
+                            >
+                              {item.inv_qty > 0 ? 'Update Inventory' : 'Add in inventory'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleProcessClick(item, idx)}
+                              className="px-2 py-0.5 text-[9px] font-extrabold rounded text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+                            >
+                              {item.process_qty > 0 ? 'Update Process' : 'Process'}
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {items.length === 0 && (

@@ -15,6 +15,7 @@ import QuotationForm from './form/QuotationForm'
 import ReceivedQuotationForm from './form/ReceivedQuotationForm'
 import ReceivedPurchaseOrderForm from './form/ReceivedPurchaseOrderForm'
 import DeliveryNoteForm from './form/DeliveryNoteForm'
+import SellStockForm from './form/SellStockForm'
 import InvoiceForm from './form/InvoiceForm'
 import PurchaseOrderView from './pages/PurchaseOrderView'
 import ReleaseOrderView from './pages/ReleaseOrderView'
@@ -58,6 +59,7 @@ function App() {
             <Route path="/buyer" element={<AddBuyerView />} />
             <Route path="/item" element={<AddItemView />} />
             <Route path="/inventory" element={<InventoryView />} />
+            <Route path="/inventory/sell" element={<SellStockForm />} />
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />

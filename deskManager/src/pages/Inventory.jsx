@@ -7,7 +7,6 @@ import {
   RefreshCw,
   ArrowLeft,
   ListFilter,
-  Trash2,
   Package,
   MapPin,
   Tag,
@@ -23,7 +22,8 @@ const EMPTY_FORM = {
   rack: '',
   shelf_number: '',
   trade_id: '',
-  message: ''
+  message: '',
+  p_item_id: ''
 };
 
 export default function InventoryView() {
@@ -63,7 +63,7 @@ export default function InventoryView() {
           rack: fill.existingDetails?.rack || '',
           shelf_number: fill.existingDetails?.shelf_number || '',
           trade_id: fill.trade_id || '',
-          message: fill.existingDetails?.message || `Linked to P-Item: ${fill.p_id}`
+          message: fill.existingDetails?.message || ''
         });
         setLinkMetadata(fill);
       } else if (location.state?.editingInventory) {
@@ -77,7 +77,8 @@ export default function InventoryView() {
           rack: item.rack || '',
           shelf_number: item.shelf_number || '',
           trade_id: item.trade_id || '',
-          message: item.message || ''
+          message: item.message || '',
+          p_item_id: item.p_item_id || ''
         });
         setLinkMetadata(null);
       } else {
@@ -212,28 +213,6 @@ export default function InventoryView() {
 
   const handleEditClick = (item) => {
     navigate('/inventory/form', { state: { editingInventory: item } });
-  };
-
-  const handleDeleteClick = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this inventory record?')) return;
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/inventory/${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setInventoryList(prev => prev.filter(item => item.id !== id));
-        toast.success('Inventory record deleted successfully!');
-      } else {
-        const errData = await res.json();
-        toast.error(errData.error || 'Failed to delete inventory record');
-      }
-    } catch (err) {
-      console.error('Delete error:', err);
-      toast.error('An error occurred while deleting the record');
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleBackToDirectory = () => {
@@ -385,6 +364,7 @@ export default function InventoryView() {
                         <th className="px-5 py-3 text-right">Quantity</th>
                         <th className="px-5 py-3 text-right">Price</th>
                         <th className="px-5 py-3">Trade ID</th>
+                        <th className="px-5 py-3">P-Item ID</th>
                         <th className="px-5 py-3">Message</th>
                         <th className="px-5 py-3 text-center">Actions</th>
                       </tr>
@@ -445,6 +425,17 @@ export default function InventoryView() {
                             )}
                           </td>
 
+                          {/* P-Item ID */}
+                          <td className="px-5 py-4 font-mono font-bold text-slate-800">
+                            {item.p_item_id ? (
+                              <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] shadow-sm">
+                                P-{item.p_item_id}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
+
                           {/* Message */}
                           <td className="px-5 py-4 text-slate-500 max-w-[200px] truncate" title={item.message}>
                             {item.message || '—'}
@@ -459,13 +450,6 @@ export default function InventoryView() {
                                 title="Edit Stock"
                               >
                                 <Edit2 size={12} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClick(item.id)}
-                                className="p-1.5 border border-slate-300 rounded text-slate-400 hover:text-red-600 hover:border-red-300 bg-white transition-colors cursor-pointer"
-                                title="Delete"
-                              >
-                                <Trash2 size={12} />
                               </button>
                             </div>
                           </td>
@@ -521,6 +505,12 @@ export default function InventoryView() {
                   <span>Linked P-Item ID: {linkMetadata.p_id}</span>
                 </div>
               )}
+              {formData.p_item_id && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs font-bold text-indigo-700 flex items-center gap-2">
+                  <Tag size={14} className="shrink-0" />
+                  <span>Linked P-Item ID: P-{formData.p_item_id}</span>
+                </div>
+              )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Item Code Selection */}
@@ -535,8 +525,8 @@ export default function InventoryView() {
                       placeholder="Search by item code or description..."
                       value={formData.item_code}
                       onChange={(e) => handleItemInput(e.target.value)}
-                      onFocus={() => setShowItemDropdown(true)}
-                      disabled={!!editingId}
+                      onFocus={() => !editingId && !linkMetadata && setShowItemDropdown(true)}
+                      disabled={!!editingId || !!linkMetadata}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                       autoComplete="off"
                     />
@@ -556,9 +546,9 @@ export default function InventoryView() {
                       </div>
                     )}
                   </div>
-                  {editingId && (
+                  {(editingId || linkMetadata) && (
                     <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
-                      Item code cannot be changed once stock record is created.
+                      Item code cannot be changed once stock record is configured.
                     </p>
                   )}
                 </div>
@@ -574,8 +564,9 @@ export default function InventoryView() {
                       placeholder="Search by Trade ID..."
                       value={formData.trade_id}
                       onChange={(e) => handleTradeInput(e.target.value)}
-                      onFocus={() => setShowTradeDropdown(true)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                      onFocus={() => !editingId && !linkMetadata && setShowTradeDropdown(true)}
+                      disabled={!!editingId || !!linkMetadata}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                       autoComplete="off"
                     />
                     {showTradeDropdown && trades.length > 0 && (
@@ -594,6 +585,11 @@ export default function InventoryView() {
                       </div>
                     )}
                   </div>
+                  {(editingId || linkMetadata) && (
+                    <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
+                      Trade ID cannot be changed once stock record is configured.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -610,8 +606,14 @@ export default function InventoryView() {
                     placeholder="e.g. 500"
                     value={formData.quantity}
                     onChange={set('quantity')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                    disabled={!!editingId}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
+                  {editingId && (
+                    <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
+                      Quantity cannot be changed once stock record is created.
+                    </p>
+                  )}
                 </div>
 
                 {/* Price */}
@@ -627,8 +629,14 @@ export default function InventoryView() {
                     placeholder="e.g. 15.50"
                     value={formData.price}
                     onChange={set('price')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                    disabled={!!editingId || !!linkMetadata}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
+                  {(editingId || linkMetadata) && (
+                    <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
+                      Price cannot be changed once stock record is configured.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -692,30 +700,66 @@ export default function InventoryView() {
               </div>
 
               {/* Submit Buttons */}
-              <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleBackToDirectory}
-                  className="px-5 py-2.5 border border-slate-300 rounded text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-5 py-2.5 rounded text-sm font-bold text-white transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: 'var(--theme-color)' }}
-                  onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
-                  onMouseLeave={(e) => e.target.style.filter = 'none'}
-                >
-                  {isSaving ? (
-                    <><RefreshCw size={14} className="animate-spin" /> Saving...</>
-                  ) : editingId ? (
-                    <><RefreshCw size={14} /> Update Stock</>
-                  ) : (
-                    <><Plus size={14} /> Add Stock</>
+              <div className="pt-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-3">
+                <div className="flex gap-2">
+                  {editingId && (
+                    <>
+                      <button
+                        type="button"
+                        className="px-4 py-2 text-xs font-extrabold rounded text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
+                      >
+                        Manufacture
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/inventory/sell', {
+                          state: {
+                            item_code: formData.item_code,
+                            p_item_id: formData.p_item_id,
+                            inventory_id: editingId,
+                            quantity: formData.quantity,
+                            price: formData.price,
+                            source: 'inventory'
+                          }
+                        })}
+                        className="px-4 py-2 text-xs font-extrabold rounded text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
+                      >
+                        Sell
+                      </button>
+                      <button
+                        type="button"
+                        className="px-4 py-2 text-xs font-extrabold rounded text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+                      >
+                        Process
+                      </button>
+                    </>
                   )}
-                </button>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBackToDirectory}
+                    className="px-5 py-2.5 border border-slate-300 rounded text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="px-5 py-2.5 rounded text-sm font-bold text-white transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: 'var(--theme-color)' }}
+                    onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
+                    onMouseLeave={(e) => e.target.style.filter = 'none'}
+                  >
+                    {isSaving ? (
+                      <><RefreshCw size={14} className="animate-spin" /> Saving...</>
+                    ) : editingId ? (
+                      <><RefreshCw size={14} /> Update Stock</>
+                    ) : (
+                      <><Plus size={14} /> Add Stock</>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
