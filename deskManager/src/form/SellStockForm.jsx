@@ -13,6 +13,7 @@ export default function SellStockForm() {
     price: sourcePrice = 0,
     quantity: sourceQty = 0,
     p_item_id: pItemId = null,
+    trace_item_id: traceItemId = null,
     inventory_id: inventoryId = null,
     source = 'inventory',
     returnState = null
@@ -116,7 +117,8 @@ export default function SellStockForm() {
           item_code: sourceItemCode,
           delivery_qty: qty,
           inventory_id: inventoryId,
-          p_item_id: pItemId,
+          p_item_id: traceItemId || pItemId,
+          trace_item_id: traceItemId || pItemId,
           source: source,
           trade_db_id: selectedTrade.trade_db_id,
           returnState: returnState

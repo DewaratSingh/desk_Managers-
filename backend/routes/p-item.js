@@ -39,7 +39,7 @@ router.post('/', async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO P_item (item_code, process, message, quantity, price, company_id) 
+      `INSERT INTO trace_item (item_code, process, message, quantity, price, company_id) 
        VALUES ($1, $2::INTEGER[], $3, $4, $5, $6) RETURNING *`,
       [itemDbId, processArray, message || null, parseInt(quantity) || 0, parseFloat(price) || 0.00, companyId]
     );
@@ -57,7 +57,7 @@ router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT p.id, i.item_code, p.process, p.message, p.quantity, p.price, p.created_at, i.description, i.drawing_number
-       FROM P_item p
+       FROM trace_item p
        LEFT JOIN items i ON p.item_code = i.id
        WHERE p.company_id = $1
        ORDER BY p.created_at DESC`,

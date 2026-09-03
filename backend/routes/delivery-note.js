@@ -272,64 +272,81 @@ router.post('/', async (req, res) => {
         }
       }
 
-      // Check if this item has a linked P_item record we need to append the process trade to
-      if (item.linked_p_item_id) {
+      // Construct BUY step object containing buy trade_id, delivery_id, and unit_price
+      const buyUnitPrice = parseFloat(item.rate_per_piece || item.inv_details?.price) || 0.00;
+      const buyStep = {
+        type: 'BUY',
+        id: trade_code, // buy trade id string, e.g. TRD-1001
+        delivery_id: delivery_note_no,
+        unit_price: buyUnitPrice
+      };
+
+      // Check if this item has a linked trace_item record we need to append the process step to
+      if (item.linked_trace_item_id || item.linked_p_item_id) {
+        const targetTraceId = parseInt(item.linked_trace_item_id || item.linked_p_item_id);
+        const existingRes = await client.query('SELECT process FROM trace_item WHERE id = $1 AND company_id = $2', [targetTraceId, req.user.company_id]);
+        let procArr = [];
+        if (existingRes.rows.length > 0 && Array.isArray(existingRes.rows[0].process)) {
+          procArr = existingRes.rows[0].process;
+        }
+        procArr.push(buyStep);
+        const totalPrice = procArr.reduce((sum, p) => sum + (parseFloat(p.unit_price) || 0), 0);
+
         await client.query(
-          `UPDATE P_item 
-           SET process = array_append(COALESCE(process, '{}'::integer[]), $1) 
-           WHERE id = $2 AND company_id = $3`,
-          [tradeDbId, parseInt(item.linked_p_item_id), req.user.company_id]
+          `UPDATE trace_item 
+           SET process = $1::jsonb, price = $2 
+           WHERE id = $3 AND company_id = $4`,
+          [JSON.stringify(procArr), totalPrice, targetTraceId, req.user.company_id]
+        );
+
+        await client.query(
+          `UPDATE inventory 
+           SET price = $1 
+           WHERE trace_item_id = $2 AND company_id = $3`,
+          [totalPrice, targetTraceId, req.user.company_id]
         );
       }
 
-      let pItemId = null;
+      let traceItemId = null;
       if (item.inv_qty > 0) {
-        const processList = [tradeDbId];
-        if (Array.isArray(item.linked_process_trades)) {
-          item.linked_process_trades.forEach(id => {
-            const parsed = parseInt(id);
-            if (!isNaN(parsed) && !processList.includes(parsed)) {
-              processList.push(parsed);
-            }
-          });
-        }
+        const processList = [buyStep];
 
-        // Insert into P_item
+        // Insert into trace_item
         const pRes = await client.query(
-          `INSERT INTO P_item (item_code, process, message, quantity, price, company_id)
-           VALUES ($1, $2::INTEGER[], $3, $4, $5, $6) RETURNING id`,
+          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+           VALUES ($1, $2::jsonb, $3, $4, $5, 'active', $6) RETURNING id`,
           [
             itemDbId,
-            processList,
+            JSON.stringify(processList),
             item.inv_details?.message || `Added from DN: ${delivery_note_no}`,
             parseInt(item.inv_qty) || 0,
-            parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00,
+            buyUnitPrice,
             req.user.company_id
           ]
         );
-        pItemId = pRes.rows[0].id;
+        traceItemId = pRes.rows[0].id;
 
         // Insert into inventory
         await client.query(
-          `INSERT INTO inventory (item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, p_item_id)
+          `INSERT INTO inventory (item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, trace_item_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             itemDbId,
             parseInt(item.inv_qty) || 0,
-            parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00,
+            buyUnitPrice,
             item.inv_details?.rack || null,
             item.inv_details?.shelf_number || null,
             item.inv_details?.location || null,
             tradeDbId,
             item.inv_details?.message || null,
             req.user.company_id,
-            pItemId
+            traceItemId
           ]
         );
       }
 
       const next_activity = {
-        inventory: item.inv_qty > 0 ? { quantity: parseInt(item.inv_qty), P_item_id: pItemId } : null,
+        inventory: item.inv_qty > 0 ? { quantity: parseInt(item.inv_qty), P_item_id: traceItemId } : null,
         sell: item.sell_qty > 0 ? { quantity: parseInt(item.sell_qty), tradeID: trade_code } : null,
         process: item.process_qty > 0 ? { quantity: parseInt(item.process_qty), tradeID: trade_code } : null
       };
@@ -439,17 +456,17 @@ router.put('/:delivery_note_no', async (req, res) => {
         }
       }
 
-      // Check if this item has a linked P_item record we need to append the process trade to
-      if (item.linked_p_item_id) {
+      // Check if this item has a linked trace_item record we need to append the process trade to
+      if (item.linked_trace_item_id || item.linked_p_item_id) {
         await client.query(
-          `UPDATE P_item 
+          `UPDATE trace_item 
            SET process = array_append(COALESCE(process, '{}'::integer[]), $1) 
            WHERE id = $2 AND company_id = $3`,
-          [tradeDbId, parseInt(item.linked_p_item_id), req.user.company_id]
+          [tradeDbId, parseInt(item.linked_trace_item_id || item.linked_p_item_id), req.user.company_id]
         );
       }
 
-      let pItemId = null;
+      let traceItemId = null;
       if (item.inv_qty > 0) {
         const processList = [tradeDbId];
         if (Array.isArray(item.linked_process_trades)) {
@@ -461,9 +478,9 @@ router.put('/:delivery_note_no', async (req, res) => {
           });
         }
 
-        // Insert into P_item
+        // Insert into trace_item
         const pRes = await client.query(
-          `INSERT INTO P_item (item_code, process, message, quantity, price, company_id)
+          `INSERT INTO trace_item (item_code, process, message, quantity, price, company_id)
            VALUES ($1, $2::INTEGER[], $3, $4, $5, $6) RETURNING id`,
           [
             itemDbId,
@@ -474,11 +491,11 @@ router.put('/:delivery_note_no', async (req, res) => {
             req.user.company_id
           ]
         );
-        pItemId = pRes.rows[0].id;
+        traceItemId = pRes.rows[0].id;
 
         // Insert into inventory
         await client.query(
-          `INSERT INTO inventory (item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, p_item_id)
+          `INSERT INTO inventory (item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, trace_item_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             itemDbId,
@@ -490,13 +507,13 @@ router.put('/:delivery_note_no', async (req, res) => {
             tradeDbId,
             item.inv_details?.message || null,
             req.user.company_id,
-            pItemId
+            traceItemId
           ]
         );
       }
 
       const next_activity = {
-        inventory: item.inv_qty > 0 ? { quantity: parseInt(item.inv_qty), P_item_id: pItemId } : null,
+        inventory: item.inv_qty > 0 ? { quantity: parseInt(item.inv_qty), P_item_id: traceItemId } : null,
         sell: item.sell_qty > 0 ? { quantity: parseInt(item.sell_qty), tradeID: trade_code } : null,
         process: item.process_qty > 0 ? { quantity: parseInt(item.process_qty), tradeID: trade_code } : null
       };

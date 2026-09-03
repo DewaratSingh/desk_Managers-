@@ -23,7 +23,8 @@ const EMPTY_FORM = {
   shelf_number: '',
   trade_id: '',
   message: '',
-  p_item_id: ''
+  trace_item_id: '',
+  trace_process: []
 };
 
 export default function InventoryView() {
@@ -78,7 +79,7 @@ export default function InventoryView() {
           shelf_number: item.shelf_number || '',
           trade_id: item.trade_id || '',
           message: item.message || '',
-          p_item_id: item.p_item_id || ''
+          trace_item_id: item.trace_item_id || item.p_item_id || ''
         });
         setLinkMetadata(null);
       } else {
@@ -136,6 +137,24 @@ export default function InventoryView() {
 
     return () => clearTimeout(delayDebounceFn);
   }, [formData.trade_id, viewMode]);
+
+  // Auto-fetch process traceability breakdown when item_code is selected in form mode
+  useEffect(() => {
+    if (viewMode === 'form' && formData.item_code && (!formData.trace_process || formData.trace_process.length === 0)) {
+      fetch(`/api/inventory?q=${encodeURIComponent(formData.item_code.trim())}&limit=1`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0].trace_process) && data[0].trace_process.length > 0) {
+            setFormData(prev => ({
+              ...prev,
+              trace_process: data[0].trace_process,
+              price: prev.price || data[0].calculated_price || data[0].price
+            }));
+          }
+        })
+        .catch(err => console.error(err));
+    }
+  }, [formData.item_code, viewMode]);
 
   const fetchInventory = async (isLoadMore = false, query = searchQuery) => {
     setIsLoading(true);
@@ -363,8 +382,7 @@ export default function InventoryView() {
                         <th className="px-5 py-3">Location Details</th>
                         <th className="px-5 py-3 text-right">Quantity</th>
                         <th className="px-5 py-3 text-right">Price</th>
-                        <th className="px-5 py-3">Trade ID</th>
-                        <th className="px-5 py-3">P-Item ID</th>
+                        <th className="px-5 py-3">Trace Item ID</th>
                         <th className="px-5 py-3">Message</th>
                         <th className="px-5 py-3 text-center">Actions</th>
                       </tr>
@@ -404,33 +422,39 @@ export default function InventoryView() {
                           </td>
 
                           {/* Quantity */}
-                          <td className="px-5 py-4 text-right font-black text-slate-900">
-                            {item.quantity || 0}
+                          <td className="px-5 py-4 text-right font-mono font-black text-slate-900">
+                            {item.mfg_expected_qty && !item.mfg_is_completed && item.mfg_completed_qty < item.mfg_expected_qty ? (
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs">
+                                  {item.mfg_completed_qty || 0} / {item.mfg_expected_qty}
+                                </span>
+                                <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-1 py-0.2 rounded border border-amber-200 mt-0.5 font-sans">
+                                  Completed / Total
+                                </span>
+                              </div>
+                            ) : (
+                              item.quantity || 0
+                            )}
                           </td>
 
                           {/* Price */}
                           <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                            ₹{parseFloat(item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹{parseFloat(item.calculated_price || item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </td>
 
-                          {/* Linked Trade ID */}
+                          {/* Trace Item ID */}
                           <td className="px-5 py-4 font-mono font-bold text-slate-800">
-                            {item.trade_id ? (
-                              <span className="flex items-center gap-1 text-[11px]">
-                                <Tag size={10} className="text-slate-400" />
-                                {item.trade_id}
-                              </span>
-                            ) : (
-                              <span className="text-slate-300">—</span>
-                            )}
-                          </td>
-
-                          {/* P-Item ID */}
-                          <td className="px-5 py-4 font-mono font-bold text-slate-800">
-                            {item.p_item_id ? (
-                              <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] shadow-sm">
-                                P-{item.p_item_id}
-                              </span>
+                            {(item.trace_item_id || item.p_item_id) ? (
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] shadow-sm">
+                                  TR-{item.trace_item_id || item.p_item_id}
+                                </span>
+                                {(item.trace_status === 'manufacturing' || item.status === 'manufacturing' || (item.message && item.message.toLowerCase().includes('manufacturing'))) && (
+                                  <span className="bg-amber-100 border border-amber-300 text-amber-800 px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">
+                                    Manufacturing
+                                  </span>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-slate-300">—</span>
                             )}
@@ -502,13 +526,75 @@ export default function InventoryView() {
               {linkMetadata && (
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs font-bold text-indigo-700 flex items-center gap-2">
                   <Tag size={14} className="shrink-0" />
-                  <span>Linked P-Item ID: {linkMetadata.p_id}</span>
+                  <span>Linked Trace Item ID: {linkMetadata.p_id || linkMetadata.trace_id}</span>
                 </div>
               )}
-              {formData.p_item_id && (
+              {(formData.trace_item_id || formData.p_item_id) && (
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs font-bold text-indigo-700 flex items-center gap-2">
                   <Tag size={14} className="shrink-0" />
-                  <span>Linked P-Item ID: P-{formData.p_item_id}</span>
+                  <span>Linked Trace Item ID: TR-{formData.trace_item_id || formData.p_item_id}</span>
+                </div>
+              )}
+
+              {/* Comprehensive Process Traceability Array Details */}
+              {Array.isArray(formData.trace_process) && formData.trace_process.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <Tag size={16} className="text-indigo-600" />
+                      Detailed Process & Cost Traceability Breakdown
+                    </span>
+                    <span className="text-xs font-mono font-black text-slate-900 bg-white border border-slate-300 px-2.5 py-1 rounded-md shadow-xs">
+                      Total Unit Price: ₹{parseFloat(formData.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="overflow-hidden border border-slate-200 rounded-lg bg-white shadow-xs">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                          <th className="px-3 py-2 text-center w-10">Step</th>
+                          <th className="px-3 py-2">Process Type</th>
+                          <th className="px-3 py-2">Trade / Job ID</th>
+                          <th className="px-3 py-2">Delivery Note ID</th>
+                          <th className="px-3 py-2 text-right">Unit Price</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-semibold">
+                        {formData.trace_process.map((step, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="px-3 py-2.5 text-center font-bold text-slate-400">
+                              #{idx + 1}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                step.type === 'BUY' 
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+                              }`}>
+                                {step.type || 'STEP'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 font-mono font-bold text-slate-800">
+                              {step.id ? (step.type === 'BUY' ? `TRD: ${step.id}` : `#MFG-${step.id}`) : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-slate-700">
+                              {step.delivery_id ? (
+                                <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">
+                                  {step.delivery_id}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono font-black text-slate-900">
+                              + ₹{parseFloat(step.unit_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
               
@@ -706,25 +792,18 @@ export default function InventoryView() {
                     <>
                       <button
                         type="button"
+                        onClick={() => navigate('/inventory/manufacture', {
+                          state: {
+                            item_code: formData.item_code,
+                            trace_item_id: formData.trace_item_id || formData.p_item_id,
+                            inventory_id: editingId,
+                            quantity: formData.quantity,
+                            price: formData.price
+                          }
+                        })}
                         className="px-4 py-2 text-xs font-extrabold rounded text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
                       >
                         Manufacture
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/inventory/sell', {
-                          state: {
-                            item_code: formData.item_code,
-                            p_item_id: formData.p_item_id,
-                            inventory_id: editingId,
-                            quantity: formData.quantity,
-                            price: formData.price,
-                            source: 'inventory'
-                          }
-                        })}
-                        className="px-4 py-2 text-xs font-extrabold rounded text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
-                      >
-                        Sell
                       </button>
                       <button
                         type="button"

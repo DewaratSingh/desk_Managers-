@@ -102,9 +102,10 @@ export default function DeliveryNoteForm() {
           // Re-calculate remaining_qty for editing to include this note's quantity
           const remainingLimit = lookupItem.remaining_qty + (dnItem ? parseInt(dnItem.quantity) || 0 : 0);
 
+          const currentTradeType = noteData.trade_type || 'sell';
           let inventory_qty = 0;
           let inventory_price = 0;
-          if (detectedTradeType === 'sell' || detectedTradeType === 'ARC') {
+          if (currentTradeType === 'sell' || currentTradeType === 'ARC') {
             try {
               const res = await fetch(`/api/inventory/item/${encodeURIComponent(lookupItem.item_code)}/availability`);
               if (res.ok) {
@@ -174,7 +175,8 @@ export default function DeliveryNoteForm() {
             process_qty: 0,
             inv_details: null,
             linked_inventory_id: isAutofill ? autofillSell.inventory_id : null,
-            linked_p_item_id: isAutofill ? autofillSell.p_item_id : null,
+            linked_trace_item_id: isAutofill ? (autofillSell.trace_item_id || autofillSell.p_item_id || autofillSell.p_id) : null,
+            linked_p_item_id: isAutofill ? (autofillSell.trace_item_id || autofillSell.p_item_id || autofillSell.p_id) : null,
             inventory_qty,
             inventory_price
           };
@@ -355,7 +357,8 @@ export default function DeliveryNoteForm() {
           inv_details: item.inv_details || null,
           linked_process_trades: item.linked_process_trades || [],
           linked_inventory_id: item.linked_inventory_id || null,
-          linked_p_item_id: item.linked_p_item_id || null
+          linked_trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || null,
+          linked_p_item_id: item.linked_trace_item_id || item.linked_p_item_id || null
         }))
       };
 

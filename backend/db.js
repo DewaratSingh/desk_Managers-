@@ -485,21 +485,27 @@ const initializeDatabase = async () => {
       );
     `);
 
-    // 27. P_item Table
+    // 27. Trace_item Table
     await client.query(`
-      CREATE TABLE IF NOT EXISTS P_item (
+      CREATE TABLE IF NOT EXISTS trace_item (
         id SERIAL PRIMARY KEY,
         item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        process INTEGER[] DEFAULT '{}',
+        process JSONB DEFAULT '[]'::jsonb,
         message TEXT,
         quantity INTEGER DEFAULT 0,
         price DECIMAL(12, 2) DEFAULT 0.00,
+        status VARCHAR(50) DEFAULT 'active',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // 28. Inventory Table (Updated to match p-item style + position columns + trade_id)
+    await client.query(`
+      ALTER TABLE trace_item 
+      ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
+    `);
+
+    // 28. Inventory Table (Updated to match trace-item style + position columns + trade_id)
     await client.query(`
       CREATE TABLE IF NOT EXISTS inventory (
         id SERIAL PRIMARY KEY,
@@ -512,7 +518,7 @@ const initializeDatabase = async () => {
         quantity INTEGER DEFAULT 0,
         price DECIMAL(12, 2) DEFAULT 0.00,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        p_item_id INTEGER REFERENCES P_item(id) ON DELETE SET NULL,
+        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -521,7 +527,34 @@ const initializeDatabase = async () => {
     // Dynamic column addition to inventory table
     await client.query(`
       ALTER TABLE inventory 
-      ADD COLUMN IF NOT EXISTS p_item_id INTEGER REFERENCES P_item(id) ON DELETE SET NULL;
+      ADD COLUMN IF NOT EXISTS trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL;
+    `);
+
+    // 29. Manufacture Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS manufacture (
+        id SERIAL PRIMARY KEY,
+        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
+        target_trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
+        source_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        target_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        quantity_used INTEGER NOT NULL CHECK (quantity_used > 0),
+        expected_quantity INTEGER NOT NULL CHECK (expected_quantity > 0),
+        completed_quantity INTEGER NOT NULL DEFAULT 0,
+        completed BOOLEAN DEFAULT false,
+        date_of_starting DATE NOT NULL,
+        date_of_ending DATE,
+        message TEXT,
+        status VARCHAR(50) DEFAULT 'manufacturing',
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      ALTER TABLE manufacture 
+      ADD COLUMN IF NOT EXISTS completed_quantity INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT false;
     `);
 
     // Seed default units

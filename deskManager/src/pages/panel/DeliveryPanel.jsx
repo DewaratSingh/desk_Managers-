@@ -670,7 +670,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                               <div className="flex flex-col gap-1 items-center">
                                 {item.next_activity?.inventory && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700">
-                                    Inventory: {item.next_activity.inventory.quantity} (P-ID: {item.next_activity.inventory.P_item_id || '—'})
+                                    Inventory: {item.next_activity.inventory.quantity} (TR-ID: {item.next_activity.inventory.trace_item_id || item.next_activity.inventory.P_item_id || '—'})
                                   </span>
                                 )}
                                 {item.next_activity?.sell && (

@@ -10,18 +10,28 @@ router.get('/', async (req, res) => {
   try {
     let queryText = `
       SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-             inv.location, t.trade_id, inv.message, inv.p_item_id,
+             inv.location, t.trade_id, inv.message, inv.trace_item_id,
+             p.status AS trace_status, p.process AS trace_process,
+             COALESCE((
+               SELECT SUM((elem->>'unit_price')::numeric)
+               FROM jsonb_array_elements(
+                 CASE 
+                   WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
+                   ELSE '[]'::jsonb 
+                 END
+               ) elem
+               WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
+             ), inv.price) AS calculated_price,
              inv.company_id, inv.created_at, inv.updated_at,
              it.description, it.drawing_number,
-             (
-               SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
-               FROM trades t_proc
-               WHERE t_proc.id = ANY(p.process)
-             ) AS process_list
+             m.completed_quantity AS mfg_completed_qty,
+             m.expected_quantity AS mfg_expected_qty,
+             m.completed AS mfg_is_completed
       FROM inventory inv
       LEFT JOIN items it ON inv.item_code = it.id
       LEFT JOIN trades t ON inv.trade_id = t.id
-      LEFT JOIN P_item p ON inv.p_item_id = p.id
+      LEFT JOIN trace_item p ON inv.trace_item_id = p.id
+      LEFT JOIN manufacture m ON inv.trace_item_id = m.target_trace_item_id AND m.company_id = inv.company_id
       WHERE inv.company_id = $1
     `;
     const params = [req.user.company_id];
@@ -66,7 +76,7 @@ router.post('/', async (req, res) => {
     location,
     trade_id,
     message,
-    p_item_id
+    trace_item_id
   } = req.body || {};
 
   if (!item_code) {
@@ -92,7 +102,7 @@ router.post('/', async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO inventory (
-        item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, p_item_id
+        item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, trace_item_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
       [
         itemDbId,
@@ -104,25 +114,35 @@ router.post('/', async (req, res) => {
         tradeDbId,
         message || null,
         req.user.company_id,
-        p_item_id ? parseInt(p_item_id) : null
+        trace_item_id ? parseInt(trace_item_id) : null
       ]
     );
 
     // Fetch the inserted record with joined details
     const joinedRes = await pool.query(
       `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-              inv.location, t.trade_id, inv.message, inv.p_item_id,
-              inv.company_id, inv.created_at, inv.updated_at,
-              it.description, it.drawing_number,
-              (
-                SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
-                FROM trades t_proc
-                WHERE t_proc.id = ANY(p.process)
-              ) AS process_list
-       FROM inventory inv
-       LEFT JOIN items it ON inv.item_code = it.id
-       LEFT JOIN trades t ON inv.trade_id = t.id
-       LEFT JOIN P_item p ON inv.p_item_id = p.id
+             inv.location, t.trade_id, inv.message, inv.trace_item_id,
+             p.status AS trace_status, p.process AS trace_process,
+             COALESCE((
+               SELECT SUM((elem->>'unit_price')::numeric)
+               FROM jsonb_array_elements(
+                 CASE 
+                   WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
+                   ELSE '[]'::jsonb 
+                 END
+               ) elem
+               WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
+             ), inv.price) AS calculated_price,
+             inv.company_id, inv.created_at, inv.updated_at,
+             it.description, it.drawing_number,
+             m.completed_quantity AS mfg_completed_qty,
+             m.expected_quantity AS mfg_expected_qty,
+             m.completed AS mfg_is_completed
+      FROM inventory inv
+      LEFT JOIN items it ON inv.item_code = it.id
+      LEFT JOIN trades t ON inv.trade_id = t.id
+      LEFT JOIN trace_item p ON inv.trace_item_id = p.id
+      LEFT JOIN manufacture m ON inv.trace_item_id = m.target_trace_item_id AND m.company_id = inv.company_id
        WHERE inv.id = $1 AND inv.company_id = $2`,
       [result.rows[0].id, req.user.company_id]
     );
@@ -248,7 +268,7 @@ router.put('/:id', async (req, res) => {
     location,
     trade_id,
     message,
-    p_item_id
+    trace_item_id
   } = req.body || {};
 
   if (!item_code) {
@@ -282,7 +302,7 @@ router.put('/:id', async (req, res) => {
            location = $6, 
            trade_id = $7, 
            message = $8,
-           p_item_id = $9,
+           trace_item_id = $9,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $10 AND company_id = $11 
        RETURNING id`,
@@ -295,7 +315,7 @@ router.put('/:id', async (req, res) => {
         location || null,
         tradeDbId,
         message || null,
-        p_item_id ? parseInt(p_item_id) : null,
+        trace_item_id ? parseInt(trace_item_id) : null,
         id,
         req.user.company_id
       ]
@@ -308,18 +328,28 @@ router.put('/:id', async (req, res) => {
     // Fetch updated record with joined details
     const joinedRes = await pool.query(
       `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-              inv.location, t.trade_id, inv.message, inv.p_item_id,
-              inv.company_id, inv.created_at, inv.updated_at,
-              it.description, it.drawing_number,
-              (
-                SELECT COALESCE(json_agg(t_proc.trade_id), '[]'::json)
-                FROM trades t_proc
-                WHERE t_proc.id = ANY(p.process)
-              ) AS process_list
-       FROM inventory inv
-       LEFT JOIN items it ON inv.item_code = it.id
-       LEFT JOIN trades t ON inv.trade_id = t.id
-       LEFT JOIN P_item p ON inv.p_item_id = p.id
+             inv.location, t.trade_id, inv.message, inv.trace_item_id,
+             p.status AS trace_status, p.process AS trace_process,
+             COALESCE((
+               SELECT SUM((elem->>'unit_price')::numeric)
+               FROM jsonb_array_elements(
+                 CASE 
+                   WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
+                   ELSE '[]'::jsonb 
+                 END
+               ) elem
+               WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
+             ), inv.price) AS calculated_price,
+             inv.company_id, inv.created_at, inv.updated_at,
+             it.description, it.drawing_number,
+             m.completed_quantity AS mfg_completed_qty,
+             m.expected_quantity AS mfg_expected_qty,
+             m.completed AS mfg_is_completed
+      FROM inventory inv
+      LEFT JOIN items it ON inv.item_code = it.id
+      LEFT JOIN trades t ON inv.trade_id = t.id
+      LEFT JOIN trace_item p ON inv.trace_item_id = p.id
+      LEFT JOIN manufacture m ON inv.trace_item_id = m.target_trace_item_id AND m.company_id = inv.company_id
        WHERE inv.id = $1 AND inv.company_id = $2`,
       [id, req.user.company_id]
     );
