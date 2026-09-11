@@ -23,6 +23,7 @@ const EMPTY_FORM = {
   shelf_number: '',
   trade_id: '',
   message: '',
+  status: '',
   trace_item_id: '',
   trace_process: []
 };
@@ -64,7 +65,8 @@ export default function InventoryView() {
           rack: fill.existingDetails?.rack || '',
           shelf_number: fill.existingDetails?.shelf_number || '',
           trade_id: fill.trade_id || '',
-          message: fill.existingDetails?.message || ''
+          message: fill.existingDetails?.message || '',
+          status: fill.status || ''
         });
         setLinkMetadata(fill);
       } else if (location.state?.editingInventory) {
@@ -79,6 +81,7 @@ export default function InventoryView() {
           shelf_number: item.shelf_number || '',
           trade_id: item.trade_id || '',
           message: item.message || '',
+          status: item.trace_status || item.status || 'active',
           trace_item_id: item.trace_item_id || item.p_item_id || ''
         });
         setLinkMetadata(null);
@@ -252,20 +255,43 @@ export default function InventoryView() {
     setIsSaving(true);
     try {
       if (linkMetadata) {
+        let savedRecord = null;
+        try {
+          const res = await fetch('/api/inventory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...formData,
+              status: formData.status || linkMetadata.status || 'active',
+              message: formData.message || null
+            })
+          });
+          if (res.ok) {
+            savedRecord = await res.json();
+            toast.success(`Stock record created in Inventory (${formData.status || linkMetadata.status || 'Success'})!`);
+          }
+        } catch (err) {
+          console.error('Failed to persist inventory record to DB:', err);
+        }
+
         navigate(linkMetadata.returnUrl, {
           state: {
             returnState: linkMetadata.returnState,
             updatedQty: parseInt(formData.quantity) || 0,
+            actionType: linkMetadata.actionType,
+            status: formData.status || linkMetadata.status,
             inventoryDetails: {
               price: parseFloat(formData.price) || 0.00,
               rack: formData.rack,
               shelf_number: formData.shelf_number,
               location: formData.location,
-              message: formData.message
+              message: formData.message || null,
+              status: formData.status || linkMetadata.status,
+              inventory_id: savedRecord ? savedRecord.id : null,
+              trace_item_id: savedRecord ? savedRecord.trace_item_id : null
             }
           }
         });
-        toast.success('Inventory stock configured in memory!');
         setIsSaving(false);
         return;
       }
@@ -383,6 +409,7 @@ export default function InventoryView() {
                         <th className="px-5 py-3 text-right">Quantity</th>
                         <th className="px-5 py-3 text-right">Price</th>
                         <th className="px-5 py-3">Trace Item ID</th>
+                        <th className="px-5 py-3">Status</th>
                         <th className="px-5 py-3">Message</th>
                         <th className="px-5 py-3 text-center">Actions</th>
                       </tr>
@@ -449,15 +476,28 @@ export default function InventoryView() {
                                 <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] shadow-sm">
                                   TR-{item.trace_item_id || item.p_item_id}
                                 </span>
-                                {(item.trace_status === 'manufacturing' || item.status === 'manufacturing' || (item.message && item.message.toLowerCase().includes('manufacturing'))) && (
-                                  <span className="bg-amber-100 border border-amber-300 text-amber-800 px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">
-                                    Manufacturing
-                                  </span>
-                                )}
                               </div>
                             ) : (
                               <span className="text-slate-300">—</span>
                             )}
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-5 py-4">
+                            {(() => {
+                              const st = item.trace_status || item.status || 'active';
+                              let badgeCls = "bg-slate-100 border-slate-200 text-slate-700";
+                              if (st === 'For process') badgeCls = "bg-amber-50 border-amber-300 text-amber-800";
+                              else if (st === 'For Sell') badgeCls = "bg-emerald-50 border-emerald-300 text-emerald-800";
+                              else if (st === 'In Inventory') badgeCls = "bg-indigo-50 border-indigo-300 text-indigo-800";
+                              else if (st === 'manufacturing') badgeCls = "bg-amber-100 border-amber-300 text-amber-800";
+
+                              return (
+                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border shadow-xs ${badgeCls}`}>
+                                  {st}
+                                </span>
+                              );
+                            })()}
                           </td>
 
                           {/* Message */}
@@ -523,6 +563,23 @@ export default function InventoryView() {
 
           <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-5">
+              {formData.status && (
+                <div className={`p-4 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${
+                  formData.status === 'For process'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : formData.status === 'For Sell'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Tag size={16} className="shrink-0" />
+                    <span>Target Stock Status: <strong>{formData.status}</strong></span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded bg-white border border-slate-200 shadow-xs">
+                    {formData.status}
+                  </span>
+                </div>
+              )}
               {linkMetadata && (
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs font-bold text-indigo-700 flex items-center gap-2">
                   <Tag size={14} className="shrink-0" />
@@ -769,6 +826,43 @@ export default function InventoryView() {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Trace Item Status Update Input */}
+              <div className="border-t border-slate-200 pt-4 mt-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Trace Item Status Update
+                </label>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="e.g. For process, For Sell, In Inventory, manufacturing, active..."
+                      value={formData.status || ''}
+                      onChange={set('status')}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-800 focus:outline-none focus:border-[var(--theme-color)]"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['For process', 'For Sell', 'In Inventory', 'manufacturing', 'active'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, status: preset }))}
+                        className={`px-2.5 py-1 text-[10px] font-black rounded-lg border transition-colors cursor-pointer ${
+                          formData.status === preset
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 font-semibold mt-1">
+                  Updating this status will update the status column of the linked Trace Item in the database.
+                </p>
               </div>
 
               {/* Message */}

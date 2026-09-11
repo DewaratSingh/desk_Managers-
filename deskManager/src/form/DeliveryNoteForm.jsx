@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, RefreshCw, Tag, ShoppingCart, Cpu, Package } from 'lucide-react';
+import { AlertCircle, ArrowLeft, RefreshCw, Tag, ShoppingCart, Cpu, Package, X } from 'lucide-react';
 
 const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider";
 const inputCls = "w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs placeholder:text-slate-400 font-semibold focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
@@ -21,6 +21,12 @@ export default function DeliveryNoteForm() {
   // Trade ID to redirect back to
   const [tradeId, setTradeId] = useState(queryTradeId || '');
 
+  // Stock Selection Modal state for SELL/ARC trades
+  const [openStockPickerItem, setOpenStockPickerItem] = useState(null);
+  const [stockList, setStockList] = useState([]);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockAllocations, setStockAllocations] = useState({});
+
   // Header state
   const [formData, setFormData] = useState({
     delivery_note_no: '',
@@ -39,6 +45,7 @@ export default function DeliveryNoteForm() {
     if (location.state?.returnState) {
       const returnState = location.state.returnState;
       const updatedQty = location.state.updatedQty;
+      const actionType = location.state.actionType || (location.state.status === 'For process' ? 'process' : location.state.status === 'For Sell' ? 'sell' : 'inventory');
       
       setTradeId(returnState.tradeId);
       setTradeType(returnState.tradeType || 'sell');
@@ -46,9 +53,9 @@ export default function DeliveryNoteForm() {
       
       const mapped = returnState.items.map(it => {
         if (it.item_code === returnState.selectedItemCode) {
-          const inv_qty = updatedQty !== undefined ? updatedQty : (it.inv_qty || 0);
-          const sell_qty = it.sell_qty || 0;
-          const process_qty = it.process_qty || 0;
+          const inv_qty = actionType === 'inventory' ? (updatedQty !== undefined ? updatedQty : (it.inv_qty || 0)) : (it.inv_qty || 0);
+          const sell_qty = actionType === 'sell' ? (updatedQty !== undefined ? updatedQty : (it.sell_qty || 0)) : (it.sell_qty || 0);
+          const process_qty = actionType === 'process' ? (updatedQty !== undefined ? updatedQty : (it.process_qty || 0)) : (it.process_qty || 0);
           const delivery_qty = inv_qty + sell_qty + process_qty;
 
           return {
@@ -56,6 +63,8 @@ export default function DeliveryNoteForm() {
             selected: true,
             delivery_qty: delivery_qty,
             inv_qty: inv_qty,
+            sell_qty: sell_qty,
+            process_qty: process_qty,
             inv_details: location.state.inventoryDetails || it.inv_details
           };
         }
@@ -197,15 +206,84 @@ export default function DeliveryNoteForm() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const fetchStockForItem = async (item) => {
+    setOpenStockPickerItem(item);
+    setStockLoading(true);
+    setStockList([]);
+    setStockAllocations({});
+    try {
+      const res = await fetch(`/api/inventory?q=${encodeURIComponent(item.item_code)}&limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        const filtered = data.filter(inv => inv.item_code === item.item_code && inv.quantity > 0);
+        setStockList(filtered.length > 0 ? filtered : data);
+      }
+    } catch (err) {
+      console.error('Error fetching stock for item:', err);
+    } finally {
+      setStockLoading(false);
+    }
+  };
+
+  const handleSelectStockRow = (invRow, qtyToAlloc) => {
+    if (!openStockPickerItem) return;
+    const qty = parseInt(qtyToAlloc, 10);
+    if (isNaN(qty) || qty <= 0) {
+      alert("Please enter a valid quantity greater than 0.");
+      return;
+    }
+    if (qty > invRow.quantity) {
+      alert(`Cannot select more than available quantity of ${invRow.quantity}.`);
+      return;
+    }
+    if (qty > openStockPickerItem.remaining_qty) {
+      alert(`Cannot select more than remaining order limit of ${openStockPickerItem.remaining_qty}.`);
+      return;
+    }
+
+    setItems(prev => prev.map(it => {
+      if (it.item_code === openStockPickerItem.item_code) {
+        return {
+          ...it,
+          selected: true,
+          delivery_qty: qty,
+          linked_inventory_id: invRow.id,
+          linked_trace_item_id: invRow.trace_item_id || invRow.p_item_id || null,
+          linked_p_item_id: invRow.trace_item_id || invRow.p_item_id || null,
+          inv_details: {
+            location: invRow.location,
+            rack: invRow.rack,
+            shelf_number: invRow.shelf_number,
+            price: invRow.price,
+            trace_item_id: invRow.trace_item_id,
+            status: invRow.trace_status || invRow.status
+          }
+        };
+      }
+      return it;
+    }));
+
+    setOpenStockPickerItem(null);
+  };
+
   const handleItemCheckboxChange = (index) => {
+    const targetItem = items[index];
+    const newSelected = !targetItem.selected;
+
     setItems(prev => prev.map((item, idx) => {
       if (idx !== index) return item;
-      const newSelected = !item.selected;
       return {
         ...item,
-        selected: newSelected
+        selected: newSelected,
+        delivery_qty: newSelected ? (item.delivery_qty || 0) : 0,
+        linked_inventory_id: newSelected ? item.linked_inventory_id : null,
+        linked_trace_item_id: newSelected ? item.linked_trace_item_id : null
       };
     }));
+
+    if (newSelected && (tradeType === 'sell' || tradeType === 'ARC')) {
+      fetchStockForItem(targetItem);
+    }
   };
 
   const handleItemQtyChange = (index, value) => {
@@ -237,7 +315,8 @@ export default function DeliveryNoteForm() {
           quantity: item.inv_qty || item.delivery_qty || item.remaining_qty,
           price: item.inv_details?.price || item.rate_per_piece,
           trade_id: tradeId,
-          p_id: 'Will be generated on Delivery Note save',
+          status: 'In Inventory',
+          actionType: 'inventory',
           existingDetails: item.inv_details,
           returnUrl: editingNo ? `/updateDeliveryNote/${encodeURIComponent(editingNo)}` : '/addDeliveryNote',
           returnState: {
@@ -254,44 +333,53 @@ export default function DeliveryNoteForm() {
   };
 
   const handleSellClick = (item, idx) => {
-    navigate('/inventory/sell', {
+    navigate('/inventory/form', {
       state: {
-        item_code: item.item_code,
-        quantity: item.remaining_qty,
-        price: item.rate_per_piece,
-        source: 'delivery_note',
-        returnState: {
-          formData,
-          tradeId,
-          tradeType,
-          editingNo,
-          items,
-          selectedItemCode: item.item_code
+        autofill: {
+          item_code: item.item_code,
+          quantity: item.sell_qty || item.remaining_qty,
+          price: item.rate_per_piece,
+          trade_id: tradeId,
+          status: 'For Sell',
+          actionType: 'sell',
+          existingDetails: item.inv_details,
+          returnUrl: editingNo ? `/updateDeliveryNote/${encodeURIComponent(editingNo)}` : '/addDeliveryNote',
+          returnState: {
+            formData,
+            tradeId,
+            tradeType,
+            editingNo,
+            items,
+            selectedItemCode: item.item_code
+          }
         }
       }
     });
   };
 
   const handleProcessClick = (item, idx) => {
-    const qty = window.prompt(`Enter quantity for Process (max: ${item.remaining_qty}):`, item.process_qty || 0);
-    if (qty === null) return;
-    const parsed = parseInt(qty);
-    if (isNaN(parsed) || parsed < 0 || parsed > item.remaining_qty) {
-      alert("Invalid quantity!");
-      return;
-    }
-    setItems(prev => prev.map((it, index) => {
-      if (index !== idx) return it;
-      const process_qty = parsed;
-      const inv_qty = it.inv_qty || 0;
-      const sell_qty = it.sell_qty || 0;
-      return {
-        ...it,
-        selected: true,
-        process_qty,
-        delivery_qty: inv_qty + sell_qty + process_qty
-      };
-    }));
+    navigate('/inventory/form', {
+      state: {
+        autofill: {
+          item_code: item.item_code,
+          quantity: item.process_qty || item.remaining_qty,
+          price: item.rate_per_piece,
+          trade_id: tradeId,
+          status: 'For process',
+          actionType: 'process',
+          existingDetails: item.inv_details,
+          returnUrl: editingNo ? `/updateDeliveryNote/${encodeURIComponent(editingNo)}` : '/addDeliveryNote',
+          returnState: {
+            formData,
+            tradeId,
+            tradeType,
+            editingNo,
+            items,
+            selectedItemCode: item.item_code
+          }
+        }
+      }
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -574,7 +662,7 @@ export default function DeliveryNoteForm() {
                     <th className="px-3 py-2 text-right w-16">Remaining</th>
                     <th className="px-3 py-2 text-right w-20">Delivery Qty</th>
                     <th className="px-3 py-2 text-right w-20">Price</th>
-                    {tradeType === 'buy' && <th className="px-3 py-2 text-center w-[280px]">Action</th>}
+                    {tradeType === 'buy' && <th className="px-3 py-2 text-center w-[320px]">Action</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -619,6 +707,11 @@ export default function DeliveryNoteForm() {
                               {item.inventory_qty > 0 && ` (Cost: ₹${parseFloat(item.inventory_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })})`}
                             </span>
                           )}
+                          {item.linked_inventory_id && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-100 border border-emerald-300 text-emerald-900 shadow-xs animate-fade-in">
+                              <Package size={8} /> Allocated TR-{item.linked_trace_item_id || 'Stock'} ({item.delivery_qty} units)
+                            </span>
+                          )}
                           {item.inv_qty > 0 && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 shadow-sm animate-fade-in">
                               <Tag size={8} /> In Inventory: {item.inv_qty}
@@ -653,6 +746,18 @@ export default function DeliveryNoteForm() {
                       <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-800">
                         ₹{parseFloat(item.rate_per_piece || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
+                      {(tradeType === 'sell' || tradeType === 'ARC') && (
+                        <td className="px-3 py-1.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => fetchStockForItem(item)}
+                            className="px-2.5 py-1 text-[9px] font-extrabold rounded-lg text-emerald-800 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs mx-auto"
+                          >
+                            <Package size={10} />
+                            {item.linked_inventory_id ? 'Re-select Stock' : 'Select from Stock'}
+                          </button>
+                        </td>
+                      )}
                       {tradeType === 'buy' && (
                         <td className="px-3 py-1.5 text-center">
                           <div className="flex items-center justify-center gap-1">
@@ -669,6 +774,13 @@ export default function DeliveryNoteForm() {
                               className="px-2 py-0.5 text-[9px] font-extrabold rounded text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
                             >
                               {item.process_qty > 0 ? 'Update Process' : 'Process'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSellClick(item, idx)}
+                              className="px-2 py-0.5 text-[9px] font-extrabold rounded text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
+                            >
+                              {item.sell_qty > 0 ? 'Update Sell' : 'Sell'}
                             </button>
                           </div>
                         </td>
@@ -713,6 +825,145 @@ export default function DeliveryNoteForm() {
           </div>
         </form>
       </div>
+
+      {/* Stock Selection Modal for SELL / ARC Delivery */}
+      {openStockPickerItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-300 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 animate-fade-in">
+            {/* Modal Header */}
+            <div className="flex justify-between items-start border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
+                  <Package size={18} className="text-indigo-600" />
+                  Select Inventory Stock for Delivery
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-semibold">
+                  Item Code: <span className="font-mono font-bold text-slate-800 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">{openStockPickerItem.item_code}</span> | Max Remaining to Deliver: <span className="text-indigo-600 font-extrabold">{openStockPickerItem.remaining_qty}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenStockPickerItem(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Stock List Table */}
+            {stockLoading ? (
+              <div className="py-12 text-center text-slate-400 text-xs font-semibold animate-pulse flex flex-col items-center justify-center gap-2">
+                <RefreshCw size={20} className="animate-spin text-indigo-600" />
+                Loading active inventory stock...
+              </div>
+            ) : stockList.length === 0 ? (
+              <div className="py-10 text-center text-slate-500 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <AlertCircle size={24} className="mx-auto text-amber-500" />
+                <p className="m-0 font-bold text-slate-800">No active stock entries found for item code {openStockPickerItem.item_code} in inventory.</p>
+                <p className="text-[11px] text-slate-400 font-normal">You can record stock in Inventory first or enter delivery quantity manually.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-xs">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-3.5 py-2.5">Item Code</th>
+                      <th className="px-3.5 py-2.5">Location</th>
+                      <th className="px-3.5 py-2.5 text-right">Available Qty</th>
+                      <th className="px-3.5 py-2.5">Status</th>
+                      <th className="px-3.5 py-2.5 text-right">Price</th>
+                      <th className="px-3.5 py-2.5 text-right w-28">Select Qty</th>
+                      <th className="px-3.5 py-2.5 text-center w-28">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white font-semibold text-slate-800">
+                    {stockList.map((inv) => {
+                      const st = inv.trace_status || inv.status || 'active';
+                      let badgeCls = "bg-slate-100 border-slate-200 text-slate-700";
+                      if (st === 'For process') badgeCls = "bg-amber-50 border-amber-300 text-amber-800";
+                      else if (st === 'For Sell') badgeCls = "bg-emerald-50 border-emerald-300 text-emerald-800";
+                      else if (st === 'In Inventory') badgeCls = "bg-indigo-50 border-indigo-300 text-indigo-800";
+                      else if (st === 'manufacturing') badgeCls = "bg-amber-100 border-amber-300 text-amber-800";
+
+                      const allocQty = stockAllocations[inv.id] !== undefined ? stockAllocations[inv.id] : 0;
+
+                      return (
+                        <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-3.5 py-3 font-mono font-bold text-slate-900">
+                            <span className="px-1.5 py-0.5 border border-slate-200 rounded bg-slate-100 text-[10px]">
+                              {inv.item_code}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3">
+                            <div className="font-bold text-slate-900">{inv.location || '—'}</div>
+                            {(inv.rack || inv.shelf_number) && (
+                              <div className="text-[10px] text-slate-500">
+                                {inv.rack && `Rack: ${inv.rack}`} {inv.rack && inv.shelf_number && '|'} {inv.shelf_number && `Shelf: ${inv.shelf_number}`}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-3 text-right font-mono font-black text-slate-900">
+                            {inv.quantity || 0}
+                          </td>
+                          <td className="px-3.5 py-3">
+                            <div className="flex flex-col gap-0.5 items-start">
+                              {inv.trace_item_id && (
+                                <span className="font-mono text-[9px] text-indigo-700 font-bold bg-indigo-50 border border-indigo-200 px-1 py-0.2 rounded">
+                                  TR-{inv.trace_item_id}
+                                </span>
+                              )}
+                              <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${badgeCls}`}>
+                                {st}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-3.5 py-3 text-right font-mono font-bold">
+                            ₹{parseFloat(inv.calculated_price || inv.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-3.5 py-3 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              max={Math.min(inv.quantity, openStockPickerItem.remaining_qty)}
+                              value={allocQty}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setStockAllocations(prev => ({ ...prev, [inv.id]: val }));
+                              }}
+                              className="w-20 px-2 py-1 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none focus:border-indigo-500"
+                            />
+                          </td>
+                          <td className="px-3.5 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleSelectStockRow(inv, allocQty)}
+                              disabled={allocQty <= 0 || allocQty > inv.quantity}
+                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-[10px] rounded-lg transition-colors cursor-pointer shadow-xs disabled:cursor-not-allowed"
+                            >
+                              Select Stock
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOpenStockPickerItem(null)}
+                className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

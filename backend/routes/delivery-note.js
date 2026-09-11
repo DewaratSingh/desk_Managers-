@@ -256,7 +256,14 @@ router.post('/', async (req, res) => {
       const itemDbId = itemRes.rows[0].id;
 
       // Check if this item is linked to an existing inventory entry and needs deduction
+      let targetTraceId = parseInt(item.linked_trace_item_id || item.linked_p_item_id);
       if (item.linked_inventory_id) {
+        if (!targetTraceId) {
+          const invRes = await client.query('SELECT trace_item_id FROM inventory WHERE id = $1 AND company_id = $2', [parseInt(item.linked_inventory_id), req.user.company_id]);
+          if (invRes.rows.length > 0 && invRes.rows[0].trace_item_id) {
+            targetTraceId = invRes.rows[0].trace_item_id;
+          }
+        }
         const invUpdate = await client.query(
           `UPDATE inventory 
            SET quantity = quantity - $1 
@@ -272,31 +279,42 @@ router.post('/', async (req, res) => {
         }
       }
 
-      // Construct BUY step object containing buy trade_id, delivery_id, and unit_price
-      const buyUnitPrice = parseFloat(item.rate_per_piece || item.inv_details?.price) || 0.00;
-      const buyStep = {
-        type: 'BUY',
-        id: trade_code, // buy trade id string, e.g. TRD-1001
+      // Construct step object containing trade_id, delivery_id, and unit_price
+      const tradeTypeVal = trade.trade_type || 'sell';
+      const isBuyTrade = tradeTypeVal.toLowerCase() === 'buy';
+
+      const stepObj = {
+        type: isBuyTrade ? 'BUY' : 'SELL',
+        id: trade_code,
         delivery_id: delivery_note_no,
-        unit_price: buyUnitPrice
+        unit_price: parseFloat(item.rate_per_piece || item.inv_details?.price) || 0.00
       };
 
       // Check if this item has a linked trace_item record we need to append the process step to
-      if (item.linked_trace_item_id || item.linked_p_item_id) {
-        const targetTraceId = parseInt(item.linked_trace_item_id || item.linked_p_item_id);
+      if (targetTraceId) {
         const existingRes = await client.query('SELECT process FROM trace_item WHERE id = $1 AND company_id = $2', [targetTraceId, req.user.company_id]);
         let procArr = [];
         if (existingRes.rows.length > 0 && Array.isArray(existingRes.rows[0].process)) {
           procArr = existingRes.rows[0].process;
         }
-        procArr.push(buyStep);
+
+        if (!procArr.some(p => p.delivery_id === delivery_note_no && p.id === trade_code)) {
+          procArr.push(stepObj);
+        }
+
         const totalPrice = procArr.reduce((sum, p) => sum + (parseFloat(p.unit_price) || 0), 0);
 
         await client.query(
           `UPDATE trace_item 
-           SET process = $1::jsonb, price = $2 
-           WHERE id = $3 AND company_id = $4`,
-          [JSON.stringify(procArr), totalPrice, targetTraceId, req.user.company_id]
+           SET process = $1::jsonb, price = $2, status = $3 
+           WHERE id = $4 AND company_id = $5`,
+          [
+            JSON.stringify(procArr),
+            totalPrice,
+            isBuyTrade ? 'active' : 'delivered',
+            targetTraceId,
+            req.user.company_id
+          ]
         );
 
         await client.query(
@@ -309,7 +327,8 @@ router.post('/', async (req, res) => {
 
       let traceItemId = null;
       if (item.inv_qty > 0) {
-        const processList = [buyStep];
+        const buyUnitPrice = parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00;
+        const processList = [stepObj];
 
         // Insert into trace_item
         const pRes = await client.query(
@@ -440,7 +459,14 @@ router.put('/:delivery_note_no', async (req, res) => {
       const itemDbId = itemRes.rows[0].id;
 
       // Check if this item is linked to an existing inventory entry and needs deduction
+      let targetTraceId = parseInt(item.linked_trace_item_id || item.linked_p_item_id);
       if (item.linked_inventory_id) {
+        if (!targetTraceId) {
+          const invRes = await client.query('SELECT trace_item_id FROM inventory WHERE id = $1 AND company_id = $2', [parseInt(item.linked_inventory_id), req.user.company_id]);
+          if (invRes.rows.length > 0 && invRes.rows[0].trace_item_id) {
+            targetTraceId = invRes.rows[0].trace_item_id;
+          }
+        }
         const invUpdate = await client.query(
           `UPDATE inventory 
            SET quantity = quantity - $1 
@@ -456,38 +482,55 @@ router.put('/:delivery_note_no', async (req, res) => {
         }
       }
 
+      const stepObj = {
+        type: 'SELL',
+        id: trade_code,
+        delivery_id: delivery_note_no,
+        unit_price: parseFloat(item.rate_per_piece || item.inv_details?.price) || 0.00
+      };
+
       // Check if this item has a linked trace_item record we need to append the process trade to
-      if (item.linked_trace_item_id || item.linked_p_item_id) {
+      if (targetTraceId) {
+        const existingRes = await client.query('SELECT process FROM trace_item WHERE id = $1 AND company_id = $2', [targetTraceId, req.user.company_id]);
+        let procArr = [];
+        if (existingRes.rows.length > 0 && Array.isArray(existingRes.rows[0].process)) {
+          procArr = existingRes.rows[0].process;
+        }
+
+        if (!procArr.some(p => p.delivery_id === delivery_note_no && p.id === trade_code)) {
+          procArr.push(stepObj);
+        }
+
+        const totalPrice = procArr.reduce((sum, p) => sum + (parseFloat(p.unit_price) || 0), 0);
+
         await client.query(
           `UPDATE trace_item 
-           SET process = array_append(COALESCE(process, '{}'::integer[]), $1) 
-           WHERE id = $2 AND company_id = $3`,
-          [tradeDbId, parseInt(item.linked_trace_item_id || item.linked_p_item_id), req.user.company_id]
+           SET process = $1::jsonb, price = $2, status = 'delivered' 
+           WHERE id = $3 AND company_id = $4`,
+          [
+            JSON.stringify(procArr),
+            totalPrice,
+            targetTraceId,
+            req.user.company_id
+          ]
         );
       }
 
       let traceItemId = null;
       if (item.inv_qty > 0) {
-        const processList = [tradeDbId];
-        if (Array.isArray(item.linked_process_trades)) {
-          item.linked_process_trades.forEach(id => {
-            const parsed = parseInt(id);
-            if (!isNaN(parsed) && !processList.includes(parsed)) {
-              processList.push(parsed);
-            }
-          });
-        }
+        const buyUnitPrice = parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00;
+        const processList = [stepObj];
 
         // Insert into trace_item
         const pRes = await client.query(
-          `INSERT INTO trace_item (item_code, process, message, quantity, price, company_id)
-           VALUES ($1, $2::INTEGER[], $3, $4, $5, $6) RETURNING id`,
+          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+           VALUES ($1, $2::jsonb, $3, $4, $5, 'active', $6) RETURNING id`,
           [
             itemDbId,
-            processList,
+            JSON.stringify(processList),
             item.inv_details?.message || `Updated from DN: ${delivery_note_no}`,
             parseInt(item.inv_qty) || 0,
-            parseFloat(item.inv_details?.price || item.rate_per_piece) || 0.00,
+            buyUnitPrice,
             req.user.company_id
           ]
         );

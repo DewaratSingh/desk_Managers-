@@ -76,6 +76,7 @@ router.post('/', async (req, res) => {
     location,
     trade_id,
     message,
+    status,
     trace_item_id
   } = req.body || {};
 
@@ -100,6 +101,33 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Create or resolve trace_item_id with status
+    let finalTraceItemId = trace_item_id ? parseInt(trace_item_id) : null;
+    const targetStatus = status || 'active';
+
+    if (!finalTraceItemId) {
+      const processList = trade_id ? [{ type: 'BUY', id: trade_id, unit_price: parseFloat(price) || 0.00 }] : [];
+      const traceRes = await pool.query(
+        `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+         VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7) RETURNING id`,
+        [
+          itemDbId,
+          JSON.stringify(processList),
+          message || null,
+          parseInt(quantity) || 0,
+          parseFloat(price) || 0.00,
+          targetStatus,
+          req.user.company_id
+        ]
+      );
+      finalTraceItemId = traceRes.rows[0].id;
+    } else {
+      await pool.query(
+        `UPDATE trace_item SET status = $1 WHERE id = $2 AND company_id = $3`,
+        [targetStatus, finalTraceItemId, req.user.company_id]
+      );
+    }
+
     const result = await pool.query(
       `INSERT INTO inventory (
         item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, trace_item_id
@@ -114,7 +142,7 @@ router.post('/', async (req, res) => {
         tradeDbId,
         message || null,
         req.user.company_id,
-        trace_item_id ? parseInt(trace_item_id) : null
+        finalTraceItemId
       ]
     );
 
@@ -268,6 +296,7 @@ router.put('/:id', async (req, res) => {
     location,
     trade_id,
     message,
+    status,
     trace_item_id
   } = req.body || {};
 
@@ -323,6 +352,21 @@ router.put('/:id', async (req, res) => {
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Inventory record not found' });
+    }
+
+    // Update status in trace_item if provided
+    let targetTraceId = trace_item_id ? parseInt(trace_item_id) : null;
+    if (!targetTraceId) {
+      const invRow = await pool.query('SELECT trace_item_id FROM inventory WHERE id = $1 AND company_id = $2', [id, req.user.company_id]);
+      if (invRow.rows.length > 0 && invRow.rows[0].trace_item_id) {
+        targetTraceId = invRow.rows[0].trace_item_id;
+      }
+    }
+    if (targetTraceId && status) {
+      await pool.query(
+        'UPDATE trace_item SET status = $1 WHERE id = $2 AND company_id = $3',
+        [status, targetTraceId, req.user.company_id]
+      );
     }
 
     // Fetch updated record with joined details
