@@ -5,6 +5,7 @@ import { AlertCircle, ArrowLeft, FileText, RefreshCw, Tag, Check, Loader2 } from
 import RfqPanel       from './panel/RfqPanel';
 import QuotationPanel from './panel/QuotationPanel';
 import ReceivedQuotationPanel from './panel/ReceivedQuotationPanel';
+import ProcessRqPanel from './panel/ProcessRqPanel';
 import PoPanel        from './panel/PoPanel';
 import RoPanel        from './panel/RoPanel';
 import DeliveryPanel  from './panel/DeliveryPanel';
@@ -27,9 +28,10 @@ const statusStyle = (s) => {
 
 const tradeTypeStyle = (type) => {
   const t = (type || '').toUpperCase();
-  if (t === 'SELL') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
-  if (t === 'BUY')  return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
-  if (t === 'ARC')  return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
+  if (t === 'SELL')    return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
+  if (t === 'BUY')     return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
+  if (t === 'ARC')     return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
+  if (t === 'PROCESS') return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
   return { color: '#475569', borderColor: '#cbd5e1', backgroundColor: '#f8fafc' };
 };
 
@@ -196,6 +198,7 @@ export default function TradeView() {
   const [rfq, setRfq]                   = useState(null);
   const [quotation, setQuotation]       = useState(null);
   const [receivedQuotation, setReceivedQuotation] = useState(null);
+  const [processRq, setProcessRq]       = useState(null);
   const [purchaseOrder, setPurchaseOrder] = useState(null);
   const [releaseOrder, setReleaseOrder]   = useState(null);
   const [deliveryNotes, setDeliveryNotes] = useState([]);
@@ -223,6 +226,7 @@ export default function TradeView() {
       const rfqDoc = docs.find(d => d.type?.toUpperCase() === 'RFQ');
       const qtnDoc = docs.find(d => d.type?.toUpperCase() === 'QUOTATION');
       const recQtnDoc = docs.find(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
+      const prDoc  = docs.find(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
       const poDoc  = docs.find(d => d.type?.toUpperCase() === 'PURCHASE_ORDER' || d.type?.toUpperCase() === 'PO');
       const roDoc  = docs.find(d => d.type?.toUpperCase() === 'RO');
       const dnDocs = docs.filter(d => d.type?.toUpperCase() === 'DN' || d.type?.toUpperCase() === 'DELIVERY_NOTE');
@@ -234,6 +238,7 @@ export default function TradeView() {
         rfqDoc?.id ? fetchRFQ(rfqDoc.id)   : Promise.resolve(setRfq(null)),
         qtnDoc?.id ? fetchQTN(qtnDoc.id)   : Promise.resolve(setQuotation(null)),
         recQtnDoc?.id ? fetchReceivedQTN(recQtnDoc.id) : Promise.resolve(setReceivedQuotation(null)),
+        prDoc?.id ? fetchProcessRQ(prDoc.id) : Promise.resolve(setProcessRq(null)),
         poDoc?.id  ? fetchPO(poDoc.id)     : Promise.resolve(setPurchaseOrder(null)),
         roDoc?.id  ? fetchRO(roDoc.id)     : Promise.resolve(setReleaseOrder(null)),
         dnDocs.length > 0
@@ -278,10 +283,23 @@ export default function TradeView() {
     } catch (err) { console.error(err); }
   };
 
+  const fetchProcessRQ = async (id) => {
+    try {
+      const res = await fetch(`/api/rq-process/${encodeURIComponent(id)}`);
+      if (res.ok) setProcessRq(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
   const fetchPO = async (id) => {
     try {
-      const res = await fetch(`/api/purchase-orders/${encodeURIComponent(id)}`);
-      if (res.ok) setPurchaseOrder(await res.json());
+      // PPO- prefix = Process Purchase Order, different endpoint
+      if (String(id).startsWith('PPO-')) {
+        const res = await fetch(`/api/process-po/${encodeURIComponent(id)}`);
+        if (res.ok) setPurchaseOrder({ ...(await res.json()), _is_process_po: true });
+      } else {
+        const res = await fetch(`/api/purchase-orders/${encodeURIComponent(id)}`);
+        if (res.ok) setPurchaseOrder(await res.json());
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -378,6 +396,8 @@ export default function TradeView() {
   const hasRecQtnDoc = docs.some(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
   const hasPoDoc = docs.some(d => d.type?.toUpperCase() === 'PURCHASE_ORDER' || d.type?.toUpperCase() === 'PO');
   const hasRoDoc = docs.some(d => d.type?.toUpperCase() === 'RO');
+  const hasProcessRqDoc = docs.some(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
+  const isProcessTrade = (trade.trade_type || '').toUpperCase() === 'PROCESS';
 
   const panels = [];
 
@@ -417,11 +437,26 @@ export default function TradeView() {
     });
   }
 
-  if (hasPoDoc || hasQuotationDoc || hasRecQtnDoc) {
+  if (processRq) {
+    panels.push({
+      key: 'process_rq',
+      label: '① Process Trade Request (RQ)',
+      component: <ProcessRqPanel processRq={processRq} tradeId={trade.trade_id} />
+    });
+  }
+
+  if (hasPoDoc || hasQuotationDoc || hasRecQtnDoc || (isProcessTrade && hasProcessRqDoc)) {
     panels.push({
       key: 'po',
       label: (rfq && hasQuotationDoc) ? '③ Purchase Order' : '② Purchase Order',
-      component: <PoPanel purchaseOrder={purchaseOrder} quotation={quotation || receivedQuotation} tradeId={trade.trade_id} isBuySide={trade.trade_type === 'buy'} />
+      component: <PoPanel
+        purchaseOrder={purchaseOrder}
+        quotation={quotation || receivedQuotation}
+        processRq={isProcessTrade ? processRq : null}
+        tradeId={trade.trade_id}
+        isBuySide={trade.trade_type === 'buy'}
+        isProcessSide={isProcessTrade}
+      />
     });
   }
 
@@ -504,6 +539,8 @@ export default function TradeView() {
     RFQ:            'RFQ',
     QUOTATION:      'Quotation',
     RECEIVED_QUOTATION: 'Received Quotation',
+    PR:             'Process Request',
+    RQ_PROCESS:     'Process Request',
     PURCHASE_ORDER: 'Purchase Order',
     PO:             'Purchase Order',
     RO:             'Release Order',

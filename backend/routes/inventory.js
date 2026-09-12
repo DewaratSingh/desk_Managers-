@@ -8,6 +8,8 @@ router.get('/', async (req, res) => {
   const limit = req.query.limit ? parseInt(req.query.limit) : null;
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
   try {
+    await pool.query('DELETE FROM inventory WHERE quantity <= 0 AND company_id = $1', [req.user.company_id]);
+
     let queryText = `
       SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
              inv.location, t.trade_id, inv.message, inv.trace_item_id,
@@ -26,13 +28,23 @@ router.get('/', async (req, res) => {
              it.description, it.drawing_number,
              m.completed_quantity AS mfg_completed_qty,
              m.expected_quantity AS mfg_expected_qty,
-             m.completed AS mfg_is_completed
+             m.completed AS mfg_is_completed,
+             (
+               SELECT COALESCE(SUM(dni.quantity), 0)
+               FROM delivery_note_items dni
+               JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+               WHERE dni.company_id = inv.company_id
+                 AND (
+                   dni.process_target_trace_item_id = inv.trace_item_id
+                   OR (inv.trade_id IS NOT NULL AND dn.trade_id = inv.trade_id AND dni.item_id = inv.item_code)
+                 )
+             ) AS process_completed_qty
       FROM inventory inv
       LEFT JOIN items it ON inv.item_code = it.id
       LEFT JOIN trades t ON inv.trade_id = t.id
       LEFT JOIN trace_item p ON inv.trace_item_id = p.id
       LEFT JOIN manufacture m ON inv.trace_item_id = m.target_trace_item_id AND m.company_id = inv.company_id
-      WHERE inv.company_id = $1
+      WHERE inv.company_id = $1 AND inv.quantity > 0
     `;
     const params = [req.user.company_id];
     if (q) {

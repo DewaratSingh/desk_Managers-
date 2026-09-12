@@ -366,6 +366,11 @@ const initializeDatabase = async () => {
       ALTER TABLE delivery_note_items ADD COLUMN IF NOT EXISTS next_activity JSONB;
     `);
 
+    await client.query(`
+      ALTER TABLE delivery_note_items
+      ADD COLUMN IF NOT EXISTS process_target_trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL;
+    `);
+
     // Migrate CHECK constraint to allow quantity >= 0
     await client.query(`
       ALTER TABLE delivery_note_items DROP CONSTRAINT IF EXISTS delivery_note_items_quantity_check;
@@ -557,7 +562,68 @@ const initializeDatabase = async () => {
       ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT false;
     `);
 
-    // Seed default units
+    // 30. RQ Process Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS rq_process (
+        id SERIAL PRIMARY KEY,
+        rq_process_no VARCHAR(100) NOT NULL,
+        date DATE NOT NULL,
+        seller VARCHAR(255),
+        party VARCHAR(255),
+        message TEXT,
+        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (rq_process_no, company_id)
+      );
+    `);
+
+    // 31. Process Item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS process_item (
+        id SERIAL PRIMARY KEY,
+        rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE CASCADE,
+        source_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        source_item_quantity INTEGER NOT NULL CHECK (source_item_quantity > 0),
+        target_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        target_item_quantity INTEGER NOT NULL CHECK (target_item_quantity > 0),
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 32. Process PO Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS process_po (
+        id SERIAL PRIMARY KEY,
+        po_no VARCHAR(100) NOT NULL,
+        date DATE NOT NULL,
+        delivery_date DATE,
+        rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE SET NULL,
+        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (po_no, company_id)
+      );
+    `);
+
+    // 33. PO Process Item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS po_process_item (
+        id SERIAL PRIMARY KEY,
+        process_po_id INTEGER REFERENCES process_po(id) ON DELETE CASCADE,
+        source_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        source_item_quantity INTEGER NOT NULL DEFAULT 0,
+        target_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        target_item_quantity INTEGER NOT NULL DEFAULT 0,
+        price DECIMAL(12,2) DEFAULT 0.00,
+        source_item_traceid_array JSONB DEFAULT '[]'::jsonb,
+        target_item_traceid_array JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     const defaultUnits = ['Piece', 'Set', 'Kg', 'Meter', 'Box', 'Litre'];
     for (const unit of defaultUnits) {
       await client.query(`

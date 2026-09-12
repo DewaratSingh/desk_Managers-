@@ -23,6 +23,8 @@ const grnRouter = require('./grn');
 const paymentRouter = require('./payment');
 const pItemRouter = require('./p-item');
 const manufactureRouter = require('./manufacture');
+const rqProcessRouter = require('./rq-process');
+const processPORouter = require('./process-po');
 
 // Simple health check for API
 router.get('/health', (req, res) => {
@@ -56,5 +58,7 @@ router.use('/payments', paymentRouter);
 router.use('/p-items', pItemRouter);
 router.use('/trace-items', pItemRouter);
 router.use('/manufacture', manufactureRouter);
+router.use('/rq-process', rqProcessRouter);
+router.use('/process-po', processPORouter);
 
 module.exports = router;

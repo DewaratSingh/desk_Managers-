@@ -426,6 +426,7 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
         COALESCE(
           (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = $1 AND po.company_id = $2),
           (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = $1 AND ro.company_id = $2),
+          (SELECT SUM(ppi.target_item_quantity * ppi.price) FROM process_po pp JOIN po_process_item ppi ON pp.id = ppi.process_po_id WHERE pp.trade_id = $1 AND pp.company_id = $2),
           0
         )::numeric AS ordered_val,
         COALESCE(
@@ -465,6 +466,14 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
             JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
             JOIN release_order_items roi ON dn.ro_id = roi.ro_id AND dni.item_id = roi.item_id
             JOIN items i ON dni.item_id = i.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $2
+          ),
+          (
+            SELECT SUM(dni.quantity * ppi.price)
+            FROM delivery_notes dn
+            JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+            JOIN process_po pp ON dn.trade_id = pp.trade_id
+            JOIN po_process_item ppi ON pp.id = ppi.process_po_id AND dni.item_id = ppi.target_item_id
             WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
           0

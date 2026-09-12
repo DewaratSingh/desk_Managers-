@@ -15,18 +15,21 @@ router.get('/', async (req, res) => {
           (SELECT r.rfq_no FROM rfqs r WHERE r.trade_id = t.id AND r.company_id = t.company_id LIMIT 1),
           (SELECT rq.received_quotation_no FROM received_quotations rq WHERE rq.trade_id = t.id AND rq.company_id = t.company_id LIMIT 1),
           (SELECT ro.ro_no FROM release_orders ro WHERE ro.trade_id = t.id AND ro.company_id = t.company_id LIMIT 1),
+          (SELECT pr.rq_process_no FROM rq_process pr WHERE pr.trade_id = t.id AND pr.company_id = t.company_id LIMIT 1),
           '—'
         ) AS ref_id,
         COALESCE(
           (SELECT c.customer_code FROM rfqs r JOIN customers c ON r.customer_id = c.id WHERE r.trade_id = t.id AND r.company_id = t.company_id LIMIT 1),
           (SELECT c.customer_code FROM received_quotations rq JOIN customers c ON rq.customer_id = c.id WHERE rq.trade_id = t.id AND rq.company_id = t.company_id LIMIT 1),
           (SELECT c.customer_code FROM release_orders ro JOIN customers c ON ro.customer_id = c.id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id LIMIT 1),
+          (SELECT pr.party FROM rq_process pr WHERE pr.trade_id = t.id AND pr.company_id = t.company_id LIMIT 1),
           '—'
         ) AS party_id,
         COALESCE(
           (SELECT b.name FROM rfqs r JOIN buyers b ON r.buyer_id = b.id WHERE r.trade_id = t.id AND r.company_id = t.company_id LIMIT 1),
           (SELECT b.name FROM received_quotations rq JOIN buyers b ON rq.buyer_id = b.id WHERE rq.trade_id = t.id AND rq.company_id = t.company_id LIMIT 1),
           (SELECT b.name FROM release_orders ro JOIN buyers b ON ro.buyer_id = b.id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id LIMIT 1),
+          (SELECT pr.seller FROM rq_process pr WHERE pr.trade_id = t.id AND pr.company_id = t.company_id LIMIT 1),
           '—'
         ) AS contact_name,
         (
@@ -36,6 +39,7 @@ router.get('/', async (req, res) => {
               COALESCE(
                 (SELECT SUM(poi.quantity) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = t.id AND po.company_id = t.company_id),
                 (SELECT SUM(roi.quantity) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id),
+                (SELECT SUM(ppi.target_item_quantity) FROM process_po pp JOIN po_process_item ppi ON pp.id = ppi.process_po_id WHERE pp.trade_id = t.id AND pp.company_id = t.company_id),
                 0
               ) AS ordered_qty,
               COALESCE(
@@ -74,6 +78,7 @@ router.get('/', async (req, res) => {
         OR EXISTS (SELECT 1 FROM delivery_notes dn WHERE dn.trade_id = t.id AND dn.company_id = t.company_id AND dn.delivery_note_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM quotations q WHERE q.trade_id = t.id AND q.company_id = t.company_id AND q.quotation_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM received_quotations rq WHERE rq.trade_id = t.id AND rq.company_id = t.company_id AND rq.received_quotation_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM rq_process pr WHERE pr.trade_id = t.id AND pr.company_id = t.company_id AND pr.rq_process_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM rfqs r WHERE r.trade_id = t.id AND r.company_id = t.company_id AND r.rfq_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM invoices inv WHERE inv.trade_id = t.id AND inv.company_id = t.company_id AND inv.invoice_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM grns g WHERE g.trade_id = t.id AND g.company_id = t.company_id AND g.grn_no ILIKE $${idx})

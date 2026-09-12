@@ -1,4 +1,4 @@
-import { ShoppingCart, List, Edit2, Plus, ExternalLink } from 'lucide-react';
+import { ShoppingCart, List, Edit2, Plus, ExternalLink, Truck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const fmtDate = (d) => {
@@ -18,7 +18,7 @@ const statusColor = (s) => {
   return 'bg-amber-50 text-amber-700 border-amber-200';
 };
 
-export default function PoPanel({ purchaseOrder, quotation, tradeId, isBuySide }) {
+export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, isBuySide, isProcessSide }) {
   // Check if quotation was rejected
   if (quotation && quotation.status === 'rejected') {
     return (
@@ -35,6 +35,29 @@ export default function PoPanel({ purchaseOrder, quotation, tradeId, isBuySide }
 
   // Prompt card when quotation exists but no PO yet
   if (!purchaseOrder) {
+    // Process trade: show "Create Process PO" button after Process RQ
+    if (isProcessSide && processRq) {
+      return (
+        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
+          <div className="max-w-sm mx-auto space-y-1">
+            <h3 className="text-sm font-bold text-slate-800">No Purchase Order Raised</h3>
+            <p className="text-xs text-slate-500 font-semibold">
+              A Process Trade Request has been registered. The next step is to raise a Purchase Order for the process items.
+            </p>
+          </div>
+          <Link
+            to={`/addProcessPurchaseOrder?rq_process_no=${processRq.rq_process_no}&trade_id=${tradeId}`}
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 text-white font-bold text-xs rounded-lg cursor-pointer shadow-sm"
+            style={{ backgroundColor: 'var(--theme-color)' }}
+            onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(0.9)'}
+            onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
+          >
+            <Plus size={13} /> Create Process PO
+          </Link>
+        </div>
+      );
+    }
+
     if (!quotation) return null;
     const qtnNo = quotation.received_quotation_no || quotation.quotation_no;
     const addUrl = isBuySide
@@ -57,6 +80,108 @@ export default function PoPanel({ purchaseOrder, quotation, tradeId, isBuySide }
         >
           <Plus size={13} /> Create Purchase Order
         </Link>
+      </div>
+    );
+  }
+
+  // ── Process PO View ──────────────────────────────────────────────────────────
+  if (purchaseOrder._is_process_po) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+            <ShoppingCart size={14} style={{ color: 'var(--theme-color)' }} />
+            Process Purchase Order
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+              {purchaseOrder.po_no}
+            </span>
+            <Link
+              to={`/addDeliveryNote?trade_id=${encodeURIComponent(tradeId)}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+            >
+              <Truck size={13} />
+              Process Delivery
+            </Link>
+          </div>
+        </div>
+        <div className="p-6 space-y-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-slate-100">
+            {[
+              { label: 'PO Date',     value: fmtDate(purchaseOrder.date) },
+              { label: 'Delivery Date', value: fmtDate(purchaseOrder.delivery_date) },
+              { label: 'Seller',      value: purchaseOrder.seller || '—' },
+              { label: 'Party',       value: purchaseOrder.party || '—' },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
+                <p className="text-sm font-semibold text-slate-800">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Items */}
+          <div className="space-y-4">
+            {(purchaseOrder.items || []).map((item, idx) => {
+              const srcAllocs = item.source_item_traceid_array || [];
+              const tgtAllocs = item.target_item_traceid_array || [];
+              return (
+                <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center justify-between">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Row {idx + 1}</span>
+                    <span className="text-[10px] font-bold text-slate-500">Price: <span className="font-black text-slate-800">₹{fmt(item.price)}</span></span>
+                  </div>
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Source */}
+                    <div className="space-y-2">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Source Item</p>
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
+                        <p className="font-mono font-bold text-xs text-slate-900">{item.source_item_code}</p>
+                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">{item.source_description}</p>
+                        <p className="text-[10px] font-bold text-slate-600 mt-1">Qty: {item.source_item_quantity}</p>
+                      </div>
+                      {srcAllocs.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {srcAllocs.map((a, ai) => (
+                            <span key={ai} className="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
+                              TR-{a.trace_item_id || '?'} × {a.quantity}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {/* Target */}
+                    <div className="space-y-2">
+                      <p className="text-[9px] font-black text-indigo-400 uppercase tracking-wider">Target Item (Output)</p>
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
+                        <p className="font-mono font-bold text-xs text-indigo-900">{item.target_item_code}</p>
+                        <p className="text-[11px] text-indigo-600 font-medium mt-0.5">{item.target_description}</p>
+                        <p className="text-[10px] font-bold text-indigo-700 mt-1">Qty: {item.target_item_quantity}</p>
+                      </div>
+                      {tgtAllocs.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {tgtAllocs.map((a, ai) => {
+                            const isDelivered = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'delivered' || a.status === 'completed';
+                            return (
+                              <span key={ai} className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                isDelivered ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                              }`}>
+                                New TR-{a.trace_item_id} × {a.quantity} <span className={isDelivered ? "text-emerald-600 font-bold" : "text-indigo-400"}>
+                                  [{isDelivered ? 'Delivered' : 'in process'}]
+                                </span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     );
   }

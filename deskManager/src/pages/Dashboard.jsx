@@ -153,8 +153,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
               <p className="text-xs text-slate-500 mt-1">Quick stats and recent activity.</p>
             </div>
 
-            {/* 3 Buttons at top */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* 4 Buttons at top */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <button
                 onClick={() => navigate('/addRfq')}
                 className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
@@ -178,11 +178,19 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                 <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">BUY</span>
                 <span className="text-xs text-slate-500 font-semibold">Create Buy Trade</span>
               </button>
+
+              <button
+                onClick={() => navigate('/addProcessRq')}
+                className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
+              >
+                <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">PROCESS</span>
+                <span className="text-xs text-slate-500 font-semibold">Create Process Trade</span>
+              </button>
             </div>
 
             {/* List all trade at bottom */}
             {(() => {
-              const staticTypes = ['Sell', 'Buy', 'ARC'];
+              const staticTypes = ['Sell', 'Buy', 'ARC', 'Process'];
               const filterOptions = [
                 ...staticTypes.map(t => ({ label: `Type: ${t}`, type: 'trade_type', value: t })),
                 ...allStatuses.map(s => ({ label: `Status: ${s.toUpperCase()}`, type: 'status', value: s }))

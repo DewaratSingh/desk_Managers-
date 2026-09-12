@@ -107,43 +107,84 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
       );
       items = roItemsRes.rows;
     } else if (po_no) {
-      const poRes = await pool.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
-      if (poRes.rows.length === 0) {
-        return res.status(404).json({ error: 'Purchase Order not found' });
-      }
-      const poDbId = poRes.rows[0].id;
+      if (po_no.startsWith('PPO-')) {
+        const ppoRes = await pool.query('SELECT id FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
+        if (ppoRes.rows.length === 0) {
+          return res.status(404).json({ error: 'Process Purchase Order not found' });
+        }
+        const ppoDbId = ppoRes.rows[0].id;
 
-      const poItemsRes = await pool.query(
-        `SELECT
-          i.item_code,
-          poi.quantity as original_qty,
-          poi.unit_price as rate_per_piece,
-          poi.shipping_address,
-          poi.delivery_date,
-          i.description,
-          i.drawing_number,
-          COALESCE((
-            SELECT SUM(dni.quantity)
-            FROM delivery_note_items dni
-            JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
-            WHERE dn.trade_id = $1 AND dn.company_id = $4
-              AND dni.item_id = poi.item_id
-              AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
-          ), 0) - COALESCE((
-            SELECT SUM((elem->>'quantity')::numeric)
-            FROM grns g
-            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-            WHERE g.trade_id = $1 AND g.company_id = $4
-              AND elem->>'item_code' = i.item_code
-              AND ($3::varchar IS NULL OR (SELECT delivery_note_no FROM delivery_notes WHERE id = g.delivery_note_id) != $3)
-          ), 0) as delivered_qty
-        FROM purchase_order_items poi
-        LEFT JOIN items i ON poi.item_id = i.id AND i.company_id = poi.company_id
-        WHERE poi.po_id = $2 AND poi.company_id = $4
-        ORDER BY poi.id`,
-        [tradeDbId, poDbId, exclude_dn_no || null, req.user.company_id]
-      );
-      items = poItemsRes.rows;
+        const ppoItemsRes = await pool.query(
+          `SELECT
+            i.item_code,
+            poi.target_item_quantity as original_qty,
+            poi.price as rate_per_piece,
+            i.description,
+            i.drawing_number,
+            poi.target_item_traceid_array,
+            COALESCE((
+              SELECT SUM(dni.quantity)
+              FROM delivery_note_items dni
+              JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+              WHERE dn.trade_id = $1 AND dn.company_id = $4
+                AND dni.item_id = poi.target_item_id
+                AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
+            ), 0) as delivered_qty
+          FROM po_process_item poi
+          LEFT JOIN items i ON poi.target_item_id = i.id AND i.company_id = poi.company_id
+          WHERE poi.process_po_id = $2 AND poi.company_id = $4
+          ORDER BY poi.id`,
+          [tradeDbId, ppoDbId, exclude_dn_no || null, req.user.company_id]
+        );
+
+        items = ppoItemsRes.rows.map(row => {
+          const tgtArray = row.target_item_traceid_array || [];
+          const targetTraceId = tgtArray.length > 0 ? tgtArray[0].trace_item_id : null;
+          return {
+            ...row,
+            process_target_trace_item_id: targetTraceId,
+            linked_trace_item_id: targetTraceId
+          };
+        });
+      } else {
+        const poRes = await pool.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
+        if (poRes.rows.length === 0) {
+          return res.status(404).json({ error: 'Purchase Order not found' });
+        }
+        const poDbId = poRes.rows[0].id;
+
+        const poItemsRes = await pool.query(
+          `SELECT
+            i.item_code,
+            poi.quantity as original_qty,
+            poi.unit_price as rate_per_piece,
+            poi.shipping_address,
+            poi.delivery_date,
+            i.description,
+            i.drawing_number,
+            COALESCE((
+              SELECT SUM(dni.quantity)
+              FROM delivery_note_items dni
+              JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+              WHERE dn.trade_id = $1 AND dn.company_id = $4
+                AND dni.item_id = poi.item_id
+                AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
+            ), 0) - COALESCE((
+              SELECT SUM((elem->>'quantity')::numeric)
+              FROM grns g
+              CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+              WHERE g.trade_id = $1 AND g.company_id = $4
+                AND elem->>'item_code' = i.item_code
+                AND ($3::varchar IS NULL OR (SELECT delivery_note_no FROM delivery_notes WHERE id = g.delivery_note_id) != $3)
+            ), 0) as delivered_qty
+          FROM purchase_order_items poi
+          LEFT JOIN items i ON poi.item_id = i.id AND i.company_id = poi.company_id
+          WHERE poi.po_id = $2 AND poi.company_id = $4
+          ORDER BY poi.id`,
+          [tradeDbId, poDbId, exclude_dn_no || null, req.user.company_id]
+        );
+        items = poItemsRes.rows;
+      }
     }
 
     // Map remaining quantities
@@ -262,45 +303,50 @@ router.post('/', async (req, res) => {
       const tradeTypeVal = trade.trade_type || 'sell';
       const isBuyTrade = tradeTypeVal.toLowerCase() === 'buy';
 
-      if (item.linked_inventory_id && !isBuyTrade) {
-        if (!targetTraceId) {
-          const invRes = await client.query('SELECT trace_item_id FROM inventory WHERE id = $1 AND company_id = $2', [parseInt(item.linked_inventory_id), req.user.company_id]);
-          if (invRes.rows.length > 0 && invRes.rows[0].trace_item_id) {
-            targetTraceId = invRes.rows[0].trace_item_id;
+      if (!isBuyTrade) {
+        const allocationsToProcess = Array.isArray(item.stock_allocations) && item.stock_allocations.length > 0
+          ? item.stock_allocations
+          : (item.linked_inventory_id ? [{
+              inventory_id: item.linked_inventory_id,
+              trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id,
+              quantity: item.quantity,
+              price: item.rate_per_piece || item.inv_details?.price
+            }] : []);
+
+        for (const alloc of allocationsToProcess) {
+          const allocQty = parseInt(alloc.quantity) || 0;
+          const allocInvId = parseInt(alloc.inventory_id);
+
+          if (allocInvId && allocQty > 0) {
+            const invUpdate = await client.query(
+              `UPDATE inventory 
+               SET quantity = quantity - $1 
+               WHERE id = $2 AND company_id = $3 
+               RETURNING quantity`,
+              [allocQty, allocInvId, req.user.company_id]
+            );
+            if (invUpdate.rows.length > 0 && parseInt(invUpdate.rows[0].quantity) <= 0) {
+              await client.query(
+                'DELETE FROM inventory WHERE id = $1 AND company_id = $2',
+                [allocInvId, req.user.company_id]
+              );
+            }
           }
         }
-        const invUpdate = await client.query(
-          `UPDATE inventory 
-           SET quantity = quantity - $1 
-           WHERE id = $2 AND company_id = $3 
-           RETURNING quantity`,
-          [parseInt(item.quantity) || 0, parseInt(item.linked_inventory_id), req.user.company_id]
-        );
-        if (invUpdate.rows.length > 0 && parseInt(invUpdate.rows[0].quantity) <= 0) {
-          await client.query(
-            'DELETE FROM inventory WHERE id = $1 AND company_id = $2',
-            [parseInt(item.linked_inventory_id), req.user.company_id]
-          );
-        }
-      }
+      } else if (targetTraceId) {
+        const stepObj = {
+          type: 'BUY',
+          id: trade_code,
+          delivery_id: delivery_note_no,
+          unit_price: parseFloat(item.rate_per_piece || item.inv_details?.price) || 0.00
+        };
+        const targetStatus = item.inv_details?.status || 'In Inventory';
 
-      // Construct step object containing trade_id, delivery_id, and unit_price
-      const stepObj = {
-        type: isBuyTrade ? 'BUY' : 'SELL',
-        id: trade_code,
-        delivery_id: delivery_note_no,
-        unit_price: parseFloat(item.rate_per_piece || item.inv_details?.price) || 0.00
-      };
-
-      const targetStatus = item.inv_details?.status || (isBuyTrade ? 'In Inventory' : 'delivered');
-
-      // Check if this item has a linked trace_item record we need to append the process step to
-      if (targetTraceId) {
         const existingRes = await client.query('SELECT process FROM trace_item WHERE id = $1 AND company_id = $2', [targetTraceId, req.user.company_id]);
         let procArr = [];
         if (existingRes.rows.length > 0 && Array.isArray(existingRes.rows[0].process)) {
           procArr = existingRes.rows[0].process.map(p => {
-            if (p.id && String(p.id).startsWith('TRD-') && isBuyTrade) {
+            if (p.id && String(p.id).startsWith('TRD-')) {
               return { ...p, type: 'BUY' };
             }
             return p;
@@ -426,9 +472,11 @@ router.post('/', async (req, res) => {
         process: item.process_qty > 0 ? { quantity: parseInt(item.process_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.process || targetTraceId || null } : null
       };
 
+      const targetTraceRef = item.process_target_trace_item_id || targetTraceId || null;
+
       await client.query(
-        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity, process_target_trace_item_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           dnDbId,
           itemDbId,
@@ -437,9 +485,34 @@ router.post('/', async (req, res) => {
           item.shipping_address || null,
           item.delivery_date || null,
           req.user.company_id,
-          JSON.stringify(next_activity)
+          JSON.stringify(next_activity),
+          targetTraceRef
         ]
       );
+
+      if (targetTraceRef) {
+        const sumRes = await client.query(
+          `SELECT COALESCE(SUM(quantity), 0) AS total_delivered
+           FROM delivery_note_items
+           WHERE process_target_trace_item_id = $1 AND company_id = $2`,
+          [targetTraceRef, req.user.company_id]
+        );
+        const totalDelivered = parseInt(sumRes.rows[0].total_delivered) || 0;
+
+        const traceRes = await client.query(
+          'SELECT quantity FROM trace_item WHERE id = $1 AND company_id = $2',
+          [targetTraceRef, req.user.company_id]
+        );
+        if (traceRes.rows.length > 0) {
+          const expectedQty = parseInt(traceRes.rows[0].quantity) || 0;
+          if (expectedQty > 0 && totalDelivered >= expectedQty) {
+            await client.query(
+              "UPDATE trace_item SET status = 'In Inventory' WHERE id = $1 AND company_id = $2",
+              [targetTraceRef, req.user.company_id]
+            );
+          }
+        }
+      }
     }
 
     // 5. Append to trade documents
@@ -522,44 +595,50 @@ router.put('/:delivery_note_no', async (req, res) => {
       const tradeTypeVal = (tradeRes.rows.length > 0 && tradeRes.rows[0].trade_type) ? tradeRes.rows[0].trade_type : 'sell';
       const isBuyTrade = tradeTypeVal.toLowerCase() === 'buy';
 
-      if (item.linked_inventory_id && !isBuyTrade) {
-        if (!targetTraceId) {
-          const invRes = await client.query('SELECT trace_item_id FROM inventory WHERE id = $1 AND company_id = $2', [parseInt(item.linked_inventory_id), req.user.company_id]);
-          if (invRes.rows.length > 0 && invRes.rows[0].trace_item_id) {
-            targetTraceId = invRes.rows[0].trace_item_id;
+      if (!isBuyTrade) {
+        const allocationsToProcess = Array.isArray(item.stock_allocations) && item.stock_allocations.length > 0
+          ? item.stock_allocations
+          : (item.linked_inventory_id ? [{
+              inventory_id: item.linked_inventory_id,
+              trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id,
+              quantity: item.quantity,
+              price: item.rate_per_piece || item.inv_details?.price
+            }] : []);
+
+        for (const alloc of allocationsToProcess) {
+          const allocQty = parseInt(alloc.quantity) || 0;
+          const allocInvId = parseInt(alloc.inventory_id);
+
+          if (allocInvId && allocQty > 0) {
+            const invUpdate = await client.query(
+              `UPDATE inventory 
+               SET quantity = quantity - $1 
+               WHERE id = $2 AND company_id = $3 
+               RETURNING quantity`,
+              [allocQty, allocInvId, req.user.company_id]
+            );
+            if (invUpdate.rows.length > 0 && parseInt(invUpdate.rows[0].quantity) <= 0) {
+              await client.query(
+                'DELETE FROM inventory WHERE id = $1 AND company_id = $2',
+                [allocInvId, req.user.company_id]
+              );
+            }
           }
         }
-        const invUpdate = await client.query(
-          `UPDATE inventory 
-           SET quantity = quantity - $1 
-           WHERE id = $2 AND company_id = $3 
-           RETURNING quantity`,
-          [parseInt(item.quantity) || 0, parseInt(item.linked_inventory_id), req.user.company_id]
-        );
-        if (invUpdate.rows.length > 0 && parseInt(invUpdate.rows[0].quantity) <= 0) {
-          await client.query(
-            'DELETE FROM inventory WHERE id = $1 AND company_id = $2',
-            [parseInt(item.linked_inventory_id), req.user.company_id]
-          );
-        }
-      }
+      } else if (targetTraceId) {
+        const stepObj = {
+          type: 'BUY',
+          id: trade_code,
+          delivery_id: delivery_note_no,
+          unit_price: parseFloat(item.rate_per_piece || item.inv_details?.price) || 0.00
+        };
+        const targetStatus = item.inv_details?.status || 'In Inventory';
 
-      const stepObj = {
-        type: isBuyTrade ? 'BUY' : 'SELL',
-        id: trade_code,
-        delivery_id: delivery_note_no,
-        unit_price: parseFloat(item.rate_per_piece || item.inv_details?.price) || 0.00
-      };
-
-      const targetStatus = item.inv_details?.status || (isBuyTrade ? 'In Inventory' : 'delivered');
-
-      // Check if this item has a linked trace_item record we need to append the process trade to
-      if (targetTraceId) {
         const existingRes = await client.query('SELECT process FROM trace_item WHERE id = $1 AND company_id = $2', [targetTraceId, req.user.company_id]);
         let procArr = [];
         if (existingRes.rows.length > 0 && Array.isArray(existingRes.rows[0].process)) {
           procArr = existingRes.rows[0].process.map(p => {
-            if (p.id && String(p.id).startsWith('TRD-') && isBuyTrade) {
+            if (p.id && String(p.id).startsWith('TRD-')) {
               return { ...p, type: 'BUY' };
             }
             return p;
@@ -728,6 +807,7 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
         COALESCE(
           (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = $1 AND po.company_id = $2),
           (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = $1 AND ro.company_id = $2),
+          (SELECT SUM(ppi.target_item_quantity * ppi.price) FROM process_po pp JOIN po_process_item ppi ON pp.id = ppi.process_po_id WHERE pp.trade_id = $1 AND pp.company_id = $2),
           0
         )::numeric AS ordered_val,
         COALESCE(
@@ -767,6 +847,14 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
             JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
             JOIN release_order_items roi ON dn.ro_id = roi.ro_id AND dni.item_id = roi.item_id
             JOIN items i ON dni.item_id = i.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $2
+          ),
+          (
+            SELECT SUM(dni.quantity * ppi.price)
+            FROM delivery_notes dn
+            JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+            JOIN process_po pp ON dn.trade_id = pp.trade_id
+            JOIN po_process_item ppi ON pp.id = ppi.process_po_id AND dni.item_id = ppi.target_item_id
             WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
           0

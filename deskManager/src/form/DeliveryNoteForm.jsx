@@ -219,7 +219,17 @@ export default function DeliveryNoteForm() {
     setOpenStockPickerItem(item);
     setStockLoading(true);
     setStockList([]);
-    setStockAllocations({});
+
+    const initAllocations = {};
+    if (item.stock_allocations && Array.isArray(item.stock_allocations)) {
+      item.stock_allocations.forEach(alloc => {
+        initAllocations[alloc.inventory_id] = alloc.quantity;
+      });
+    } else if (item.linked_inventory_id) {
+      initAllocations[item.linked_inventory_id] = item.delivery_qty;
+    }
+    setStockAllocations(initAllocations);
+
     try {
       const res = await fetch(`/api/inventory?q=${encodeURIComponent(item.item_code)}&limit=50`);
       if (res.ok) {
@@ -234,38 +244,62 @@ export default function DeliveryNoteForm() {
     }
   };
 
-  const handleSelectStockRow = (invRow, qtyToAlloc) => {
+  const handleConfirmMultiStock = () => {
     if (!openStockPickerItem) return;
-    const qty = parseInt(qtyToAlloc, 10);
-    if (isNaN(qty) || qty <= 0) {
-      alert("Please enter a valid quantity greater than 0.");
+
+    let totalAlloc = 0;
+    const selectedAllocations = [];
+
+    for (const invRow of stockList) {
+      const qty = parseInt(stockAllocations[invRow.id], 10) || 0;
+      if (qty > 0) {
+        if (qty > invRow.quantity) {
+          alert(`Cannot allocate ${qty} from batch TR-${invRow.trace_item_id || 'Stock'} as only ${invRow.quantity} is available.`);
+          return;
+        }
+        totalAlloc += qty;
+        selectedAllocations.push({
+          inventory_id: invRow.id,
+          trace_item_id: invRow.trace_item_id || invRow.p_item_id || null,
+          quantity: qty,
+          price: invRow.calculated_price || invRow.price || 0,
+          location: invRow.location,
+          rack: invRow.rack,
+          shelf_number: invRow.shelf_number,
+          status: invRow.trace_status || invRow.status
+        });
+      }
+    }
+
+    if (selectedAllocations.length === 0) {
+      alert("Please select at least one stock quantity.");
       return;
     }
-    if (qty > invRow.quantity) {
-      alert(`Cannot select more than available quantity of ${invRow.quantity}.`);
+
+    if (totalAlloc > openStockPickerItem.remaining_qty) {
+      alert(`Total selected quantity (${totalAlloc}) cannot exceed remaining order limit of ${openStockPickerItem.remaining_qty}.`);
       return;
     }
-    if (qty > openStockPickerItem.remaining_qty) {
-      alert(`Cannot select more than remaining order limit of ${openStockPickerItem.remaining_qty}.`);
-      return;
-    }
+
+    const firstAlloc = selectedAllocations[0];
 
     setItems(prev => prev.map(it => {
       if (it.item_code === openStockPickerItem.item_code) {
         return {
           ...it,
           selected: true,
-          delivery_qty: qty,
-          linked_inventory_id: invRow.id,
-          linked_trace_item_id: invRow.trace_item_id || invRow.p_item_id || null,
-          linked_p_item_id: invRow.trace_item_id || invRow.p_item_id || null,
+          delivery_qty: totalAlloc,
+          stock_allocations: selectedAllocations,
+          linked_inventory_id: firstAlloc.inventory_id,
+          linked_trace_item_id: firstAlloc.trace_item_id,
+          linked_p_item_id: firstAlloc.trace_item_id,
           inv_details: {
-            location: invRow.location,
-            rack: invRow.rack,
-            shelf_number: invRow.shelf_number,
-            price: invRow.price,
-            trace_item_id: invRow.trace_item_id,
-            status: invRow.trace_status || invRow.status
+            location: firstAlloc.location,
+            rack: firstAlloc.rack,
+            shelf_number: firstAlloc.shelf_number,
+            price: firstAlloc.price,
+            trace_item_id: firstAlloc.trace_item_id,
+            status: firstAlloc.status
           }
         };
       }
@@ -457,7 +491,13 @@ export default function DeliveryNoteForm() {
           linked_process_trades: item.linked_process_trades || [],
           linked_inventory_id: item.linked_inventory_id || item.inv_details?.inventory_id || null,
           linked_trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null,
-          linked_p_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null
+          linked_p_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null,
+          stock_allocations: item.stock_allocations || (item.linked_inventory_id ? [{
+            inventory_id: item.linked_inventory_id,
+            trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id,
+            quantity: item.delivery_qty,
+            price: item.inv_details?.price || item.rate_per_piece
+          }] : [])
         }))
       };
 
@@ -718,11 +758,17 @@ export default function DeliveryNoteForm() {
                               {item.inventory_qty > 0 && ` (Cost: ₹${parseFloat(item.inventory_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })})`}
                             </span>
                           )}
-                          {item.linked_inventory_id && (
+                          {item.stock_allocations && item.stock_allocations.length > 0 ? (
+                            item.stock_allocations.map((alloc, aIdx) => (
+                              <span key={aIdx} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-100 border border-emerald-300 text-emerald-900 shadow-xs animate-fade-in">
+                                <Package size={8} /> Allocated TR-{alloc.trace_item_id || 'Stock'} ({alloc.quantity} units)
+                              </span>
+                            ))
+                          ) : item.linked_inventory_id ? (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-100 border border-emerald-300 text-emerald-900 shadow-xs animate-fade-in">
                               <Package size={8} /> Allocated TR-{item.linked_trace_item_id || 'Stock'} ({item.delivery_qty} units)
                             </span>
-                          )}
+                          ) : null}
                           {item.inv_qty > 0 && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 shadow-sm animate-fade-in">
                               <Tag size={8} /> In Inventory: {item.inv_qty}
@@ -883,8 +929,8 @@ export default function DeliveryNoteForm() {
                       <th className="px-3.5 py-2.5 text-right">Available Qty</th>
                       <th className="px-3.5 py-2.5">Status</th>
                       <th className="px-3.5 py-2.5 text-right">Price</th>
-                      <th className="px-3.5 py-2.5 text-right w-28">Select Qty</th>
-                      <th className="px-3.5 py-2.5 text-center w-28">Action</th>
+                      <th className="px-3.5 py-2.5 text-right w-32">Select Qty</th>
+                      <th className="px-3.5 py-2.5 text-center w-24">Quick fill</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white font-semibold text-slate-800">
@@ -935,23 +981,27 @@ export default function DeliveryNoteForm() {
                             <input
                               type="number"
                               min="0"
-                              max={Math.min(inv.quantity, openStockPickerItem.remaining_qty)}
+                              max={inv.quantity}
                               value={allocQty}
                               onChange={(e) => {
                                 const val = parseInt(e.target.value) || 0;
                                 setStockAllocations(prev => ({ ...prev, [inv.id]: val }));
                               }}
-                              className="w-20 px-2 py-1 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none focus:border-indigo-500"
+                              className="w-24 px-2 py-1 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none focus:border-indigo-500"
                             />
                           </td>
                           <td className="px-3.5 py-3 text-center">
                             <button
                               type="button"
-                              onClick={() => handleSelectStockRow(inv, allocQty)}
-                              disabled={allocQty <= 0 || allocQty > inv.quantity}
-                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-[10px] rounded-lg transition-colors cursor-pointer shadow-xs disabled:cursor-not-allowed"
+                              onClick={() => {
+                                const currentOtherAlloc = stockList.reduce((sum, item) => item.id === inv.id ? sum : sum + (parseInt(stockAllocations[item.id]) || 0), 0);
+                                const needed = Math.max(0, openStockPickerItem.remaining_qty - currentOtherAlloc);
+                                const maxFill = Math.min(inv.quantity, needed);
+                                setStockAllocations(prev => ({ ...prev, [inv.id]: maxFill }));
+                              }}
+                              className="px-2 py-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded transition-colors cursor-pointer"
                             >
-                              Select Stock
+                              Fill Max
                             </button>
                           </td>
                         </tr>
@@ -963,15 +1013,41 @@ export default function DeliveryNoteForm() {
             )}
 
             {/* Modal Actions */}
-            <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setOpenStockPickerItem(null)}
-                className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
+            {openStockPickerItem && (() => {
+              const currentTotalSelected = stockList.reduce((sum, inv) => sum + (parseInt(stockAllocations[inv.id]) || 0), 0);
+              const isOverLimit = currentTotalSelected > openStockPickerItem.remaining_qty;
+
+              return (
+                <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="text-xs font-bold text-slate-700">
+                    Total Selected Quantity: {' '}
+                    <span className={`font-mono text-sm font-black ${
+                      isOverLimit ? 'text-red-600' : currentTotalSelected > 0 ? 'text-emerald-600' : 'text-slate-800'
+                    }`}>
+                      {currentTotalSelected}
+                    </span>
+                    <span className="text-slate-400 font-semibold"> / {openStockPickerItem.remaining_qty} max allowed</span>
+                  </div>
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setOpenStockPickerItem(null)}
+                      className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmMultiStock}
+                      disabled={currentTotalSelected <= 0 || isOverLimit}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-sm disabled:cursor-not-allowed"
+                    >
+                      Confirm Selected Stock
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

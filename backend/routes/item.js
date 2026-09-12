@@ -8,7 +8,7 @@ router.get('/', async (req, res) => {
   const limit = req.query.limit ? parseInt(req.query.limit) : null;
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
   try {
-    let query = `SELECT item_code, description, drawing_number, long_description, created_at FROM items WHERE company_id = $1`;
+    let query = `SELECT id, item_code, description, drawing_number, long_description, created_at FROM items WHERE company_id = $1`;
     const params = [req.user.company_id];
     
     if (q) {

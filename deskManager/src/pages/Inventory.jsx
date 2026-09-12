@@ -78,13 +78,15 @@ export default function InventoryView() {
           item_code: item.item_code || '',
           quantity: item.quantity || '',
           price: item.price || '',
+          calculated_price: item.calculated_price || item.price || '',
           location: item.location || '',
           rack: item.rack || '',
           shelf_number: item.shelf_number || '',
           trade_id: item.trade_id || '',
           message: item.message || '',
           status: item.trace_status || item.status || 'active',
-          trace_item_id: item.trace_item_id || item.p_item_id || ''
+          trace_item_id: item.trace_item_id || item.p_item_id || '',
+          trace_process: item.trace_process || []
         });
         setLinkMetadata(null);
       } else {
@@ -433,12 +435,21 @@ export default function InventoryView() {
 
                           {/* Quantity */}
                           <td className="px-5 py-4 text-right font-mono font-black text-slate-900">
-                            {item.mfg_expected_qty && !item.mfg_is_completed && item.mfg_completed_qty < item.mfg_expected_qty ? (
+                            {item.mfg_expected_qty && !item.mfg_is_completed && (parseInt(item.mfg_completed_qty) || 0) < (parseInt(item.mfg_expected_qty) || 0) ? (
                               <div className="flex flex-col items-end">
                                 <span className="text-xs">
                                   {item.mfg_completed_qty || 0} / {item.mfg_expected_qty}
                                 </span>
                                 <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-1 py-0.2 rounded border border-amber-200 mt-0.5 font-sans">
+                                  Completed / Total
+                                </span>
+                              </div>
+                            ) : (item.trace_status || item.status) === 'in process' && (parseInt(item.process_completed_qty) || 0) < (parseInt(item.quantity) || 0) ? (
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs">
+                                  {item.process_completed_qty || 0} / {item.quantity || 0}
+                                </span>
+                                <span className="text-[9px] text-indigo-700 font-bold bg-indigo-50 px-1 py-0.2 rounded border border-indigo-200 mt-0.5 font-sans">
                                   Completed / Total
                                 </span>
                               </div>
@@ -468,12 +479,17 @@ export default function InventoryView() {
                           {/* Status */}
                           <td className="px-5 py-4">
                             {(() => {
-                              const st = item.trace_status || item.status || 'active';
+                              let st = item.trace_status || item.status || 'active';
+                              if (st === 'in process' && (parseInt(item.process_completed_qty) || 0) >= (parseInt(item.quantity) || 0) && (parseInt(item.quantity) || 0) > 0) {
+                                st = 'In Inventory';
+                              }
+
                               let badgeCls = "bg-slate-100 border-slate-200 text-slate-700";
                               if (st === 'For process') badgeCls = "bg-amber-50 border-amber-300 text-amber-800";
                               else if (st === 'For Sell') badgeCls = "bg-emerald-50 border-emerald-300 text-emerald-800";
                               else if (st === 'In Inventory') badgeCls = "bg-indigo-50 border-indigo-300 text-indigo-800";
                               else if (st === 'manufacturing') badgeCls = "bg-amber-100 border-amber-300 text-amber-800";
+                              else if (st === 'in process') badgeCls = "bg-indigo-50 border-indigo-300 text-indigo-800";
 
                               return (
                                 <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border shadow-xs ${badgeCls}`}>
@@ -585,7 +601,13 @@ export default function InventoryView() {
                       Detailed Process & Cost Traceability Breakdown
                     </span>
                     <span className="text-xs font-mono font-black text-slate-900 bg-white border border-slate-300 px-2.5 py-1 rounded-md shadow-xs">
-                      Total Unit Price: ₹{parseFloat(formData.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      Total Unit Price: ₹{(() => {
+                        const sumProcess = Array.isArray(formData.trace_process) && formData.trace_process.length > 0
+                          ? formData.trace_process.reduce((sum, step) => sum + (parseFloat(step.unit_price) || 0), 0)
+                          : 0;
+                        const finalPrice = sumProcess > 0 ? sumProcess : (parseFloat(formData.calculated_price || formData.price || 0));
+                        return finalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+                      })()}
                     </span>
                   </div>
 
@@ -747,14 +769,19 @@ export default function InventoryView() {
                     required
                     min="0"
                     placeholder="e.g. 15.50"
-                    value={formData.price}
+                    value={(() => {
+                      const sumProcess = Array.isArray(formData.trace_process) && formData.trace_process.length > 0
+                        ? formData.trace_process.reduce((sum, step) => sum + (parseFloat(step.unit_price) || 0), 0)
+                        : 0;
+                      return sumProcess > 0 ? sumProcess : (formData.calculated_price || formData.price || '');
+                    })()}
                     onChange={set('price')}
                     disabled={!!editingId || !!linkMetadata}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                   {(editingId || linkMetadata) && (
                     <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
-                      Price cannot be changed once stock record is configured.
+                      Price is calculated from trace process steps & stock configuration.
                     </p>
                   )}
                 </div>
