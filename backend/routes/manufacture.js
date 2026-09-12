@@ -152,9 +152,16 @@ router.post('/', async (req, res) => {
     }
 
     // 5. Build process array with new MANUFACTURE step
+    const cleanedExistingProcess = (Array.isArray(existingProcess) ? existingProcess : []).map(p => {
+      if (p.id && String(p.id).startsWith('TRD-') && p.type === 'SELL') {
+        return { ...p, type: 'BUY' };
+      }
+      return p;
+    });
+
     const tempMfgId = Math.floor(10000 + Math.random() * 90000);
     const mfgStep = { type: 'MANUFACTURE', id: tempMfgId, unit_price: mUnitPrice };
-    const updatedProcess = Array.isArray(existingProcess) ? [...existingProcess, mfgStep] : [mfgStep];
+    const updatedProcess = [...cleanedExistingProcess, mfgStep];
 
     // Calculate total unit price from all process steps
     const totalPrice = updatedProcess.reduce((sum, item) => sum + (parseFloat(item.unit_price) || 0), 0);

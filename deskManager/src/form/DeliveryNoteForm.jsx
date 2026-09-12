@@ -58,6 +58,10 @@ export default function DeliveryNoteForm() {
           const process_qty = actionType === 'process' ? (updatedQty !== undefined ? updatedQty : (it.process_qty || 0)) : (it.process_qty || 0);
           const delivery_qty = inv_qty + sell_qty + process_qty;
 
+          const invDetails = actionType === 'inventory' ? (location.state.inventoryDetails || it.inv_details) : it.inv_details;
+          const sellDetails = actionType === 'sell' ? (location.state.inventoryDetails || it.sell_details) : it.sell_details;
+          const processDetails = actionType === 'process' ? (location.state.inventoryDetails || it.process_details) : it.process_details;
+
           return {
             ...it,
             selected: true,
@@ -65,7 +69,12 @@ export default function DeliveryNoteForm() {
             inv_qty: inv_qty,
             sell_qty: sell_qty,
             process_qty: process_qty,
-            inv_details: location.state.inventoryDetails || it.inv_details
+            inv_details: invDetails,
+            sell_details: sellDetails,
+            process_details: processDetails,
+            linked_inventory_id: invDetails?.inventory_id || it.linked_inventory_id || null,
+            linked_trace_item_id: invDetails?.trace_item_id || it.linked_trace_item_id || null,
+            linked_p_item_id: invDetails?.trace_item_id || it.linked_p_item_id || null
           };
         }
         return it;
@@ -342,7 +351,7 @@ export default function DeliveryNoteForm() {
           trade_id: tradeId,
           status: 'For Sell',
           actionType: 'sell',
-          existingDetails: item.inv_details,
+          existingDetails: item.sell_details || item.inv_details,
           returnUrl: editingNo ? `/updateDeliveryNote/${encodeURIComponent(editingNo)}` : '/addDeliveryNote',
           returnState: {
             formData,
@@ -367,7 +376,7 @@ export default function DeliveryNoteForm() {
           trade_id: tradeId,
           status: 'For process',
           actionType: 'process',
-          existingDetails: item.inv_details,
+          existingDetails: item.process_details || item.inv_details,
           returnUrl: editingNo ? `/updateDeliveryNote/${encodeURIComponent(editingNo)}` : '/addDeliveryNote',
           returnState: {
             formData,
@@ -443,10 +452,12 @@ export default function DeliveryNoteForm() {
           sell_qty: item.sell_qty || 0,
           process_qty: item.process_qty || 0,
           inv_details: item.inv_details || null,
+          sell_details: item.sell_details || null,
+          process_details: item.process_details || null,
           linked_process_trades: item.linked_process_trades || [],
-          linked_inventory_id: item.linked_inventory_id || null,
-          linked_trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || null,
-          linked_p_item_id: item.linked_trace_item_id || item.linked_p_item_id || null
+          linked_inventory_id: item.linked_inventory_id || item.inv_details?.inventory_id || null,
+          linked_trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null,
+          linked_p_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null
         }))
       };
 

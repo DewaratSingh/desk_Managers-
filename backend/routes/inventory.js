@@ -103,7 +103,7 @@ router.post('/', async (req, res) => {
 
     // Create or resolve trace_item_id with status
     let finalTraceItemId = trace_item_id ? parseInt(trace_item_id) : null;
-    const targetStatus = status || 'active';
+    const targetStatus = status || 'In Inventory';
 
     if (!finalTraceItemId) {
       const processList = trade_id ? [{ type: 'BUY', id: trade_id, unit_price: parseFloat(price) || 0.00 }] : [];

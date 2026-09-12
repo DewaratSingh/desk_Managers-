@@ -57,6 +57,7 @@ export default function InventoryView() {
       if (location.state?.autofill) {
         const fill = location.state.autofill;
         setEditingId(null);
+        const processList = fill.trade_id ? [{ type: 'BUY', id: fill.trade_id, unit_price: parseFloat(fill.price) || 0.00 }] : [];
         setFormData({
           item_code: fill.item_code || '',
           quantity: fill.quantity || '',
@@ -66,7 +67,8 @@ export default function InventoryView() {
           shelf_number: fill.existingDetails?.shelf_number || '',
           trade_id: fill.trade_id || '',
           message: fill.existingDetails?.message || '',
-          status: fill.status || ''
+          status: fill.status || '',
+          trace_process: processList
         });
         setLinkMetadata(fill);
       } else if (location.state?.editingInventory) {
@@ -255,40 +257,21 @@ export default function InventoryView() {
     setIsSaving(true);
     try {
       if (linkMetadata) {
-        let savedRecord = null;
-        try {
-          const res = await fetch('/api/inventory', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...formData,
-              status: formData.status || linkMetadata.status || 'active',
-              message: formData.message || null
-            })
-          });
-          if (res.ok) {
-            savedRecord = await res.json();
-            toast.success(`Stock record created in Inventory (${formData.status || linkMetadata.status || 'Success'})!`);
-          }
-        } catch (err) {
-          console.error('Failed to persist inventory record to DB:', err);
-        }
-
+        const targetStatus = formData.status || linkMetadata.status || 'In Inventory';
+        toast.success(`Inventory configuration saved for Delivery Note!`);
         navigate(linkMetadata.returnUrl, {
           state: {
             returnState: linkMetadata.returnState,
             updatedQty: parseInt(formData.quantity) || 0,
             actionType: linkMetadata.actionType,
-            status: formData.status || linkMetadata.status,
+            status: targetStatus,
             inventoryDetails: {
               price: parseFloat(formData.price) || 0.00,
               rack: formData.rack,
               shelf_number: formData.shelf_number,
               location: formData.location,
               message: formData.message || null,
-              status: formData.status || linkMetadata.status,
-              inventory_id: savedRecord ? savedRecord.id : null,
-              trace_item_id: savedRecord ? savedRecord.trace_item_id : null
+              status: targetStatus
             }
           }
         });
@@ -623,17 +606,11 @@ export default function InventoryView() {
                             <td className="px-3 py-2.5 text-center font-bold text-slate-400">
                               #{idx + 1}
                             </td>
-                            <td className="px-3 py-2.5">
-                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                                step.type === 'BUY' 
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                                  : 'bg-amber-100 text-amber-800 border border-amber-300'
-                              }`}>
-                                {step.type || 'STEP'}
-                              </span>
+                            <td className="px-3 py-2.5 font-bold uppercase text-slate-800">
+                              {step.id && String(step.id).startsWith('TRD-') ? 'BUY' : (step.type || 'BUY')}
                             </td>
                             <td className="px-3 py-2.5 font-mono font-bold text-slate-800">
-                              {step.id ? (step.type === 'BUY' ? `TRD: ${step.id}` : `#MFG-${step.id}`) : '—'}
+                              {step.id ? step.id : '—'}
                             </td>
                             <td className="px-3 py-2.5 font-mono text-slate-700">
                               {step.delivery_id ? (
@@ -898,12 +875,6 @@ export default function InventoryView() {
                         className="px-4 py-2 text-xs font-extrabold rounded text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
                       >
                         Manufacture
-                      </button>
-                      <button
-                        type="button"
-                        className="px-4 py-2 text-xs font-extrabold rounded text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
-                      >
-                        Process
                       </button>
                     </>
                   )}

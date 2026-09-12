@@ -494,7 +494,7 @@ const initializeDatabase = async () => {
         message TEXT,
         quantity INTEGER DEFAULT 0,
         price DECIMAL(12, 2) DEFAULT 0.00,
-        status VARCHAR(50) DEFAULT 'active',
+        status VARCHAR(50) DEFAULT 'In Inventory',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -502,7 +502,7 @@ const initializeDatabase = async () => {
 
     await client.query(`
       ALTER TABLE trace_item 
-      ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
+      ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'In Inventory';
     `);
 
     // 28. Inventory Table (Updated to match trace-item style + position columns + trade_id)
