@@ -37,9 +37,13 @@ export default function PoPanel({ purchaseOrder, quotation, tradeId, isBuySide }
   if (!purchaseOrder) {
     if (!quotation) return null;
     const qtnNo = quotation.received_quotation_no || quotation.quotation_no;
-    const addUrl = isBuySide
-      ? `/addReceivedPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`
-      : `/addPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`;
+    const isProcess = qtnNo?.startsWith('PRQ-') || (tradeId || '').includes('PRQ');
+    const addUrl = isProcess
+      ? `/addProcessPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`
+      : (isBuySide
+          ? `/addReceivedPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`
+          : `/addPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`);
+
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
         <div className="max-w-sm mx-auto space-y-1">
@@ -72,13 +76,20 @@ export default function PoPanel({ purchaseOrder, quotation, tradeId, isBuySide }
   const basicVal   = parseFloat(purchaseOrder.basic_value)     || 0;
   const grandTotal = itemsBasic + gstTotal + transport + packing + other + basicVal;
 
+  const isProcessPo = purchaseOrder.po_no?.startsWith('PPO-') || (purchaseOrder.quotation_no || '').startsWith('PRQ-');
+  const editUrl = isProcessPo
+    ? `/updateProcessPurchaseOrder/${purchaseOrder.po_no}?trade_id=${tradeId}`
+    : (isBuySide
+        ? `/updateReceivedPurchaseOrder/${purchaseOrder.po_no}?trade_id=${tradeId}`
+        : `/updatePurchaseOrder/${purchaseOrder.po_no}?trade_id=${tradeId}`);
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
           <ShoppingCart size={14} style={{ color: 'var(--theme-color)' }} />
-          Purchase Order
+          {isProcessPo ? 'Process Purchase Order' : 'Purchase Order'}
         </span>
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
@@ -92,7 +103,7 @@ export default function PoPanel({ purchaseOrder, quotation, tradeId, isBuySide }
             <ExternalLink size={10} /> View
           </Link>
           <Link
-            to={isBuySide ? `/updateReceivedPurchaseOrder/${purchaseOrder.po_no}?trade_id=${tradeId}` : `/updatePurchaseOrder/${purchaseOrder.po_no}?trade_id=${tradeId}`}
+            to={editUrl}
             className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <Edit2 size={10} /> Edit

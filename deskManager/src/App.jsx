@@ -13,6 +13,8 @@ import ReleaseOrderForm from './form/ReleaseOrderForm'
 import RfqForm from './form/RfqForm'
 import QuotationForm from './form/QuotationForm'
 import ReceivedQuotationForm from './form/ReceivedQuotationForm'
+import ProcessQuotationForm from './form/ProcessQuotationForm'
+import ProcessPurchaseOrderForm from './form/ProcessPurchaseOrderForm'
 import ReceivedPurchaseOrderForm from './form/ReceivedPurchaseOrderForm'
 import DeliveryNoteForm from './form/DeliveryNoteForm'
 import SellStockForm from './form/SellStockForm'
@@ -76,6 +78,10 @@ function App() {
           <Route path="/updateReleaseOrder/*" element={<ReleaseOrderForm />} />
           <Route path="/addReceivedQuotation" element={<ReceivedQuotationForm />} />
           <Route path="/updateReceivedQuotation/:id" element={<ReceivedQuotationForm />} />
+          <Route path="/addProcessQuotation" element={<ProcessQuotationForm />} />
+          <Route path="/updateProcessQuotation/:id" element={<ProcessQuotationForm />} />
+          <Route path="/addProcessPurchaseOrder" element={<ProcessPurchaseOrderForm />} />
+          <Route path="/updateProcessPurchaseOrder/:id" element={<ProcessPurchaseOrderForm />} />
           <Route path="/party/form" element={<AddCustomerView />} />
           <Route path="/buyer/form" element={<AddBuyerView />} />
           <Route path="/item/form" element={<AddItemView />} />

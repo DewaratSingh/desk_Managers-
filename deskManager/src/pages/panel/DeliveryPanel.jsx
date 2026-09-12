@@ -645,7 +645,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                     <tbody className="divide-y divide-slate-100 bg-white">
                       {activeItems.map((item, idx) => {
                         const total = (parseFloat(item.rate_per_piece) || 0) * (parseInt(item.quantity) || 0);
-                        const hasActivity = item.next_activity && (item.next_activity.inventory || item.next_activity.sell || item.next_activity.process);
+                        const hasActivity = item.next_activity && (item.next_activity.trace_item_id || item.next_activity.inventory || item.next_activity.sell || item.next_activity.process);
                         return (
                           <tr key={idx} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3">
@@ -667,16 +667,42 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                               {item.shipping_address || '—'}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <div className="flex flex-col gap-1 items-center">
+                              <div className="flex flex-col gap-1.5 items-center">
+                                {item.next_activity?.trace_item_id && (
+                                  <div className="flex flex-col gap-1 items-center bg-slate-50 border border-slate-200 rounded-lg p-2 shadow-2xs w-full max-w-[220px]">
+                                    <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-extrabold font-mono">
+                                      TR-{item.next_activity.trace_item_id}
+                                    </span>
+                                    {Array.isArray(item.next_activity.trace_process) && item.next_activity.trace_process.length > 0 && (
+                                      <div className="flex flex-col gap-1 w-full text-left mt-0.5">
+                                        {item.next_activity.trace_process.map((pStep, pIdx) => (
+                                          <div key={pIdx} className="text-[9px] font-semibold text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded flex items-center justify-between gap-1">
+                                            <span className="font-bold text-slate-800 uppercase text-[8px]">{pStep.type || 'STEP'}:</span>
+                                            <span className="font-mono text-slate-600 truncate max-w-[70px]" title={pStep.id}>{pStep.id}</span>
+                                            <span className="font-mono font-black text-slate-900">₹{parseFloat(pStep.unit_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                                 {item.next_activity?.inventory && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700">
                                     Inventory: {item.next_activity.inventory.quantity} (TR-ID: {item.next_activity.inventory.trace_item_id || item.next_activity.inventory.P_item_id || '—'})
                                   </span>
                                 )}
                                 {item.next_activity?.sell && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-700">
-                                    Sell: {item.next_activity.sell.quantity} (Trade: {item.next_activity.sell.tradeID || '—'})
-                                  </span>
+                                  Array.isArray(item.next_activity.sell) ? (
+                                    item.next_activity.sell.map((sItem, sIdx) => (
+                                      <span key={sIdx} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-700">
+                                        Sell: {sItem.quantity || item.quantity} (Trade: {sItem.tradeID || sItem.id || '—'})
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-700">
+                                      Sell: {item.next_activity.sell.quantity} (Trade: {item.next_activity.sell.tradeID || '—'})
+                                    </span>
+                                  )
                                 )}
                                 {item.next_activity?.process && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 border border-amber-200 text-amber-700">

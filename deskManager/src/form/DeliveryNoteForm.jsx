@@ -156,9 +156,10 @@ export default function DeliveryNoteForm() {
         // Check if there is autofillSell in state
         const autofillSell = location.state?.autofillSell;
 
-        // Set items: default check false, delivery quantity 0 unless autofilled
+        // Set items: default check true & pre-fill delivery quantity for BUY/PROCESS trades
         const initialItems = await Promise.all(lookupData.items.map(async (item) => {
           const isAutofill = autofillSell && item.item_code === autofillSell.item_code;
+          const isBuyOrProcess = detectedTradeType.toLowerCase() === 'buy' || detectedTradeType.toLowerCase() === 'process';
           
           let inventory_qty = 0;
           let inventory_price = 0;
@@ -175,10 +176,13 @@ export default function DeliveryNoteForm() {
             }
           }
 
+          const defaultSelected = isAutofill || (isBuyOrProcess && item.remaining_qty > 0);
+          const defaultQty = isAutofill ? autofillSell.delivery_qty : (isBuyOrProcess ? item.remaining_qty : 0);
+
           return {
             ...item,
-            selected: isAutofill ? true : false,
-            delivery_qty: isAutofill ? autofillSell.delivery_qty : 0,
+            selected: defaultSelected,
+            delivery_qty: defaultQty,
             inv_qty: 0,
             sell_qty: 0,
             process_qty: 0,
@@ -275,7 +279,7 @@ export default function DeliveryNoteForm() {
       return {
         ...item,
         selected: newSelected,
-        delivery_qty: newSelected ? (item.delivery_qty || 0) : 0,
+        delivery_qty: newSelected ? (item.delivery_qty || item.remaining_qty || 0) : 0,
         linked_inventory_id: newSelected ? item.linked_inventory_id : null,
         linked_trace_item_id: newSelected ? item.linked_trace_item_id : null
       };
@@ -662,7 +666,7 @@ export default function DeliveryNoteForm() {
                     <th className="px-3 py-2 text-right w-16">Remaining</th>
                     <th className="px-3 py-2 text-right w-20">Delivery Qty</th>
                     <th className="px-3 py-2 text-right w-20">Price</th>
-                    {tradeType === 'buy' && <th className="px-3 py-2 text-center w-[320px]">Action</th>}
+                    {(tradeType === 'buy' || tradeType === 'process') && <th className="px-3 py-2 text-center w-[320px]">Action</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -738,7 +742,7 @@ export default function DeliveryNoteForm() {
                           value={item.delivery_qty}
                           min="0"
                           max={item.remaining_qty}
-                          disabled={tradeType === 'buy'}
+                          disabled={item.remaining_qty <= 0}
                           onChange={(e) => handleItemQtyChange(idx, e.target.value)}
                           className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                         />
@@ -758,7 +762,7 @@ export default function DeliveryNoteForm() {
                           </button>
                         </td>
                       )}
-                      {tradeType === 'buy' && (
+                      {(tradeType === 'buy' || tradeType === 'process') && (
                         <td className="px-3 py-1.5 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button

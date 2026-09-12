@@ -459,6 +459,15 @@ export default function InventoryView() {
                                   Completed / Total
                                 </span>
                               </div>
+                            ) : (item.trace_status === 'in process' || item.trace_status === 'In process' || item.trace_status === 'In Process') && item.trace_expected_qty ? (
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-bold text-amber-800">
+                                  {item.quantity || 0} / {item.trace_expected_qty}
+                                </span>
+                                <span className="text-[9px] text-purple-700 font-bold bg-purple-50 px-1 py-0.2 rounded border border-purple-200 mt-0.5 font-sans">
+                                  Completed / Total
+                                </span>
+                              </div>
                             ) : (
                               item.quantity || 0
                             )}
@@ -491,6 +500,7 @@ export default function InventoryView() {
                               else if (st === 'For Sell') badgeCls = "bg-emerald-50 border-emerald-300 text-emerald-800";
                               else if (st === 'In Inventory') badgeCls = "bg-indigo-50 border-indigo-300 text-indigo-800";
                               else if (st === 'manufacturing') badgeCls = "bg-amber-100 border-amber-300 text-amber-800";
+                              else if (st === 'in process' || st === 'In Process' || st === 'In process') badgeCls = "bg-purple-100 border-purple-300 text-purple-800";
 
                               return (
                                 <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border shadow-xs ${badgeCls}`}>

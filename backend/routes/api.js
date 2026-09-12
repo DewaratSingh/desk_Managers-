@@ -24,6 +24,9 @@ const paymentRouter = require('./payment');
 const pItemRouter = require('./p-item');
 const manufactureRouter = require('./manufacture');
 
+const processQuotationRouter = require('./process-quotation');
+const poProcessRouter = require('./po-process');
+
 // Simple health check for API
 router.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -45,6 +48,8 @@ router.use('/rfqs', rfqRouter);
 router.use('/trades', tradeRouter);
 router.use('/quotations', quotationRouter);
 router.use('/received-quotations', receivedQuotationRouter);
+router.use('/process-quotations', processQuotationRouter);
+router.use('/po-process', poProcessRouter);
 router.use('/purchase-orders', purchaseOrderRouter);
 router.use('/release-orders', releaseOrderRouter);
 router.use('/delivery-notes', deliveryNoteRouter);
