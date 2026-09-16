@@ -28,6 +28,12 @@ const EMPTY_FORM = {
   trace_process: []
 };
 
+const fmtQty = (val) => {
+  const num = parseFloat(val);
+  if (isNaN(num)) return '0';
+  return Number(num.toFixed(4)).toString();
+};
+
 export default function InventoryView() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -251,7 +257,7 @@ export default function InventoryView() {
       toast.warn('Please select an item');
       return;
     }
-    if (formData.quantity === '' || isNaN(parseInt(formData.quantity))) {
+    if (formData.quantity === '' || isNaN(parseFloat(formData.quantity))) {
       toast.warn('Please enter a valid quantity');
       return;
     }
@@ -264,7 +270,7 @@ export default function InventoryView() {
         navigate(linkMetadata.returnUrl, {
           state: {
             returnState: linkMetadata.returnState,
-            updatedQty: parseInt(formData.quantity) || 0,
+            updatedQty: parseFloat(formData.quantity) || 0,
             actionType: linkMetadata.actionType,
             status: targetStatus,
             inventoryDetails: {
@@ -304,7 +310,7 @@ export default function InventoryView() {
           navigate(linkMetadata.returnUrl, {
             state: {
               returnState: linkMetadata.returnState,
-              updatedQty: parseInt(formData.quantity) || 0
+              updatedQty: parseFloat(formData.quantity) || 0
             }
           });
           return;
@@ -435,26 +441,26 @@ export default function InventoryView() {
 
                           {/* Quantity */}
                           <td className="px-5 py-4 text-right font-mono font-black text-slate-900">
-                            {item.mfg_expected_qty && !item.mfg_is_completed && (parseInt(item.mfg_completed_qty) || 0) < (parseInt(item.mfg_expected_qty) || 0) ? (
+                            {item.mfg_expected_qty && !item.mfg_is_completed && (parseFloat(item.mfg_completed_qty) || 0) < (parseFloat(item.mfg_expected_qty) || 0) ? (
                               <div className="flex flex-col items-end">
                                 <span className="text-xs">
-                                  {item.mfg_completed_qty || 0} / {item.mfg_expected_qty}
+                                  {fmtQty(item.mfg_completed_qty)} / {fmtQty(item.mfg_expected_qty)}
                                 </span>
                                 <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-1 py-0.2 rounded border border-amber-200 mt-0.5 font-sans">
                                   Completed / Total
                                 </span>
                               </div>
-                            ) : (item.trace_status || item.status) === 'in process' && (parseInt(item.process_completed_qty) || 0) < (parseInt(item.quantity) || 0) ? (
+                            ) : (item.trace_status || item.status) === 'in process' && (parseFloat(item.process_completed_qty) || 0) < (parseFloat(item.quantity) || 0) ? (
                               <div className="flex flex-col items-end">
                                 <span className="text-xs">
-                                  {item.process_completed_qty || 0} / {item.quantity || 0}
+                                  {fmtQty(item.process_completed_qty)} / {fmtQty(item.quantity)}
                                 </span>
                                 <span className="text-[9px] text-indigo-700 font-bold bg-indigo-50 px-1 py-0.2 rounded border border-indigo-200 mt-0.5 font-sans">
                                   Completed / Total
                                 </span>
                               </div>
                             ) : (
-                              item.quantity || 0
+                              fmtQty(item.quantity)
                             )}
                           </td>
 
@@ -480,7 +486,7 @@ export default function InventoryView() {
                           <td className="px-5 py-4">
                             {(() => {
                               let st = item.trace_status || item.status || 'active';
-                              if (st === 'in process' && (parseInt(item.process_completed_qty) || 0) >= (parseInt(item.quantity) || 0) && (parseInt(item.quantity) || 0) > 0) {
+                              if (st === 'in process' && (parseFloat(item.process_completed_qty) || 0) >= (parseFloat(item.quantity) || 0) && (parseFloat(item.quantity) || 0) > 0) {
                                 st = 'In Inventory';
                               }
 
@@ -743,8 +749,9 @@ export default function InventoryView() {
                   </label>
                   <input
                     type="number"
+                    step="any"
                     required
-                    min="0"
+                     
                     placeholder="e.g. 500"
                     value={formData.quantity}
                     onChange={set('quantity')}
@@ -767,7 +774,7 @@ export default function InventoryView() {
                     type="number"
                     step="0.01"
                     required
-                    min="0"
+                     
                     placeholder="e.g. 15.50"
                     value={(() => {
                       const sumProcess = Array.isArray(formData.trace_process) && formData.trace_process.length > 0

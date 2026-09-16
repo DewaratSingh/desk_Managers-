@@ -865,7 +865,7 @@ export default function ReleaseOrderForm() {
                               <label className={labelCls}>Quantity</label>
                               <input
                                 type="number"
-                                min="1"
+                                 
                                 required
                                 value={item.quantity}
                                 onChange={(e) => updateItem(item.item_code, 'quantity', e.target.value)}
@@ -877,7 +877,7 @@ export default function ReleaseOrderForm() {
                               <input
                                 type="number"
                                 step="0.01"
-                                min="0"
+                                 
                                 required
                                 disabled
                                 value={item.unit_price}

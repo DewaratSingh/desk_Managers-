@@ -617,7 +617,7 @@ export default function QuotationForm({ activeTab }) {
                             <input
                               type="number"
                               step="0.01"
-                              min="0"
+                               
                               required={item.selected}
                               disabled={!item.selected}
                               placeholder="0.00"

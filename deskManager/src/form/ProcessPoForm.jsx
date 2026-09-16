@@ -149,7 +149,7 @@ function InventoryPickerModal({ itemCode, itemLabel, onConfirm, onClose }) {
                         <td className="px-3.5 py-3 text-right">
                           <input
                             type="number"
-                            min="0"
+                             
                             max={inv.quantity}
                             value={allocQty}
                             onChange={(e) => setAllocations(prev => ({ ...prev, [inv.id]: parseInt(e.target.value) || 0 }))}
@@ -488,7 +488,7 @@ export default function ProcessPoForm() {
                           <div>
                             <label className={labelCls}>Source Qty</label>
                             <input
-                              type="number" min="1"
+                              type="number"  
                               value={item.source_item_quantity}
                               onChange={e => updateItemField(idx, 'source_item_quantity', e.target.value)}
                               className={inputCls}
@@ -497,7 +497,7 @@ export default function ProcessPoForm() {
                           <div>
                             <label className={labelCls}>Target Qty (Expected Output)</label>
                             <input
-                              type="number" min="1"
+                              type="number"  
                               value={item.target_item_quantity}
                               onChange={e => updateItemField(idx, 'target_item_quantity', e.target.value)}
                               className={inputCls}
@@ -506,7 +506,7 @@ export default function ProcessPoForm() {
                           <div>
                             <label className={labelCls}>Processing Price (₹)</label>
                             <input
-                              type="number" min="0" step="0.01"
+                              type="number"   step="0.01"
                               value={item.price}
                               onChange={e => updateItemField(idx, 'price', e.target.value)}
                               placeholder="0.00"

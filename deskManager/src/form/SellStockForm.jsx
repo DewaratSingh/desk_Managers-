@@ -287,7 +287,7 @@ export default function SellStockForm() {
               <input
                 type="number"
                 required
-                min="1"
+                 
                 max={selectedTrade ? Math.min(parseInt(sourceQty) || 0, selectedTrade.remaining_qty) : sourceQty}
                 placeholder="Enter dispatch amount..."
                 value={sellQty}

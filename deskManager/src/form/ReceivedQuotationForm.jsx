@@ -609,7 +609,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                                 </label>
                                 <input
                                   type="number"
-                                  min="1"
+                                   
                                   required
                                   value={item.quantity}
                                   onChange={(e) => handleItemValueChange(item.item_code, 'quantity', e.target.value)}
@@ -627,7 +627,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                                 <input
                                   type="number"
                                   step="0.01"
-                                  min="0"
+                                   
                                   required
                                   value={item.unit_price}
                                   onChange={(e) => handleItemValueChange(item.item_code, 'unit_price', e.target.value)}

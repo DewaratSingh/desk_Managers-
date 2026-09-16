@@ -690,7 +690,7 @@ export default function ReceivedPurchaseOrderForm() {
                                 <label className={labelCls}>Quantity</label>
                                 <input
                                   type="number"
-                                  min="1"
+                                   
                                   required
                                   value={item.quantity}
                                   onChange={(e) => updateItem(item.item_code, 'quantity', e.target.value)}
@@ -702,7 +702,7 @@ export default function ReceivedPurchaseOrderForm() {
                                 <input
                                   type="number"
                                   step="0.01"
-                                  min="0"
+                                   
                                   required
                                   value={item.unit_price}
                                   onChange={(e) => updateItem(item.item_code, 'unit_price', e.target.value)}
@@ -853,7 +853,7 @@ export default function ReceivedPurchaseOrderForm() {
                       <input
                         type="number"
                         step="0.01"
-                        min="0"
+                         
                         value={formData[c.key]}
                         onChange={set(c.key)}
                         className={inputCls}

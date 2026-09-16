@@ -486,7 +486,7 @@ export default function ArcView() {
                   <input
                     type="number"
                     step="0.01"
-                    min="0"
+                     
                     required
                     placeholder="0.00"
                     value={price}

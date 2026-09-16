@@ -167,7 +167,7 @@ function GrnForm({ tradeId, deliveryNoteNo, dnItems, existingGrn, onSaved }) {
                 )}
                 <input
                   type="number"
-                  min="1"
+                   
                   value={row.quantity}
                   onChange={e => updateRejection(idx, 'quantity', e.target.value)}
                   placeholder="0"

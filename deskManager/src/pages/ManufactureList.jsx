@@ -442,7 +442,7 @@ export default function ManufactureList() {
                 <input
                   type="number"
                   required
-                  min="1"
+                   
                   placeholder="e.g. 5"
                   value={updateFormData.manufactured_quantity}
                   onChange={(e) => setUpdateFormData(prev => ({ ...prev, manufactured_quantity: e.target.value }))}

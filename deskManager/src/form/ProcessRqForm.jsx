@@ -521,7 +521,7 @@ export default function ProcessRqForm() {
                       <td className="px-3.5 py-3">
                         <input
                           type="number"
-                          min="1"
+                           
                           value={itemRow.source_item_quantity}
                           onChange={(e) => handleItemChange(idx, 'source_item_quantity', e.target.value)}
                           className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg font-bold text-right focus:outline-none focus:border-indigo-600"
@@ -548,7 +548,7 @@ export default function ProcessRqForm() {
                       <td className="px-3.5 py-3">
                         <input
                           type="number"
-                          min="1"
+                           
                           value={itemRow.target_item_quantity}
                           onChange={(e) => handleItemChange(idx, 'target_item_quantity', e.target.value)}
                           className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg font-bold text-right focus:outline-none focus:border-indigo-600"

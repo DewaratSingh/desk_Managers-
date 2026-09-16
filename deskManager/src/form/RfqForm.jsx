@@ -614,7 +614,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                               <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Qty *</label>
                               <input
                                 type="number"
-                                min="1"
+                                 
                                 required
                                 value={item.quantity}
                                 onChange={(e) => handleQuantityChange(item.item_code, e.target.value)}
@@ -639,7 +639,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                               <input
                                 type="number"
                                 step="0.01"
-                                min="0"
+                                 
                                 required
                                 placeholder="0.00"
                                 value={item.unit_price || '0'}

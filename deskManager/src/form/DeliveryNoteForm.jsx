@@ -793,7 +793,7 @@ export default function DeliveryNoteForm() {
                         <input
                           type="number"
                           value={item.delivery_qty}
-                          min="0"
+                           
                           max={item.remaining_qty}
                           disabled={tradeType === 'buy'}
                           onChange={(e) => handleItemQtyChange(idx, e.target.value)}
@@ -980,7 +980,7 @@ export default function DeliveryNoteForm() {
                           <td className="px-3.5 py-3 text-right">
                             <input
                               type="number"
-                              min="0"
+                               
                               max={inv.quantity}
                               value={allocQty}
                               onChange={(e) => {

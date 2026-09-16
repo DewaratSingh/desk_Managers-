@@ -249,7 +249,6 @@ export default function ManufactureForm() {
               <input
                 type="number"
                 required
-                min="1"
                 max={sourceQty || undefined}
                 placeholder="e.g. 10"
                 value={quantityUsed}
@@ -268,7 +267,7 @@ export default function ManufactureForm() {
               <input
                 type="number"
                 required
-                min="1"
+                 
                 placeholder="e.g. 5"
                 value={expectedQuantity}
                 onChange={(e) => setExpectedQuantity(e.target.value)}
@@ -288,7 +287,7 @@ export default function ManufactureForm() {
             <input
               type="number"
               step="0.01"
-              min="0"
+               
               placeholder="e.g. 50.00"
               value={unitPrice}
               onChange={(e) => setUnitPrice(e.target.value)}

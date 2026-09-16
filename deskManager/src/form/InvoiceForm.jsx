@@ -450,7 +450,7 @@ export default function InvoiceForm() {
                         <input
                           type="number"
                           value={item.quantity}
-                          min="1"
+                           
                           max={item.remaining_qty}
                           disabled={!item.selected}
                           onChange={(e) => handleItemQtyChange(idx, e.target.value)}
