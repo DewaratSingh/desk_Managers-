@@ -2,227 +2,431 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
-// GET next Process PO number
-router.get('/next-no', async (req, res) => {
+// GET all Process PO jobs with their item details
+router.get('/', async (req, res) => {
   try {
-    const result = await pool.query('SELECT COUNT(*) FROM process_po WHERE company_id = $1', [req.user.company_id]);
-    const count = parseInt(result.rows[0].count) || 0;
-    const nextNo = `PPO-${String(count + 1).padStart(4, '0')}`;
-    res.json({ nextNo });
+    const result = await pool.query(
+      `SELECT 
+         ppo.id, 
+         ppo.po_no, 
+         ppo.date_of_start, 
+         ppo.date_of_end, 
+         ppo.received_q_id,
+         ppo.message, 
+         ppo.created_at,
+         COALESCE(
+           json_agg(
+             json_build_object(
+               'id', poi.id,
+               'source_item_id', poi.source_item_id,
+               'source_item_code', src.item_code,
+               'source_item_description', src.description,
+               'target_item_id', poi.target_item_id,
+               'target_item_code', tgt.item_code,
+               'target_item_description', tgt.description,
+               'source_trace_id_array', poi.source_trace_id_array,
+               'price', poi.price,
+               'source_qty', poi.source_qty,
+               'target_qty', poi.target_qty,
+               'target_trace_id_array', poi.target_trace_id_array
+             )
+           ) FILTER (WHERE poi.id IS NOT NULL), '[]'::json
+         ) AS items
+       FROM process_po ppo
+       LEFT JOIN process_po_item poi ON poi.process_po_id = ppo.id AND poi.company_id = ppo.company_id
+       LEFT JOIN items src ON poi.source_item_id = src.id
+       LEFT JOIN items tgt ON poi.target_item_id = tgt.id
+       WHERE ppo.company_id = $1
+       GROUP BY ppo.id
+       ORDER BY ppo.created_at DESC`,
+      [req.user.company_id]
+    );
+    res.json(result.rows);
   } catch (err) {
-    console.error('Error fetching next process PO no:', err.message);
-    res.status(500).json({ error: 'Failed to generate next process PO number' });
+    console.error('Error fetching process PO list:', err.message);
+    res.status(500).json({ error: 'Failed to fetch process PO list' });
   }
 });
 
-// GET a single Process PO by po_no
-router.get('/:identifier', async (req, res) => {
-  const { identifier } = req.params;
-  try {
-    const result = await pool.query(`
-      SELECT
-        pp.id,
-        pp.po_no,
-        pp.date,
-        pp.delivery_date,
-        pp.rq_process_id,
-        rp.rq_process_no,
-        rp.seller,
-        rp.party,
-        t.trade_id,
-        pp.created_at,
-        (
-          SELECT COALESCE(json_agg(json_build_object(
-            'id', pi.id,
-            'source_item_id', pi.source_item_id,
-            'source_item_code', si.item_code,
-            'source_description', si.description,
-            'source_drawing_number', si.drawing_number,
-            'source_item_quantity', pi.source_item_quantity,
-            'target_item_id', pi.target_item_id,
-            'target_item_code', ti.item_code,
-            'target_description', ti.description,
-            'target_drawing_number', ti.drawing_number,
-            'target_item_quantity', pi.target_item_quantity,
-            'price', pi.price,
-            'source_item_traceid_array', pi.source_item_traceid_array,
-            'target_item_traceid_array', pi.target_item_traceid_array
-          ) ORDER BY pi.id), '[]')
-          FROM po_process_item pi
-          LEFT JOIN items si ON pi.source_item_id = si.id
-          LEFT JOIN items ti ON pi.target_item_id = ti.id
-          WHERE pi.process_po_id = pp.id AND pi.company_id = pp.company_id
-        ) as items
-      FROM process_po pp
-      LEFT JOIN rq_process rp ON pp.rq_process_id = rp.id
-      LEFT JOIN trades t ON pp.trade_id = t.id
-      WHERE (pp.po_no = $1 OR pp.id::text = $1) AND pp.company_id = $2
-    `, [identifier, req.user.company_id]);
+// GET trace items from inventory for a specific source item code
+router.get('/trace-items', async (req, res) => {
+  const { item_code } = req.query || {};
+  if (!item_code) {
+    return res.status(400).json({ error: 'item_code is required' });
+  }
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Process PO not found' });
-    }
-    res.json(result.rows[0]);
+  try {
+    const result = await pool.query(
+      `SELECT 
+         inv.id AS inventory_id,
+         inv.trace_item_id,
+         COALESCE(ti.id, inv.trace_item_id) AS trace_id,
+         it.item_code,
+         it.description,
+         inv.quantity AS available_qty,
+         inv.price,
+         inv.location,
+         inv.rack,
+         inv.shelf_number
+       FROM inventory inv
+       JOIN items it ON inv.item_code = it.id
+       LEFT JOIN trace_item ti ON inv.trace_item_id = ti.id
+       WHERE it.item_code = $1 AND inv.company_id = $2 AND inv.quantity > 0
+       ORDER BY inv.created_at ASC`,
+      [item_code.trim(), req.user.company_id]
+    );
+    res.json(result.rows);
   } catch (err) {
-    console.error('Error fetching Process PO:', err.message);
-    res.status(500).json({ error: 'Failed to fetch Process PO' });
+    console.error('Error fetching trace items for Process PO:', err.message);
+    res.status(500).json({ error: 'Failed to fetch trace items' });
   }
 });
 
-// CREATE a new Process PO
+// POST Create a new Process PO Job and its items
 router.post('/', async (req, res) => {
-  const { date, delivery_date, rq_process_no, trade_id: tradeCode, items } = req.body || {};
+  const { po_no, date_of_start, date_of_end, received_q_id, message, items } = req.body || {};
 
-  if (!date) return res.status(400).json({ error: 'Date is required' });
-  if (!rq_process_no) return res.status(400).json({ error: 'RQ Process number is required' });
-  if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'At least one item is required' });
+  if (!po_no) {
+    return res.status(400).json({ error: 'po_no (Process PO Number/Name) is required' });
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'At least one item row is required' });
+  }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const companyId = req.user.company_id;
 
-    // 1. Generate PPO number
-    const countRes = await client.query('SELECT COUNT(*) FROM process_po WHERE company_id = $1', [req.user.company_id]);
-    const count = parseInt(countRes.rows[0].count) || 0;
-    const po_no = `PPO-${String(count + 1).padStart(4, '0')}`;
-
-    // 2. Resolve rq_process record
-    const rqRes = await client.query(
-      'SELECT id FROM rq_process WHERE rq_process_no = $1 AND company_id = $2',
-      [rq_process_no, req.user.company_id]
+    // 1. Insert into process_po table
+    const ppoRes = await client.query(
+      `INSERT INTO process_po (po_no, date_of_start, date_of_end, received_q_id, message, company_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
+      [
+        po_no.trim(),
+        date_of_start || null,
+        date_of_end || null,
+        received_q_id ? parseInt(received_q_id) : null,
+        message || null,
+        companyId
+      ]
     );
-    if (rqRes.rows.length === 0) throw new Error(`Process RQ "${rq_process_no}" not found`);
-    const rqDbId = rqRes.rows[0].id;
+    const ppoId = ppoRes.rows[0].id;
 
-    // 3. Resolve trade
-    let tradeDbId = null;
-    if (tradeCode) {
-      const tradeRes = await client.query('SELECT id FROM trades WHERE trade_id = $1 AND company_id = $2', [tradeCode, req.user.company_id]);
-      if (tradeRes.rows.length > 0) tradeDbId = tradeRes.rows[0].id;
-    }
-
-    // 4. Insert process_po
-    const poRes = await client.query(
-      `INSERT INTO process_po (po_no, date, delivery_date, rq_process_id, trade_id, company_id)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [po_no, date, delivery_date || null, rqDbId, tradeDbId, req.user.company_id]
-    );
-    const poDbId = poRes.rows[0].id;
-
-    // 5. For each item: insert po_process_item, create target trace+inventory, update source trace status
+    // 2. Process each item row
     for (const item of items) {
-      const sourceTraceArray = Array.isArray(item.source_item_traceid_array) ? item.source_item_traceid_array : [];
-      const targetTraceArray = [];
+      const {
+        source_item_code,
+        target_item_code,
+        source_qty,
+        target_qty,
+        price,
+        source_trace_id_array
+      } = item;
 
-      // Gather process history from source trace items so new trace item inherits the same trace history
-      let inheritedProcess = [];
-      for (const alloc of sourceTraceArray) {
-        if (alloc.trace_item_id) {
-          const srcRow = await client.query(
+      // Resolve source_item_id
+      let sourceDbId = null;
+      if (source_item_code) {
+        const srcRes = await client.query(
+          'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
+          [source_item_code.trim(), companyId]
+        );
+        if (srcRes.rows.length > 0) {
+          sourceDbId = srcRes.rows[0].id;
+        }
+      }
+
+      // Resolve target_item_id
+      let targetDbId = null;
+      if (target_item_code) {
+        const tgtRes = await client.query(
+          'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
+          [target_item_code.trim(), companyId]
+        );
+        if (tgtRes.rows.length > 0) {
+          targetDbId = tgtRes.rows[0].id;
+        } else {
+          throw new Error(`Target Item Code '${target_item_code}' not found in Items catalog`);
+        }
+      }
+
+      const parsedSourceQty = parseFloat(source_qty) || 0;
+      const parsedTargetQty = parseFloat(target_qty) || 0;
+      const parsedPrice = parseFloat(price) || 0.00;
+      const cleanSourceTraceArray = Array.isArray(source_trace_id_array) ? source_trace_id_array : [];
+
+      // Deduct quantity from inventory & trace_item for selected source trace items
+      for (const st of cleanSourceTraceArray) {
+        const traceId = st.trace_id || st.traceid;
+        const consumeQty = parseFloat(st.Qty) || 0;
+        if (consumeQty > 0) {
+          if (st.inventory_id) {
+            await client.query(
+              'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND company_id = $3',
+              [consumeQty, st.inventory_id, companyId]
+            );
+          } else if (traceId) {
+            await client.query(
+              'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE trace_item_id = $2 AND company_id = $3',
+              [consumeQty, traceId, companyId]
+            );
+          }
+          if (traceId) {
+            await client.query(
+              'UPDATE trace_item SET quantity = GREATEST(0, quantity - $1) WHERE id = $2 AND company_id = $3',
+              [consumeQty, traceId, companyId]
+            );
+          }
+        }
+      }
+
+      // Accumulate previous process histories from selected source trace items
+      const accumulatedProcessHistory = [];
+
+      for (const st of cleanSourceTraceArray) {
+        const traceId = st.trace_id || st.traceid;
+        if (traceId) {
+          const srcTraceRes = await client.query(
             'SELECT process FROM trace_item WHERE id = $1 AND company_id = $2',
-            [alloc.trace_item_id, req.user.company_id]
+            [traceId, companyId]
           );
-          if (srcRow.rows.length > 0 && Array.isArray(srcRow.rows[0].process)) {
-            for (const step of srcRow.rows[0].process) {
-              if (!inheritedProcess.some(p => p.id === step.id && p.type === step.type)) {
-                inheritedProcess.push(step);
-              }
+          if (srcTraceRes.rows.length > 0 && srcTraceRes.rows[0].process) {
+            let srcProc = srcTraceRes.rows[0].process;
+            if (typeof srcProc === 'string') {
+              try { srcProc = JSON.parse(srcProc); } catch (e) { srcProc = []; }
+            }
+            if (Array.isArray(srcProc)) {
+              accumulatedProcessHistory.push(...srcProc);
             }
           }
         }
       }
 
-      const processStep = {
-        type: 'process',
-        po_no,
-        trade_id: tradeCode,
-        unit_price: parseFloat(item.price) || 0
-      };
-      const finalProcessArray = [...inheritedProcess, processStep];
+      // Append new PROCESS_PO step
+      accumulatedProcessHistory.push({
+        type: 'PROCESS_PO',
+        po_no: po_no,
+        process_po_id: ppoId,
+        unit_price: parsedPrice,
+        source_traces: cleanSourceTraceArray
+      });
 
-      // Create one new trace_item + inventory row for the TARGET item
       const newTraceRes = await client.query(
         `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-         VALUES ($1, $2::jsonb, $3, $4, $5, 'in process', $6) RETURNING id`,
+         VALUES ($1, $2::jsonb, $3, $4, $5, 'under Process PO', $6) RETURNING id`,
         [
-          item.target_item_id,
-          JSON.stringify(finalProcessArray),
+          targetDbId,
+          JSON.stringify(accumulatedProcessHistory),
           `Process PO: ${po_no}`,
-          parseInt(item.target_item_quantity) || 0,
-          parseFloat(item.price) || 0,
-          req.user.company_id
+          parsedTargetQty,
+          parsedPrice,
+          companyId
         ]
       );
       const newTraceId = newTraceRes.rows[0].id;
+      const targetTraceIdArray = [{ traceid: newTraceId }];
 
-      // Insert into inventory for target item
+      // Insert new stock into inventory table
       await client.query(
-        `INSERT INTO inventory (item_code, message, quantity, price, trade_id, trace_item_id, company_id)
+        `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
-          item.target_item_id,
-          `Created by Process PO ${po_no} — awaiting processing`,
-          parseInt(item.target_item_quantity) || 0,
-          parseFloat(item.price) || 0,
-          tradeDbId,
-          newTraceId,
-          req.user.company_id
+          targetDbId,
+          parsedTargetQty,
+          parsedPrice,
+          'Process PO Store',
+          `Process PO Job #${ppoId} (${po_no})`,
+          companyId,
+          newTraceId
         ]
       );
 
-      targetTraceArray.push({ trace_item_id: newTraceId, quantity: parseInt(item.target_item_quantity) || 0 });
-
-      // Reduce quantity of source inventory rows (do NOT change status)
-      for (const alloc of sourceTraceArray) {
-        if (alloc.inventory_id && alloc.quantity > 0) {
-          await client.query(
-            `UPDATE inventory
-             SET quantity = GREATEST(0, quantity - $1), updated_at = NOW()
-             WHERE id = $2 AND company_id = $3`,
-            [parseInt(alloc.quantity), alloc.inventory_id, req.user.company_id]
-          );
-          await client.query(
-            `DELETE FROM inventory WHERE id = $1 AND quantity <= 0 AND company_id = $2`,
-            [alloc.inventory_id, req.user.company_id]
-          );
-        }
-      }
-
-      // Insert po_process_item
+      // Insert row into process_po_item
       await client.query(
-        `INSERT INTO po_process_item
-           (process_po_id, source_item_id, source_item_quantity, target_item_id, target_item_quantity, price, source_item_traceid_array, target_item_traceid_array, company_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9)`,
+        `INSERT INTO process_po_item (
+           process_po_id, source_item_id, target_item_id,
+           source_trace_id_array, price, source_qty, target_qty,
+           target_trace_id_array, company_id
+         ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9)`,
         [
-          poDbId,
-          item.source_item_id,
-          parseInt(item.source_item_quantity) || 0,
-          item.target_item_id,
-          parseInt(item.target_item_quantity) || 0,
-          parseFloat(item.price) || 0,
-          JSON.stringify(sourceTraceArray),
-          JSON.stringify(targetTraceArray),
-          req.user.company_id
+          ppoId,
+          sourceDbId,
+          targetDbId,
+          JSON.stringify(cleanSourceTraceArray),
+          parsedPrice,
+          parsedSourceQty,
+          parsedTargetQty,
+          JSON.stringify(targetTraceIdArray),
+          companyId
         ]
-      );
-    }
-
-    // 6. Append PO document to trade
-    if (tradeDbId) {
-      await client.query(
-        `UPDATE trades
-         SET documents = documents || $1::jsonb
-         WHERE id = $2 AND company_id = $3`,
-        [JSON.stringify([{ type: 'PURCHASE_ORDER', id: po_no }]), tradeDbId, req.user.company_id]
       );
     }
 
     await client.query('COMMIT');
-    res.status(201).json({ po_no, trade_id: tradeCode, id: poDbId });
+    res.status(201).json({ message: 'Process PO job created successfully', id: ppoId });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Error creating Process PO:', err.message);
-    res.status(500).json({ error: err.message || 'Failed to create Process PO' });
+    console.error('Error creating Process PO job:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to create Process PO job' });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/process-po/:id/complete-production
+router.put('/:id/complete-production', async (req, res) => {
+  const { id } = req.params;
+  const { process_po_item_id, completed_qty } = req.body || {};
+
+  const inputMfgQty = parseFloat(completed_qty);
+  if (isNaN(inputMfgQty) || inputMfgQty <= 0) {
+    return res.status(400).json({ error: 'completed_qty must be a valid positive number' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const companyId = req.user.company_id;
+
+    // 1. Fetch process_po_item record
+    let poiRes;
+    if (process_po_item_id) {
+      poiRes = await client.query(
+        'SELECT * FROM process_po_item WHERE id = $1 AND process_po_id = $2 AND company_id = $3',
+        [process_po_item_id, id, companyId]
+      );
+    } else {
+      poiRes = await client.query(
+        'SELECT * FROM process_po_item WHERE process_po_id = $1 AND company_id = $2 ORDER BY id ASC LIMIT 1',
+        [id, companyId]
+      );
+    }
+
+    if (poiRes.rows.length === 0) {
+      throw new Error('Process PO item record not found for this job');
+    }
+
+    const poiRow = poiRes.rows[0];
+    let currentTargetQty = parseFloat(poiRow.target_qty) || 0;
+    const rawTargetTraceArray = Array.isArray(poiRow.target_trace_id_array) ? poiRow.target_trace_id_array : [];
+
+    if (rawTargetTraceArray.length === 0) {
+      throw new Error('No target trace item found in target_trace_id_array for this Process PO item');
+    }
+
+    // Build target_trace_item_array from database quantities
+    const target_trace_item_array = [];
+    for (const tObj of rawTargetTraceArray) {
+      const tId = parseInt(tObj.traceid || tObj.trace_id);
+      if (tId && !isNaN(tId)) {
+        const tRes = await client.query(
+          'SELECT * FROM trace_item WHERE id = $1 AND company_id = $2',
+          [tId, companyId]
+        );
+        if (tRes.rows.length > 0) {
+          target_trace_item_array.push({
+            traceId: tId,
+            Qty: parseFloat(tRes.rows[0].quantity) || 0,
+            traceRow: tRes.rows[0],
+            rawObj: tObj
+          });
+        }
+      }
+    }
+
+    if (target_trace_item_array.length === 0) {
+      throw new Error('No trace items found in database for the given target_trace_id_array');
+    }
+
+    let manufacturedQty = inputMfgQty;
+    let i = 0;
+    let updatedTargetTraceArray = [...rawTargetTraceArray];
+
+    while (manufacturedQty >= 0 && i < target_trace_item_array.length) {
+      const currentItem = target_trace_item_array[i];
+      const prevMfgQty = manufacturedQty;
+
+      manufacturedQty = manufacturedQty - currentItem.Qty;
+
+      if (manufacturedQty >= 0) {
+        // manufactured Qty is positive / zero remaining: update status to 'in inventory' via SQL
+        await client.query(
+          "UPDATE trace_item SET status = 'in inventory', quantity = 0 WHERE id = $1 AND company_id = $2",
+          [currentItem.traceId, companyId]
+        );
+
+        // Remove fully converted trace ID from target_trace_id_array
+        updatedTargetTraceArray = updatedTargetTraceArray.filter(
+          x => parseInt(x.traceid || x.trace_id) !== currentItem.traceId
+        );
+      }
+
+      if (manufacturedQty < 0) {
+        // manufactured Qty is negative:
+        // Create new trace id and add in inventory with Qty = prevMfgQty (portion manufactured)
+        const producedQty = prevMfgQty;
+        const traceRow = currentItem.traceRow;
+        const processJson = typeof traceRow.process === 'string' 
+          ? traceRow.process 
+          : JSON.stringify(traceRow.process || []);
+
+        const newTraceRes = await client.query(
+          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+           VALUES ($1, $2::jsonb, $3, $4, $5, 'in inventory', $6) RETURNING id`,
+          [
+            traceRow.item_code,
+            processJson,
+            traceRow.message || 'Process PO Item - Completed',
+            producedQty,
+            traceRow.price,
+            companyId
+          ]
+        );
+        const newTraceId = newTraceRes.rows[0].id;
+
+        // Insert new stock record into inventory table for newTraceId
+        await client.query(
+          `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            traceRow.item_code,
+            producedQty,
+            traceRow.price,
+            'Process PO Store',
+            `Process PO Stock Completed - Job #${id}`,
+            companyId,
+            newTraceId
+          ]
+        );
+
+        // target_trace_item_array[i].traceid.Qty = manufactured Qty * -1
+        const remainingTraceQty = manufacturedQty * -1;
+        await client.query(
+          'UPDATE trace_item SET quantity = $1 WHERE id = $2 AND company_id = $3',
+          [remainingTraceQty, currentItem.traceId, companyId]
+        );
+        await client.query(
+          'UPDATE inventory SET quantity = $1 WHERE trace_item_id = $2 AND company_id = $3',
+          [remainingTraceQty, currentItem.traceId, companyId]
+        );
+      }
+
+      i++;
+    }
+
+    // Update target_qty and target_trace_id_array on process_po_item
+    currentTargetQty = Math.max(0, currentTargetQty - inputMfgQty);
+    await client.query(
+      'UPDATE process_po_item SET target_qty = $1, target_trace_id_array = $2::jsonb WHERE id = $3 AND company_id = $4',
+      [currentTargetQty, JSON.stringify(updatedTargetTraceArray), poiRow.id, companyId]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: 'Completed production processed successfully for Process PO', id });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error processing completed production for Process PO:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to process completed production for Process PO' });
   } finally {
     client.release();
   }

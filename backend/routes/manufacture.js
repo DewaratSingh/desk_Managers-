@@ -2,297 +2,429 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
-// GET all manufacturing records
+// GET all manufacturing jobs with their item details
 router.get('/', async (req, res) => {
   try {
-    const companyId = req.user.company_id;
-    const result = await pool.query(`
-      SELECT 
-        m.id,
-        m.trace_item_id,
-        m.target_trace_item_id,
-        m.source_item_id,
-        m.target_item_id,
-        m.quantity_used,
-        m.expected_quantity,
-        m.completed_quantity,
-        m.completed,
-        m.date_of_starting,
-        m.date_of_ending,
-        m.message,
-        m.status,
-        m.created_at,
-        src.item_code AS source_item_code,
-        src.description AS source_item_description,
-        src.drawing_number AS source_drawing_number,
-        tgt.item_code AS target_item_code,
-        tgt.description AS target_item_description,
-        tgt.drawing_number AS target_drawing_number,
-        inv.location,
-        inv.rack,
-        inv.shelf_number
-      FROM manufacture m
-      LEFT JOIN items src ON m.source_item_id = src.id AND src.company_id = m.company_id
-      LEFT JOIN items tgt ON m.target_item_id = tgt.id AND tgt.company_id = m.company_id
-      LEFT JOIN inventory inv ON m.target_trace_item_id = inv.trace_item_id AND inv.company_id = m.company_id
-      WHERE m.company_id = $1
-      ORDER BY m.created_at DESC
-    `, [companyId]);
-
+    const result = await pool.query(
+      `SELECT 
+         m.id, 
+         m.process_name, 
+         m.date_of_start, 
+         m.date_of_end, 
+         m.message, 
+         m.created_at,
+         COALESCE(
+           json_agg(
+             json_build_object(
+               'id', mi.id,
+               'source_item_id', mi.source_item_id,
+               'source_item_code', src.item_code,
+               'source_item_description', src.description,
+               'target_item_id', mi.target_item_id,
+               'target_item_code', tgt.item_code,
+               'target_item_description', tgt.description,
+               'source_trace_id_array', mi.source_trace_id_array,
+               'price', mi.price,
+               'source_qty', mi.source_qty,
+               'target_qty', mi.target_qty,
+               'target_trace_id_array', mi.target_trace_id_array
+             )
+           ) FILTER (WHERE mi.id IS NOT NULL), '[]'::json
+         ) AS items
+       FROM manufacture m
+       LEFT JOIN manufacture_item mi ON mi.manufacture_id = m.id AND mi.company_id = m.company_id
+       LEFT JOIN items src ON mi.source_item_id = src.id
+       LEFT JOIN items tgt ON mi.target_item_id = tgt.id
+       WHERE m.company_id = $1
+       GROUP BY m.id
+       ORDER BY m.created_at DESC`,
+      [req.user.company_id]
+    );
     res.json(result.rows);
   } catch (err) {
-    console.error('Error fetching manufacturing records:', err.message);
-    res.status(500).json({ error: 'Failed to fetch manufacturing records' });
+    console.error('Error fetching manufacture list:', err.message);
+    res.status(500).json({ error: 'Failed to fetch manufacture list' });
   }
 });
 
-// POST a new manufacturing job
+// GET trace items from inventory for a specific source item code
+router.get('/trace-items', async (req, res) => {
+  const { item_code } = req.query || {};
+  if (!item_code) {
+    return res.status(400).json({ error: 'item_code is required' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT 
+         inv.id AS inventory_id,
+         inv.trace_item_id,
+         COALESCE(ti.id, inv.trace_item_id) AS trace_id,
+         it.item_code,
+         it.description,
+         inv.quantity AS available_qty,
+         inv.price,
+         inv.location,
+         inv.rack,
+         inv.shelf_number
+       FROM inventory inv
+       JOIN items it ON inv.item_code = it.id
+       LEFT JOIN trace_item ti ON inv.trace_item_id = ti.id
+       WHERE it.item_code = $1 AND inv.company_id = $2 AND inv.quantity > 0
+       ORDER BY inv.created_at ASC`,
+      [item_code.trim(), req.user.company_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching trace items:', err.message);
+    res.status(500).json({ error: 'Failed to fetch trace items' });
+  }
+});
+
+// POST Create a new Manufacturing Job and its items
 router.post('/', async (req, res) => {
-  const {
-    source_item_code,
-    target_item_code,
-    quantity_used,
-    expected_quantity,
-    date_of_starting,
-    date_of_ending,
-    unit_price,
-    message,
-    source_trace_item_id,
-    source_inventory_id
-  } = req.body || {};
+  const { process_name, date_of_start, date_of_end, message, items } = req.body || {};
 
-  if (!source_item_code || !target_item_code || !date_of_starting) {
-    return res.status(400).json({ error: 'source_item_code, target_item_code, and date_of_starting are required' });
+  if (!process_name) {
+    return res.status(400).json({ error: 'process_name is required' });
   }
-
-  const qtyUsed = parseInt(quantity_used, 10);
-  const expQty = parseInt(expected_quantity, 10);
-  const mUnitPrice = parseFloat(unit_price) || 0.00;
-
-  if (isNaN(qtyUsed) || qtyUsed <= 0) {
-    return res.status(400).json({ error: 'quantity_used must be a positive number' });
-  }
-  if (isNaN(expQty) || expQty <= 0) {
-    return res.status(400).json({ error: 'expected_quantity must be a positive number' });
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'At least one manufacture item row is required' });
   }
 
   const client = await pool.connect();
   try {
-    const companyId = req.user.company_id;
     await client.query('BEGIN');
+    const companyId = req.user.company_id;
 
-    // 1. Resolve source item DB ID
-    const srcRes = await client.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [source_item_code, companyId]);
-    if (srcRes.rows.length === 0) {
-      throw new Error(`Source Item ${source_item_code} not found`);
-    }
-    const sourceDbId = srcRes.rows[0].id;
+    // 1. Insert into manufacture table
+    const mfgRes = await client.query(
+      `INSERT INTO manufacture (process_name, date_of_start, date_of_end, message, company_id)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+      [
+        process_name.trim(),
+        date_of_start || null,
+        date_of_end || null,
+        message || null,
+        companyId
+      ]
+    );
+    const mfgId = mfgRes.rows[0].id;
 
-    // 2. Resolve target item DB ID
-    const tgtRes = await client.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [target_item_code, companyId]);
-    if (tgtRes.rows.length === 0) {
-      throw new Error(`Target Item ${target_item_code} not found`);
-    }
-    const targetDbId = tgtRes.rows[0].id;
+    // 2. Process each manufacture item row
+    for (const item of items) {
+      const {
+        source_item_code,
+        target_item_code,
+        source_qty,
+        target_qty,
+        price,
+        source_trace_id_array
+      } = item;
 
-    // 3. Deduct quantity_used from source inventory if linked or by item_code
-    if (source_inventory_id) {
-      const invUpdate = await client.query(
-        `UPDATE inventory 
-         SET quantity = quantity - $1, updated_at = CURRENT_TIMESTAMP 
-         WHERE id = $2 AND company_id = $3 
-         RETURNING quantity`,
-        [qtyUsed, parseInt(source_inventory_id, 10), companyId]
-      );
-      if (invUpdate.rows.length > 0 && parseInt(invUpdate.rows[0].quantity, 10) <= 0) {
-        await client.query('DELETE FROM inventory WHERE id = $1 AND company_id = $2', [parseInt(source_inventory_id, 10), companyId]);
-      }
-    } else {
-      // Find matching source inventory record
-      const findInv = await client.query(
-        'SELECT id, quantity FROM inventory WHERE item_code = $1 AND company_id = $2 ORDER BY created_at ASC LIMIT 1',
-        [sourceDbId, companyId]
-      );
-      if (findInv.rows.length > 0) {
-        const invId = findInv.rows[0].id;
-        const invUpdate = await client.query(
-          'UPDATE inventory SET quantity = quantity - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND company_id = $3 RETURNING quantity',
-          [qtyUsed, invId, companyId]
+      // Resolve source_item_id
+      let sourceDbId = null;
+      if (source_item_code) {
+        const srcRes = await client.query(
+          'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
+          [source_item_code.trim(), companyId]
         );
-        if (invUpdate.rows.length > 0 && parseInt(invUpdate.rows[0].quantity, 10) <= 0) {
-          await client.query('DELETE FROM inventory WHERE id = $1 AND company_id = $2', [invId, companyId]);
+        if (srcRes.rows.length > 0) {
+          sourceDbId = srcRes.rows[0].id;
         }
       }
-    }
 
-    // 4. Deduct quantity_used from source trace_item if linked or by item_code & fetch process history
-    let srcTraceId = source_trace_item_id ? parseInt(source_trace_item_id, 10) : null;
-    let existingProcess = [];
-    if (srcTraceId) {
-      const traceRes = await client.query(
-        'UPDATE trace_item SET quantity = GREATEST(0, quantity - $1) WHERE id = $2 AND company_id = $3 RETURNING process',
-        [qtyUsed, srcTraceId, companyId]
-      );
-      if (traceRes.rows.length > 0 && Array.isArray(traceRes.rows[0].process)) {
-        existingProcess = traceRes.rows[0].process;
-      }
-    } else {
-      const findTrace = await client.query(
-        'SELECT id, process FROM trace_item WHERE item_code = $1 AND company_id = $2 ORDER BY created_at ASC LIMIT 1',
-        [sourceDbId, companyId]
-      );
-      if (findTrace.rows.length > 0) {
-        srcTraceId = findTrace.rows[0].id;
-        if (Array.isArray(findTrace.rows[0].process)) existingProcess = findTrace.rows[0].process;
-        await client.query(
-          'UPDATE trace_item SET quantity = GREATEST(0, quantity - $1) WHERE id = $2 AND company_id = $3',
-          [qtyUsed, srcTraceId, companyId]
+      // Resolve target_item_id
+      let targetDbId = null;
+      if (target_item_code) {
+        const tgtRes = await client.query(
+          'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
+          [target_item_code.trim(), companyId]
         );
+        if (tgtRes.rows.length > 0) {
+          targetDbId = tgtRes.rows[0].id;
+        } else {
+          throw new Error(`Target Item Code '${target_item_code}' not found in Items catalog`);
+        }
       }
+
+      const parsedSourceQty = parseFloat(source_qty) || 0;
+      const parsedTargetQty = parseFloat(target_qty) || 0;
+      const parsedPrice = parseFloat(price) || 0.00;
+      const cleanSourceTraceArray = Array.isArray(source_trace_id_array) ? source_trace_id_array : [];
+
+      // Deduct quantity from inventory & trace_item for selected source trace items
+      for (const st of cleanSourceTraceArray) {
+        const traceId = st.trace_id || st.traceid;
+        const consumeQty = parseFloat(st.Qty) || 0;
+        if (consumeQty > 0) {
+          if (st.inventory_id) {
+            await client.query(
+              'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND company_id = $3',
+              [consumeQty, st.inventory_id, companyId]
+            );
+          } else if (traceId) {
+            await client.query(
+              'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE trace_item_id = $2 AND company_id = $3',
+              [consumeQty, traceId, companyId]
+            );
+          }
+          if (traceId) {
+            await client.query(
+              'UPDATE trace_item SET quantity = GREATEST(0, quantity - $1) WHERE id = $2 AND company_id = $3',
+              [consumeQty, traceId, companyId]
+            );
+          }
+        }
+      }
+
+      // Accumulate previous process histories from selected source trace items
+      const accumulatedProcessHistory = [];
+
+      for (const st of cleanSourceTraceArray) {
+        const traceId = st.trace_id || st.traceid;
+        if (traceId) {
+          const srcTraceRes = await client.query(
+            'SELECT process FROM trace_item WHERE id = $1 AND company_id = $2',
+            [traceId, companyId]
+          );
+          if (srcTraceRes.rows.length > 0 && srcTraceRes.rows[0].process) {
+            let srcProc = srcTraceRes.rows[0].process;
+            if (typeof srcProc === 'string') {
+              try { srcProc = JSON.parse(srcProc); } catch (e) { srcProc = []; }
+            }
+            if (Array.isArray(srcProc)) {
+              accumulatedProcessHistory.push(...srcProc);
+            }
+          }
+        }
+      }
+
+      // Append new MANUFACTURE step
+      accumulatedProcessHistory.push({
+        type: 'MANUFACTURE',
+        process_name: process_name,
+        manufacture_id: mfgId,
+        unit_price: parsedPrice,
+        source_traces: cleanSourceTraceArray
+      });
+
+      const newTraceRes = await client.query(
+        `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+         VALUES ($1, $2::jsonb, $3, $4, $5, 'under Manufacture', $6) RETURNING id`,
+        [
+          targetDbId,
+          JSON.stringify(accumulatedProcessHistory),
+          `Manufactured via Process: ${process_name}`,
+          parsedTargetQty,
+          parsedPrice,
+          companyId
+        ]
+      );
+      const newTraceId = newTraceRes.rows[0].id;
+      const targetTraceIdArray = [{ traceid: newTraceId }];
+
+      // Insert new manufactured stock into inventory table
+      await client.query(
+        `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          targetDbId,
+          parsedTargetQty,
+          parsedPrice,
+          'Manufacturing Store',
+          `Manufactured Job #${mfgId} (${process_name})`,
+          companyId,
+          newTraceId
+        ]
+      );
+
+      // Insert row into manufacture_item
+      await client.query(
+        `INSERT INTO manufacture_item (
+           manufacture_id, source_item_id, target_item_id,
+           source_trace_id_array, price, source_qty, target_qty,
+           target_trace_id_array, company_id
+         ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9)`,
+        [
+          mfgId,
+          sourceDbId,
+          targetDbId,
+          JSON.stringify(cleanSourceTraceArray),
+          parsedPrice,
+          parsedSourceQty,
+          parsedTargetQty,
+          JSON.stringify(targetTraceIdArray),
+          companyId
+        ]
+      );
     }
-
-    // 5. Build process array with new MANUFACTURE step
-    const cleanedExistingProcess = (Array.isArray(existingProcess) ? existingProcess : []).map(p => {
-      if (p.id && String(p.id).startsWith('TRD-') && p.type === 'SELL') {
-        return { ...p, type: 'BUY' };
-      }
-      return p;
-    });
-
-    const tempMfgId = Math.floor(10000 + Math.random() * 90000);
-    const mfgStep = { type: 'MANUFACTURE', id: tempMfgId, unit_price: mUnitPrice };
-    const updatedProcess = [...cleanedExistingProcess, mfgStep];
-
-    // Calculate total unit price from all process steps
-    const totalPrice = updatedProcess.reduce((sum, item) => sum + (parseFloat(item.unit_price) || 0), 0);
-
-    // 6. Create new target trace_item with status = 'manufacturing' and process JSONB
-    const targetTraceRes = await client.query(`
-      INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-      VALUES ($1, $2::jsonb, $3, $4, $5, 'manufacturing', $6)
-      RETURNING id
-    `, [
-      targetDbId,
-      JSON.stringify(updatedProcess),
-      message || `Manufacturing from ${source_item_code}`,
-      0,
-      totalPrice,
-      companyId
-    ]);
-    const targetTraceId = targetTraceRes.rows[0].id;
-
-    // Update mfgStep id with real trace ID
-    updatedProcess[updatedProcess.length - 1].id = targetTraceId;
-    await client.query('UPDATE trace_item SET process = $1::jsonb WHERE id = $2', [JSON.stringify(updatedProcess), targetTraceId]);
-
-    // 7. Create new target inventory entry with trace_item_id and total unit price
-    await client.query(`
-      INSERT INTO inventory (item_code, quantity, price, message, company_id, trace_item_id)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `, [
-      targetDbId,
-      0,
-      totalPrice,
-      message || `Manufacturing in progress (From: ${source_item_code})`,
-      companyId,
-      targetTraceId
-    ]);
-
-    // 8. Insert record into manufacture table
-    const mRes = await client.query(`
-      INSERT INTO manufacture (
-        trace_item_id, target_trace_item_id, source_item_id, target_item_id,
-        quantity_used, expected_quantity, date_of_starting, date_of_ending,
-        message, status, company_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'manufacturing', $10)
-      RETURNING *
-    `, [
-      srcTraceId,
-      targetTraceId,
-      sourceDbId,
-      targetDbId,
-      qtyUsed,
-      expQty,
-      date_of_starting,
-      date_of_ending || null,
-      message || null,
-      companyId
-    ]);
 
     await client.query('COMMIT');
-    res.status(201).json(mRes.rows[0]);
+    res.status(201).json({ message: 'Manufacture job created successfully', id: mfgId });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Error creating manufacturing job:', err.message);
-    res.status(500).json({ error: err.message || 'Failed to create manufacturing job' });
+    console.error('Error creating manufacture job:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to create manufacture job' });
   } finally {
     client.release();
   }
 });
 
-// UPDATE production progress for a manufacturing job
-router.put('/:id/update-production', async (req, res) => {
+// PUT /api/manufacture/:id/complete-production
+router.put('/:id/complete-production', async (req, res) => {
   const { id } = req.params;
-  const { manufactured_quantity, message, location, rack, shelf_number } = req.body || {};
-  const mfgQty = parseInt(manufactured_quantity, 10);
-  if (isNaN(mfgQty) || mfgQty <= 0) {
-    return res.status(400).json({ error: 'manufactured_quantity must be a positive integer' });
+  const { manufacture_item_id, completed_qty } = req.body || {};
+
+  const inputMfgQty = parseFloat(completed_qty);
+  if (isNaN(inputMfgQty) || inputMfgQty <= 0) {
+    return res.status(400).json({ error: 'completed_qty must be a valid positive number' });
   }
 
   const client = await pool.connect();
   try {
-    const companyId = req.user.company_id;
     await client.query('BEGIN');
+    const companyId = req.user.company_id;
 
-    // 1. Fetch current manufacture job
-    const mfgRes = await client.query('SELECT * FROM manufacture WHERE id = $1 AND company_id = $2', [id, companyId]);
-    if (mfgRes.rows.length === 0) {
-      throw new Error('Manufacturing job not found');
+    // 1. Fetch manufacture_item record
+    let miRes;
+    if (manufacture_item_id) {
+      miRes = await client.query(
+        'SELECT * FROM manufacture_item WHERE id = $1 AND manufacture_id = $2 AND company_id = $3',
+        [manufacture_item_id, id, companyId]
+      );
+    } else {
+      miRes = await client.query(
+        'SELECT * FROM manufacture_item WHERE manufacture_id = $1 AND company_id = $2 ORDER BY id ASC LIMIT 1',
+        [id, companyId]
+      );
     }
-    const job = mfgRes.rows[0];
-    const newCompleted = (parseInt(job.completed_quantity, 10) || 0) + mfgQty;
-    const isFullyCompleted = newCompleted >= parseInt(job.expected_quantity, 10);
-    const updatedStatus = isFullyCompleted ? 'completed' : job.status;
-    const updatedMsg = message ? (job.message ? `${job.message} | Update: ${message}` : message) : job.message;
 
-    // 2. Update manufacture job record
-    const updatedMfg = await client.query(`
-      UPDATE manufacture 
-      SET completed_quantity = $1, status = $2, message = $3, completed = $4 
-      WHERE id = $5 AND company_id = $6 
-      RETURNING *
-    `, [newCompleted, updatedStatus, updatedMsg, isFullyCompleted, id, companyId]);
+    if (miRes.rows.length === 0) {
+      throw new Error('Manufacture item record not found for this job');
+    }
 
-    // 3. Update target trace_item quantity & status if fully completed
-    if (job.target_trace_item_id) {
-      const traceStatus = isFullyCompleted ? 'active' : 'manufacturing';
-      await client.query(`
-        UPDATE trace_item 
-        SET quantity = $1, status = $2 
-        WHERE id = $3 AND company_id = $4
-      `, [newCompleted, traceStatus, job.target_trace_item_id, companyId]);
+    const miRow = miRes.rows[0];
+    let currentTargetQty = parseFloat(miRow.target_qty) || 0;
+    const rawTargetTraceArray = Array.isArray(miRow.target_trace_id_array) ? miRow.target_trace_id_array : [];
 
-      // 4. Update target inventory entry location, rack, shelf, and quantity
-      const invRes = await client.query('SELECT id FROM inventory WHERE trace_item_id = $1 AND company_id = $2', [job.target_trace_item_id, companyId]);
-      if (invRes.rows.length > 0) {
-        await client.query(`
-          UPDATE inventory 
-          SET quantity = $1,
-              location = COALESCE($2, location),
-              rack = COALESCE($3, rack),
-              shelf_number = COALESCE($4, shelf_number),
-              updated_at = CURRENT_TIMESTAMP 
-          WHERE trace_item_id = $5 AND company_id = $6
-        `, [newCompleted, location || null, rack || null, shelf_number || null, job.target_trace_item_id, companyId]);
+    if (rawTargetTraceArray.length === 0) {
+      throw new Error('No target trace item found in target_trace_id_array for this manufacture item');
+    }
+
+    // Build target_trace_item_array from database quantities
+    const target_trace_item_array = [];
+    for (const tObj of rawTargetTraceArray) {
+      const tId = parseInt(tObj.traceid || tObj.trace_id);
+      if (tId && !isNaN(tId)) {
+        const tRes = await client.query(
+          'SELECT * FROM trace_item WHERE id = $1 AND company_id = $2',
+          [tId, companyId]
+        );
+        if (tRes.rows.length > 0) {
+          target_trace_item_array.push({
+            traceId: tId,
+            Qty: parseFloat(tRes.rows[0].quantity) || 0,
+            traceRow: tRes.rows[0],
+            rawObj: tObj
+          });
+        }
       }
     }
 
+    if (target_trace_item_array.length === 0) {
+      throw new Error('No trace items found in database for the given target_trace_id_array');
+    }
+
+    let manufacturedQty = inputMfgQty;
+    let i = 0;
+    let updatedTargetTraceArray = [...rawTargetTraceArray];
+
+    while (manufacturedQty >= 0 && i < target_trace_item_array.length) {
+      const currentItem = target_trace_item_array[i];
+      const prevMfgQty = manufacturedQty;
+
+      manufacturedQty = manufacturedQty - currentItem.Qty;
+
+      if (manufacturedQty >= 0) {
+        // manufactured Qty is positive / zero remaining: update status to 'in inventory' via SQL
+        await client.query(
+          "UPDATE trace_item SET status = 'in inventory', quantity = 0 WHERE id = $1 AND company_id = $2",
+          [currentItem.traceId, companyId]
+        );
+
+        // Remove fully converted trace ID from target_trace_id_array
+        updatedTargetTraceArray = updatedTargetTraceArray.filter(
+          x => parseInt(x.traceid || x.trace_id) !== currentItem.traceId
+        );
+      }
+
+      if (manufacturedQty < 0) {
+        // manufactured Qty is negative:
+        // Create new trace id and add in inventory with Qty = prevMfgQty (portion manufactured)
+        const producedQty = prevMfgQty;
+        const traceRow = currentItem.traceRow;
+        const processJson = typeof traceRow.process === 'string' 
+          ? traceRow.process 
+          : JSON.stringify(traceRow.process || []);
+
+        const newTraceRes = await client.query(
+          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+           VALUES ($1, $2::jsonb, $3, $4, $5, 'in inventory', $6) RETURNING id`,
+          [
+            traceRow.item_code,
+            processJson,
+            traceRow.message || 'Manufactured Item - Production Completed',
+            producedQty,
+            traceRow.price,
+            companyId
+          ]
+        );
+        const newTraceId = newTraceRes.rows[0].id;
+
+        // Insert new stock record into inventory table for newTraceId
+        await client.query(
+          `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            traceRow.item_code,
+            producedQty,
+            traceRow.price,
+            'Manufacturing Store',
+            `Manufactured Stock Completed - Job #${id}`,
+            companyId,
+            newTraceId
+          ]
+        );
+
+        // target_trace_item_array[i].traceid.Qty = manufactured Qty * -1
+        const remainingTraceQty = manufacturedQty * -1;
+        await client.query(
+          'UPDATE trace_item SET quantity = $1 WHERE id = $2 AND company_id = $3',
+          [remainingTraceQty, currentItem.traceId, companyId]
+        );
+        await client.query(
+          'UPDATE inventory SET quantity = $1 WHERE trace_item_id = $2 AND company_id = $3',
+          [remainingTraceQty, currentItem.traceId, companyId]
+        );
+      }
+
+      i++;
+    }
+
+    // Update target_qty and target_trace_id_array on manufacture_item
+    currentTargetQty = Math.max(0, currentTargetQty - inputMfgQty);
+    await client.query(
+      'UPDATE manufacture_item SET target_qty = $1, target_trace_id_array = $2::jsonb WHERE id = $3 AND company_id = $4',
+      [currentTargetQty, JSON.stringify(updatedTargetTraceArray), miRow.id, companyId]
+    );
+
     await client.query('COMMIT');
-    res.json(updatedMfg.rows[0]);
+    res.json({ message: 'Completed production processed successfully', id });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Error updating production:', err.message);
-    res.status(500).json({ error: err.message || 'Failed to update production' });
+    console.error('Error processing completed production:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to process completed production' });
   } finally {
     client.release();
   }

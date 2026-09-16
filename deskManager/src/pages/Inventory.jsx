@@ -441,16 +441,7 @@ export default function InventoryView() {
 
                           {/* Quantity */}
                           <td className="px-5 py-4 text-right font-mono font-black text-slate-900">
-                            {item.mfg_expected_qty && !item.mfg_is_completed && (parseFloat(item.mfg_completed_qty) || 0) < (parseFloat(item.mfg_expected_qty) || 0) ? (
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs">
-                                  {fmtQty(item.mfg_completed_qty)} / {fmtQty(item.mfg_expected_qty)}
-                                </span>
-                                <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-1 py-0.2 rounded border border-amber-200 mt-0.5 font-sans">
-                                  Completed / Total
-                                </span>
-                              </div>
-                            ) : (item.trace_status || item.status) === 'in process' && (parseFloat(item.process_completed_qty) || 0) < (parseFloat(item.quantity) || 0) ? (
+                            {(item.trace_status || item.status) === 'in process' && (parseFloat(item.process_completed_qty) || 0) < (parseFloat(item.quantity) || 0) ? (
                               <div className="flex flex-col items-end">
                                 <span className="text-xs">
                                   {fmtQty(item.process_completed_qty)} / {fmtQty(item.quantity)}
@@ -892,27 +883,7 @@ export default function InventoryView() {
 
               {/* Submit Buttons */}
               <div className="pt-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-3">
-                <div className="flex gap-2">
-                  {editingId && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/inventory/manufacture', {
-                          state: {
-                            item_code: formData.item_code,
-                            trace_item_id: formData.trace_item_id || formData.p_item_id,
-                            inventory_id: editingId,
-                            quantity: formData.quantity,
-                            price: formData.price
-                          }
-                        })}
-                        className="px-4 py-2 text-xs font-extrabold rounded text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
-                      >
-                        Manufacture
-                      </button>
-                    </>
-                  )}
-                </div>
+                <div className="flex gap-2"></div>
                 <div className="flex gap-3">
                   <button
                     type="button"

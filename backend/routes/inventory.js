@@ -26,9 +26,6 @@ router.get('/', async (req, res) => {
              ), inv.price) AS calculated_price,
              inv.company_id, inv.created_at, inv.updated_at,
              it.description, it.drawing_number,
-             m.completed_quantity AS mfg_completed_qty,
-             m.expected_quantity AS mfg_expected_qty,
-             m.completed AS mfg_is_completed,
              (
                SELECT COALESCE(SUM(dni.quantity), 0)
                FROM delivery_note_items dni
@@ -43,7 +40,6 @@ router.get('/', async (req, res) => {
       LEFT JOIN items it ON inv.item_code = it.id
       LEFT JOIN trades t ON inv.trade_id = t.id
       LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-      LEFT JOIN manufacture m ON inv.trace_item_id = m.target_trace_item_id AND m.company_id = inv.company_id
       WHERE inv.company_id = $1 AND inv.quantity > 0
     `;
     const params = [req.user.company_id];
@@ -174,15 +170,11 @@ router.post('/', async (req, res) => {
                WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
              ), inv.price) AS calculated_price,
              inv.company_id, inv.created_at, inv.updated_at,
-             it.description, it.drawing_number,
-             m.completed_quantity AS mfg_completed_qty,
-             m.expected_quantity AS mfg_expected_qty,
-             m.completed AS mfg_is_completed
+             it.description, it.drawing_number
       FROM inventory inv
       LEFT JOIN items it ON inv.item_code = it.id
       LEFT JOIN trades t ON inv.trade_id = t.id
       LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-      LEFT JOIN manufacture m ON inv.trace_item_id = m.target_trace_item_id AND m.company_id = inv.company_id
        WHERE inv.id = $1 AND inv.company_id = $2`,
       [result.rows[0].id, req.user.company_id]
     );
@@ -397,15 +389,11 @@ router.put('/:id', async (req, res) => {
                WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
              ), inv.price) AS calculated_price,
              inv.company_id, inv.created_at, inv.updated_at,
-             it.description, it.drawing_number,
-             m.completed_quantity AS mfg_completed_qty,
-             m.expected_quantity AS mfg_expected_qty,
-             m.completed AS mfg_is_completed
+             it.description, it.drawing_number
       FROM inventory inv
       LEFT JOIN items it ON inv.item_code = it.id
       LEFT JOIN trades t ON inv.trade_id = t.id
       LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-      LEFT JOIN manufacture m ON inv.trace_item_id = m.target_trace_item_id AND m.company_id = inv.company_id
        WHERE inv.id = $1 AND inv.company_id = $2`,
       [id, req.user.company_id]
     );

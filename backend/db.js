@@ -539,30 +539,33 @@ const initializeDatabase = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS manufacture (
         id SERIAL PRIMARY KEY,
-        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
-        target_trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
-        source_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        target_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity_used INTEGER NOT NULL CHECK (quantity_used > 0),
-        expected_quantity INTEGER NOT NULL CHECK (expected_quantity > 0),
-        completed_quantity INTEGER NOT NULL DEFAULT 0,
-        completed BOOLEAN DEFAULT false,
-        date_of_starting DATE NOT NULL,
-        date_of_ending DATE,
+        process_name VARCHAR(255),
+        date_of_start DATE,
+        date_of_end DATE,
         message TEXT,
-        status VARCHAR(50) DEFAULT 'manufacturing',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
+    // 30. Manufacture Item Table
     await client.query(`
-      ALTER TABLE manufacture 
-      ADD COLUMN IF NOT EXISTS completed_quantity INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT false;
+      CREATE TABLE IF NOT EXISTS manufacture_item (
+        id SERIAL PRIMARY KEY,
+        manufacture_id INTEGER REFERENCES manufacture(id) ON DELETE CASCADE,
+        source_item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        target_item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        source_trace_id_array JSONB DEFAULT '[]'::jsonb,
+        price DECIMAL(12, 2) DEFAULT 0.00,
+        source_qty NUMERIC DEFAULT 0,
+        target_qty NUMERIC DEFAULT 0,
+        target_trace_id_array JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
-    // 30. RQ Process Table
+    // 31. RQ Process Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS rq_process (
         id SERIAL PRIMARY KEY,
@@ -596,29 +599,28 @@ const initializeDatabase = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS process_po (
         id SERIAL PRIMARY KEY,
-        po_no VARCHAR(100) NOT NULL,
-        date DATE NOT NULL,
-        delivery_date DATE,
-        rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE SET NULL,
-        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        po_no VARCHAR(255),
+        date_of_start DATE,
+        date_of_end DATE,
+        received_q_id INTEGER REFERENCES rq_process(id) ON DELETE SET NULL,
+        message TEXT,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (po_no, company_id)
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // 33. PO Process Item Table
+    // 33. Process PO Item Table
     await client.query(`
-      CREATE TABLE IF NOT EXISTS po_process_item (
+      CREATE TABLE IF NOT EXISTS process_po_item (
         id SERIAL PRIMARY KEY,
         process_po_id INTEGER REFERENCES process_po(id) ON DELETE CASCADE,
-        source_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        source_item_quantity INTEGER NOT NULL DEFAULT 0,
-        target_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        target_item_quantity INTEGER NOT NULL DEFAULT 0,
-        price DECIMAL(12,2) DEFAULT 0.00,
-        source_item_traceid_array JSONB DEFAULT '[]'::jsonb,
-        target_item_traceid_array JSONB DEFAULT '[]'::jsonb,
+        source_item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        target_item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        source_trace_id_array JSONB DEFAULT '[]'::jsonb,
+        price DECIMAL(12, 2) DEFAULT 0.00,
+        source_qty NUMERIC DEFAULT 0,
+        target_qty NUMERIC DEFAULT 0,
+        target_trace_id_array JSONB DEFAULT '[]'::jsonb,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );

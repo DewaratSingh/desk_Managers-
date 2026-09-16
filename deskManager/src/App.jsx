@@ -30,7 +30,7 @@ import InventoryView from './pages/Inventory'
 import ArcView from './pages/Arc'
 import GstCategoryView from './pages/GstCategory'
 import ManufactureList from './pages/ManufactureList'
-import ManufactureForm from './form/ManufactureForm'
+import ProcessPoList from './pages/ProcessPoList'
 
 function App() {
   return (
@@ -64,8 +64,8 @@ function App() {
             <Route path="/item" element={<AddItemView />} />
             <Route path="/inventory" element={<InventoryView />} />
             <Route path="/inventory/sell" element={<SellStockForm />} />
-            <Route path="/inventory/manufacture" element={<ManufactureForm />} />
             <Route path="/manufactures" element={<ManufactureList />} />
+            <Route path="/process-po" element={<ProcessPoList />} />
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />
