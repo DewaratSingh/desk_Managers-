@@ -1,4 +1,4 @@
-import { FileText, List, Edit2, Building2, User } from 'lucide-react';
+import { FileText, List, Edit2, Building2, User, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const fmtDate = (d) => {
@@ -8,12 +8,19 @@ const fmtDate = (d) => {
 
 const fmt = (v) => (parseFloat(v) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-export default function ReceivedQuotationPanel({ receivedQuotation, tradeId }) {
+export default function ReceivedQuotationPanel({ receivedQuotation, tradeId, hasPoDoc, isProcessTrade, isBuySide }) {
   if (!receivedQuotation) return null;
 
   const itemsTotal = (receivedQuotation.items || []).reduce(
     (a, i) => a + (parseFloat(i.unit_price) || 0) * (parseInt(i.quantity) || 0), 0
   );
+
+  const qtnNo = receivedQuotation.received_quotation_no;
+  const createPoUrl = isProcessTrade
+    ? `/addProcessPurchaseOrder?rq_process_no=${qtnNo}&trade_id=${tradeId}`
+    : isBuySide
+      ? `/addReceivedPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`
+      : `/addPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`;
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -133,6 +140,24 @@ export default function ReceivedQuotationPanel({ receivedQuotation, tradeId }) {
           </div>
         )}
       </div>
+
+      {/* Action Footer: Create PO button when no PO exists yet */}
+      {!hasPoDoc && (
+        <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between">
+          <p className="text-xs text-slate-500 font-semibold">
+            Received quotation registered. Click to create purchase order.
+          </p>
+          <Link
+            to={createPoUrl}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-white font-bold text-xs rounded-lg cursor-pointer shadow-sm transition-all"
+            style={{ backgroundColor: 'var(--theme-color)' }}
+            onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(0.9)'}
+            onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
+          >
+            <Plus size={13} /> {isProcessTrade ? 'Create Process PO' : 'Create Purchase Order'}
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

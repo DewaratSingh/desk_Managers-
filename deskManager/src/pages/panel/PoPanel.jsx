@@ -143,11 +143,15 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
                       </div>
                       {srcAllocs.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
-                          {srcAllocs.map((a, ai) => (
-                            <span key={ai} className="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
-                              TR-{a.trace_item_id || '?'} × {a.quantity}
-                            </span>
-                          ))}
+                          {srcAllocs.map((a, ai) => {
+                            const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
+                            const qty = a.Qty || a.quantity || a.qty || '';
+                            return (
+                              <span key={ai} className="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
+                                TR-{traceId}{qty ? ` × ${qty}` : ''}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -162,13 +166,15 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
                       {tgtAllocs.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
                           {tgtAllocs.map((a, ai) => {
-                            const isDelivered = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'delivered' || a.status === 'completed';
+                            const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
+                            const qty = a.Qty || a.quantity || a.qty || item.target_item_quantity || '';
+                            const isDelivered = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'in inventory' || a.status === 'delivered' || a.status === 'completed';
                             return (
                               <span key={ai} className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
                                 isDelivered ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
                               }`}>
-                                New TR-{a.trace_item_id} × {a.quantity} <span className={isDelivered ? "text-emerald-600 font-bold" : "text-indigo-400"}>
-                                  [{isDelivered ? 'Delivered' : 'in process'}]
+                                TR-{traceId}{qty ? ` × ${qty}` : ''} <span className={isDelivered ? "text-emerald-600 font-bold" : "text-indigo-400"}>
+                                  [{isDelivered ? 'In Inventory' : 'in process'}]
                                 </span>
                               </span>
                             );

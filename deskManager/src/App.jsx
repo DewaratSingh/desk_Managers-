@@ -65,7 +65,6 @@ function App() {
             <Route path="/inventory" element={<InventoryView />} />
             <Route path="/inventory/sell" element={<SellStockForm />} />
             <Route path="/manufactures" element={<ManufactureList />} />
-            <Route path="/process-po" element={<ProcessPoList />} />
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />

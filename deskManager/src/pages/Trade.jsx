@@ -239,7 +239,7 @@ export default function TradeView() {
         qtnDoc?.id ? fetchQTN(qtnDoc.id)   : Promise.resolve(setQuotation(null)),
         recQtnDoc?.id ? fetchReceivedQTN(recQtnDoc.id) : Promise.resolve(setReceivedQuotation(null)),
         prDoc?.id ? fetchProcessRQ(prDoc.id) : Promise.resolve(setProcessRq(null)),
-        poDoc?.id  ? fetchPO(poDoc.id)     : Promise.resolve(setPurchaseOrder(null)),
+        poDoc?.id  ? fetchPO(poDoc.id, (tradeData.trade_type || '').toUpperCase() === 'PROCESS') : Promise.resolve(setPurchaseOrder(null)),
         roDoc?.id  ? fetchRO(roDoc.id)     : Promise.resolve(setReleaseOrder(null)),
         dnDocs.length > 0
           ? Promise.all(dnDocs.map(d => fetchDN(d.id))).then(notes => setDeliveryNotes(notes.filter(Boolean)))
@@ -290,15 +290,23 @@ export default function TradeView() {
     } catch (err) { console.error(err); }
   };
 
-  const fetchPO = async (id) => {
+  const fetchPO = async (id, isProcess = false) => {
     try {
-      // PPO- prefix = Process Purchase Order, different endpoint
-      if (String(id).startsWith('PPO-')) {
+      if (String(id).startsWith('PPO-') || isProcess) {
         const res = await fetch(`/api/process-po/${encodeURIComponent(id)}`);
-        if (res.ok) setPurchaseOrder({ ...(await res.json()), _is_process_po: true });
+        if (res.ok) {
+          setPurchaseOrder({ ...(await res.json()), _is_process_po: true });
+          return;
+        }
+      }
+      const res = await fetch(`/api/purchase-orders/${encodeURIComponent(id)}`);
+      if (res.ok) {
+        setPurchaseOrder(await res.json());
       } else {
-        const res = await fetch(`/api/purchase-orders/${encodeURIComponent(id)}`);
-        if (res.ok) setPurchaseOrder(await res.json());
+        const procRes = await fetch(`/api/process-po/${encodeURIComponent(id)}`);
+        if (procRes.ok) {
+          setPurchaseOrder({ ...(await procRes.json()), _is_process_po: true });
+        }
       }
     } catch (err) { console.error(err); }
   };
@@ -433,7 +441,15 @@ export default function TradeView() {
     panels.push({
       key: 'received_quotation',
       label: rfq ? '② Received Quotation' : '① Received Quotation',
-      component: <ReceivedQuotationPanel receivedQuotation={receivedQuotation} tradeId={trade.trade_id} />
+      component: (
+        <ReceivedQuotationPanel
+          receivedQuotation={receivedQuotation}
+          tradeId={trade.trade_id}
+          hasPoDoc={hasPoDoc}
+          isProcessTrade={isProcessTrade}
+          isBuySide={trade.trade_type === 'buy'}
+        />
+      )
     });
   }
 

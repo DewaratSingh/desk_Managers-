@@ -609,6 +609,31 @@ const initializeDatabase = async () => {
       );
     `);
 
+    await client.query(`
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS po_no VARCHAR(255);
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS date_of_start DATE;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS date_of_end DATE;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS received_q_id INTEGER;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS message TEXT;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS company_id INTEGER;
+      
+      DO $$ 
+      BEGIN 
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='process_po' AND column_name='date') THEN
+              ALTER TABLE process_po ALTER COLUMN date DROP NOT NULL;
+          END IF;
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='process_po' AND column_name='po_date') THEN
+              ALTER TABLE process_po ALTER COLUMN po_date DROP NOT NULL;
+          END IF;
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='process_po' AND column_name='delivery_date') THEN
+              ALTER TABLE process_po ALTER COLUMN delivery_date DROP NOT NULL;
+          END IF;
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='process_po' AND column_name='rq_process_id') THEN
+              ALTER TABLE process_po ALTER COLUMN rq_process_id DROP NOT NULL;
+          END IF;
+      END $$;
+    `);
+
     // 33. Process PO Item Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS process_po_item (
@@ -624,6 +649,18 @@ const initializeDatabase = async () => {
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS process_po_id INTEGER;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS source_item_id INTEGER;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS target_item_id INTEGER;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS source_trace_id_array JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS price DECIMAL(12, 2) DEFAULT 0.00;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS source_qty NUMERIC DEFAULT 0;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS target_qty NUMERIC DEFAULT 0;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS target_trace_id_array JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS company_id INTEGER;
     `);
 
     const defaultUnits = ['Piece', 'Set', 'Kg', 'Meter', 'Box', 'Litre'];

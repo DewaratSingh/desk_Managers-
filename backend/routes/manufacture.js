@@ -153,91 +153,137 @@ router.post('/', async (req, res) => {
       const parsedPrice = parseFloat(price) || 0.00;
       const cleanSourceTraceArray = Array.isArray(source_trace_id_array) ? source_trace_id_array : [];
 
-      // Deduct quantity from inventory & trace_item for selected source trace items
-      for (const st of cleanSourceTraceArray) {
-        const traceId = st.trace_id || st.traceid;
-        const consumeQty = parseFloat(st.Qty) || 0;
-        if (consumeQty > 0) {
-          if (st.inventory_id) {
-            await client.query(
-              'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND company_id = $3',
-              [consumeQty, st.inventory_id, companyId]
-            );
-          } else if (traceId) {
-            await client.query(
-              'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE trace_item_id = $2 AND company_id = $3',
-              [consumeQty, traceId, companyId]
-            );
+      const targetTraceIdArray = [];
+
+      if (cleanSourceTraceArray.length > 0) {
+        const totalSourceQty = cleanSourceTraceArray.reduce((sum, st) => sum + (parseFloat(st.Qty) || 0), 0);
+        const sourceBaseQty = parsedSourceQty > 0 ? parsedSourceQty : totalSourceQty;
+        const ratio = sourceBaseQty > 0 ? (parsedTargetQty / sourceBaseQty) : 1;
+
+        for (const st of cleanSourceTraceArray) {
+          const traceId = st.trace_id || st.traceid;
+          const consumeQty = parseFloat(st.Qty) || 0;
+
+          if (consumeQty > 0) {
+            if (st.inventory_id) {
+              await client.query(
+                'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND company_id = $3',
+                [consumeQty, st.inventory_id, companyId]
+              );
+            } else if (traceId) {
+              await client.query(
+                'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE trace_item_id = $2 AND company_id = $3',
+                [consumeQty, traceId, companyId]
+              );
+            }
+            if (traceId) {
+              await client.query(
+                'UPDATE trace_item SET quantity = GREATEST(0, quantity - $1) WHERE id = $2 AND company_id = $3',
+                [consumeQty, traceId, companyId]
+              );
+            }
           }
+
+          const individualProcessHistory = [];
           if (traceId) {
-            await client.query(
-              'UPDATE trace_item SET quantity = GREATEST(0, quantity - $1) WHERE id = $2 AND company_id = $3',
-              [consumeQty, traceId, companyId]
+            const srcTraceRes = await client.query(
+              'SELECT process FROM trace_item WHERE id = $1 AND company_id = $2',
+              [traceId, companyId]
             );
+            if (srcTraceRes.rows.length > 0 && srcTraceRes.rows[0].process) {
+              let srcProc = srcTraceRes.rows[0].process;
+              if (typeof srcProc === 'string') {
+                try { srcProc = JSON.parse(srcProc); } catch (e) { srcProc = []; }
+              }
+              if (Array.isArray(srcProc)) {
+                individualProcessHistory.push(...srcProc);
+              }
+            }
           }
-        }
-      }
 
-      // Accumulate previous process histories from selected source trace items
-      const accumulatedProcessHistory = [];
+          individualProcessHistory.push({
+            type: 'MANUFACTURE',
+            process_name: process_name,
+            manufacture_id: mfgId,
+            unit_price: parsedPrice,
+            source_traces: [st]
+          });
 
-      for (const st of cleanSourceTraceArray) {
-        const traceId = st.trace_id || st.traceid;
-        if (traceId) {
-          const srcTraceRes = await client.query(
-            'SELECT process FROM trace_item WHERE id = $1 AND company_id = $2',
-            [traceId, companyId]
+          const targetQtyForSt = consumeQty * ratio;
+
+          const newTraceRes = await client.query(
+            `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+             VALUES ($1, $2::jsonb, $3, $4, $5, 'under Manufacture', $6) RETURNING id`,
+            [
+              targetDbId,
+              JSON.stringify(individualProcessHistory),
+              `Manufactured via Process: ${process_name}`,
+              targetQtyForSt,
+              parsedPrice,
+              companyId
+            ]
           );
-          if (srcTraceRes.rows.length > 0 && srcTraceRes.rows[0].process) {
-            let srcProc = srcTraceRes.rows[0].process;
-            if (typeof srcProc === 'string') {
-              try { srcProc = JSON.parse(srcProc); } catch (e) { srcProc = []; }
-            }
-            if (Array.isArray(srcProc)) {
-              accumulatedProcessHistory.push(...srcProc);
-            }
-          }
+          const newTraceId = newTraceRes.rows[0].id;
+
+          await client.query(
+            `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              targetDbId,
+              targetQtyForSt,
+              parsedPrice,
+              'Manufacturing Store',
+              `Manufactured Job #${mfgId} (${process_name})`,
+              companyId,
+              newTraceId
+            ]
+          );
+
+          targetTraceIdArray.push({
+            traceid: newTraceId,
+            source_trace_id: traceId,
+            Qty: targetQtyForSt
+          });
         }
+      } else {
+        const newTraceRes = await client.query(
+          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+           VALUES ($1, $2::jsonb, $3, $4, $5, 'under Manufacture', $6) RETURNING id`,
+          [
+            targetDbId,
+            JSON.stringify([{
+              type: 'MANUFACTURE',
+              process_name: process_name,
+              manufacture_id: mfgId,
+              unit_price: parsedPrice
+            }]),
+            `Manufactured via Process: ${process_name}`,
+            parsedTargetQty,
+            parsedPrice,
+            companyId
+          ]
+        );
+        const newTraceId = newTraceRes.rows[0].id;
+
+        await client.query(
+          `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            targetDbId,
+            parsedTargetQty,
+            parsedPrice,
+            'Manufacturing Store',
+            `Manufactured Job #${mfgId} (${process_name})`,
+            companyId,
+            newTraceId
+          ]
+        );
+
+        targetTraceIdArray.push({
+          traceid: newTraceId,
+          Qty: parsedTargetQty
+        });
       }
-
-      // Append new MANUFACTURE step
-      accumulatedProcessHistory.push({
-        type: 'MANUFACTURE',
-        process_name: process_name,
-        manufacture_id: mfgId,
-        unit_price: parsedPrice,
-        source_traces: cleanSourceTraceArray
-      });
-
-      const newTraceRes = await client.query(
-        `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-         VALUES ($1, $2::jsonb, $3, $4, $5, 'under Manufacture', $6) RETURNING id`,
-        [
-          targetDbId,
-          JSON.stringify(accumulatedProcessHistory),
-          `Manufactured via Process: ${process_name}`,
-          parsedTargetQty,
-          parsedPrice,
-          companyId
-        ]
-      );
-      const newTraceId = newTraceRes.rows[0].id;
-      const targetTraceIdArray = [{ traceid: newTraceId }];
-
-      // Insert new manufactured stock into inventory table
-      await client.query(
-        `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          targetDbId,
-          parsedTargetQty,
-          parsedPrice,
-          'Manufacturing Store',
-          `Manufactured Job #${mfgId} (${process_name})`,
-          companyId,
-          newTraceId
-        ]
-      );
 
       // Insert row into manufacture_item
       await client.query(

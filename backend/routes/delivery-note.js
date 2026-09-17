@@ -116,12 +116,14 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
 
         const ppoItemsRes = await pool.query(
           `SELECT
+            poi.id as process_po_item_id,
+            poi.target_item_id,
             i.item_code,
-            poi.target_item_quantity as original_qty,
-            poi.price as rate_per_piece,
+            COALESCE(poi.target_qty, 0) as original_qty,
+            COALESCE(poi.price, 0) as rate_per_piece,
             i.description,
             i.drawing_number,
-            poi.target_item_traceid_array,
+            poi.target_trace_id_array as target_item_traceid_array,
             COALESCE((
               SELECT SUM(dni.quantity)
               FROM delivery_note_items dni
@@ -130,7 +132,7 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
                 AND dni.item_id = poi.target_item_id
                 AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
             ), 0) as delivered_qty
-          FROM po_process_item poi
+          FROM process_po_item poi
           LEFT JOIN items i ON poi.target_item_id = i.id AND i.company_id = poi.company_id
           WHERE poi.process_po_id = $2 AND poi.company_id = $4
           ORDER BY poi.id`,
@@ -139,7 +141,7 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
 
         items = ppoItemsRes.rows.map(row => {
           const tgtArray = row.target_item_traceid_array || [];
-          const targetTraceId = tgtArray.length > 0 ? tgtArray[0].trace_item_id : null;
+          const targetTraceId = tgtArray.length > 0 ? (tgtArray[0].traceid || tgtArray[0].trace_id) : null;
           return {
             ...row,
             process_target_trace_item_id: targetTraceId,
@@ -259,12 +261,29 @@ router.post('/', async (req, res) => {
     const ro_no = roDoc ? roDoc.id : null;
 
     let poDbId = null;
+    let ppoDbId = null;
     let roDbId = null;
 
     if (po_no) {
-      const poRes = await client.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
-      if (poRes.rows.length > 0) poDbId = poRes.rows[0].id;
+      if (po_no.startsWith('PPO-')) {
+        const ppoRes = await client.query('SELECT id FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
+        if (ppoRes.rows.length > 0) ppoDbId = ppoRes.rows[0].id;
+      } else {
+        const poRes = await client.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
+        if (poRes.rows.length > 0) {
+          poDbId = poRes.rows[0].id;
+        } else {
+          const ppoRes = await client.query('SELECT id FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
+          if (ppoRes.rows.length > 0) ppoDbId = ppoRes.rows[0].id;
+        }
+      }
     }
+
+    if (!ppoDbId && tradeDbId) {
+      const ppoCheck = await client.query('SELECT id FROM process_po WHERE trade_id = $1 AND company_id = $2', [tradeDbId, req.user.company_id]);
+      if (ppoCheck.rows.length > 0) ppoDbId = ppoCheck.rows[0].id;
+    }
+
     if (ro_no) {
       const roRes = await client.query('SELECT id FROM release_orders WHERE ro_no = $1 AND company_id = $2', [ro_no, req.user.company_id]);
       if (roRes.rows.length > 0) roDbId = roRes.rows[0].id;
@@ -511,6 +530,13 @@ router.post('/', async (req, res) => {
               [targetTraceRef, req.user.company_id]
             );
           }
+        }
+      }
+
+      if (ppoDbId) {
+        const delQty = parseInt(item.quantity) || 0;
+        if (delQty > 0) {
+          await processPoDeliveryTraceConversion(client, ppoDbId, itemDbId, delQty, req.user.company_id, delivery_note_no);
         }
       }
     }
@@ -778,6 +804,17 @@ router.put('/:delivery_note_no', async (req, res) => {
           JSON.stringify(next_activity)
         ]
       );
+
+      if (tradeDbId) {
+        const ppoRes = await client.query('SELECT pp.id FROM process_po pp WHERE pp.trade_id = $1 AND pp.company_id = $2', [tradeDbId, req.user.company_id]);
+        if (ppoRes.rows.length > 0) {
+          const ppoDbId = ppoRes.rows[0].id;
+          const delQty = parseInt(item.quantity) || 0;
+          if (delQty > 0) {
+            await processPoDeliveryTraceConversion(client, ppoDbId, itemDbId, delQty, req.user.company_id, delivery_note_no);
+          }
+        }
+      }
     }
 
     // Resolve trade_id and update trade delivery status
@@ -854,7 +891,7 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
             FROM delivery_notes dn
             JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
             JOIN process_po pp ON dn.trade_id = pp.trade_id
-            JOIN po_process_item ppi ON pp.id = ppi.process_po_id AND dni.item_id = ppi.target_item_id
+            JOIN process_po_item ppi ON pp.id = ppi.process_po_id AND dni.item_id = ppi.target_item_id
             WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
           0
@@ -878,6 +915,128 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
   await client.query(
     "UPDATE trades SET status = $1 WHERE id = $2 AND company_id = $3",
     [statusName, trade_id, company_id]
+  );
+}
+
+async function processPoDeliveryTraceConversion(client, processPoId, targetItemId, deliveredQty, companyId, deliveryNoteNo) {
+  const inputMfgQty = parseFloat(deliveredQty);
+  if (isNaN(inputMfgQty) || inputMfgQty <= 0) return;
+
+  // 1. Fetch process_po_item record
+  const poiRes = await client.query(
+    'SELECT * FROM process_po_item WHERE process_po_id = $1 AND target_item_id = $2 AND company_id = $3 ORDER BY id ASC LIMIT 1',
+    [processPoId, targetItemId, companyId]
+  );
+
+  if (poiRes.rows.length === 0) return;
+
+  const poiRow = poiRes.rows[0];
+  let currentTargetQty = parseFloat(poiRow.target_qty) || 0;
+  const rawTargetTraceArray = Array.isArray(poiRow.target_trace_id_array) ? poiRow.target_trace_id_array : [];
+
+  if (rawTargetTraceArray.length === 0) return;
+
+  // Build target_trace_item_array from database quantities
+  const target_trace_item_array = [];
+  for (const tObj of rawTargetTraceArray) {
+    const tId = parseInt(tObj.traceid || tObj.trace_id);
+    if (tId && !isNaN(tId)) {
+      const tRes = await client.query(
+        'SELECT * FROM trace_item WHERE id = $1 AND company_id = $2',
+        [tId, companyId]
+      );
+      if (tRes.rows.length > 0) {
+        target_trace_item_array.push({
+          traceId: tId,
+          Qty: parseFloat(tRes.rows[0].quantity) || 0,
+          traceRow: tRes.rows[0],
+          rawObj: tObj
+        });
+      }
+    }
+  }
+
+  if (target_trace_item_array.length === 0) return;
+
+  let ProcessedQty = inputMfgQty;
+  let i = 0;
+  let updatedTargetTraceArray = [...rawTargetTraceArray];
+
+  while (ProcessedQty >= 0 && i < target_trace_item_array.length) {
+    const currentItem = target_trace_item_array[i];
+    const prevQty = ProcessedQty;
+
+    ProcessedQty = ProcessedQty - currentItem.Qty;
+
+    if (ProcessedQty >= 0) {
+      // ProcessedQty is positive or 0: mark status as 'In Inventory' via SQL query
+      await client.query(
+        "UPDATE trace_item SET status = 'In Inventory', quantity = 0 WHERE id = $1 AND company_id = $2",
+        [currentItem.traceId, companyId]
+      );
+
+      // Remove fully converted trace ID from target_trace_id_array
+      updatedTargetTraceArray = updatedTargetTraceArray.filter(
+        x => parseInt(x.traceid || x.trace_id) !== currentItem.traceId
+      );
+    }
+
+    if (ProcessedQty < 0) {
+      // ProcessedQty is negative: create new trace id and add in inventory
+      const producedQty = prevQty;
+      const traceRow = currentItem.traceRow;
+      const processJson = typeof traceRow.process === 'string' 
+        ? traceRow.process 
+        : JSON.stringify(traceRow.process || []);
+
+      const newTraceRes = await client.query(
+        `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+         VALUES ($1, $2::jsonb, $3, $4, $5, 'In Inventory', $6) RETURNING id`,
+        [
+          traceRow.item_code,
+          processJson,
+          traceRow.message || `Process PO Item Delivered (${deliveryNoteNo})`,
+          producedQty,
+          traceRow.price,
+          companyId
+        ]
+      );
+      const newTraceId = newTraceRes.rows[0].id;
+
+      // Insert stock record into inventory table for newTraceId
+      await client.query(
+        `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          traceRow.item_code,
+          producedQty,
+          traceRow.price,
+          'In Inventory Store',
+          `Process PO Delivery Completed (${deliveryNoteNo})`,
+          companyId,
+          newTraceId
+        ]
+      );
+
+      // target_trace_item_array[i].traceid.Qty = ProcessedQty * -1
+      const remainingTraceQty = ProcessedQty * -1;
+      await client.query(
+        'UPDATE trace_item SET quantity = $1 WHERE id = $2 AND company_id = $3',
+        [remainingTraceQty, currentItem.traceId, companyId]
+      );
+      await client.query(
+        'UPDATE inventory SET quantity = $1 WHERE trace_item_id = $2 AND company_id = $3',
+        [remainingTraceQty, currentItem.traceId, companyId]
+      );
+    }
+
+    i++;
+  }
+
+  // Update target_trace_id_array on process_po_item (preserve immutable target_qty)
+  await client.query(
+    'UPDATE process_po_item SET target_trace_id_array = $1::jsonb WHERE id = $2 AND company_id = $3',
+    [JSON.stringify(updatedTargetTraceArray), poiRow.id, companyId]
   );
 }
 
