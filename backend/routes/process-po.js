@@ -242,6 +242,7 @@ router.post('/', async (req, res) => {
         const totalSourceQty = cleanSourceTraceArray.reduce((sum, st) => sum + (parseFloat(st.Qty) || 0), 0);
         const sourceBaseQty = parsedSourceQty > 0 ? parsedSourceQty : totalSourceQty;
         const ratio = sourceBaseQty > 0 ? (parsedTargetQty / sourceBaseQty) : 1;
+        const priceRatio = (sourceBaseQty > 0 && parsedTargetQty > 0) ? (sourceBaseQty / parsedTargetQty) : 1;
 
         for (const st of cleanSourceTraceArray) {
           const traceId = st.trace_id || st.traceid;
@@ -279,7 +280,17 @@ router.post('/', async (req, res) => {
                 try { srcProc = JSON.parse(srcProc); } catch (e) { srcProc = []; }
               }
               if (Array.isArray(srcProc)) {
-                individualProcessHistory.push(...srcProc);
+                const scaledSrcProc = srcProc.map(p => {
+                  const itemCopy = { ...p };
+                  if (itemCopy.unit_price !== undefined && itemCopy.unit_price !== null) {
+                    itemCopy.unit_price = (parseFloat(itemCopy.unit_price) || 0) * priceRatio;
+                  }
+                  if (itemCopy.price !== undefined && itemCopy.price !== null) {
+                    itemCopy.price = (parseFloat(itemCopy.price) || 0) * priceRatio;
+                  }
+                  return itemCopy;
+                });
+                individualProcessHistory.push(...scaledSrcProc);
               }
             }
           }
