@@ -187,7 +187,7 @@ router.post('/', async (req, res) => {
     // Compute total GST from items
     const totalGst = Array.isArray(items)
       ? items.reduce((sum, item) => {
-          const lineTotal = (parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 0);
+          const lineTotal = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
           const rate      = parseFloat(item.gst_rate) || 0;
           return sum + (lineTotal * rate) / 100;
         }, 0)
@@ -231,7 +231,7 @@ router.post('/', async (req, res) => {
           [
             roDbId,
             itemDbId,
-            parseInt(item.quantity)    || 1,
+            parseFloat(item.quantity)  || 1,
             parseFloat(item.unit_price) || 0,
             item.gst_type  || null,
             parseFloat(item.gst_rate)  || 0,
@@ -284,7 +284,7 @@ router.put('/*ro_no', async (req, res) => {
     // Compute total GST from items
     const totalGst = Array.isArray(items)
       ? items.reduce((sum, item) => {
-          const lineTotal = (parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 0);
+          const lineTotal = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
           const rate      = parseFloat(item.gst_rate) || 0;
           return sum + (lineTotal * rate) / 100;
         }, 0)
@@ -331,7 +331,7 @@ router.put('/*ro_no', async (req, res) => {
           [
             roDbId,
             itemDbId,
-            parseInt(item.quantity)    || 1,
+            parseFloat(item.quantity)  || 1,
             parseFloat(item.unit_price) || 0,
             item.gst_type  || null,
             parseFloat(item.gst_rate)  || 0,

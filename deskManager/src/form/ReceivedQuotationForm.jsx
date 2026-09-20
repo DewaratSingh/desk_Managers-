@@ -311,7 +311,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
   };
 
   const calculateBasicValue = (items) => {
-    return items.reduce((sum, item) => sum + (parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 0), 0);
+    return items.reduce((sum, item) => sum + (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0), 0);
   };
 
   const handleSubmit = async (e) => {
@@ -344,7 +344,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
       terms_and_conditions: formData.terms_and_conditions,
       items: selectedItems.map(item => ({
         item_code: item.item_code,
-        quantity: parseInt(item.quantity) || 1,
+        quantity: parseFloat(item.quantity) || 1,
         unit_price: parseFloat(item.unit_price) || 0
       }))
     };
@@ -609,7 +609,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                                 </label>
                                 <input
                                   type="number"
-                                   
+                                  step="any"
                                   required
                                   value={item.quantity}
                                   onChange={(e) => handleItemValueChange(item.item_code, 'quantity', e.target.value)}

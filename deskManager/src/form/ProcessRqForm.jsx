@@ -260,11 +260,11 @@ export default function ProcessRqForm() {
         setError(`Please select a Target Item for row ${i + 1}.`);
         return;
       }
-      if (parseInt(it.source_item_quantity) <= 0) {
+      if (parseFloat(it.source_item_quantity) <= 0) {
         setError(`Source quantity for row ${i + 1} must be greater than 0.`);
         return;
       }
-      if (parseInt(it.target_item_quantity) <= 0) {
+      if (parseFloat(it.target_item_quantity) <= 0) {
         setError(`Target quantity for row ${i + 1} must be greater than 0.`);
         return;
       }
@@ -279,9 +279,9 @@ export default function ProcessRqForm() {
         message,
         items: processItems.map(it => ({
           source_item_id: parseInt(it.source_item_id),
-          source_item_quantity: parseInt(it.source_item_quantity),
+          source_item_quantity: parseFloat(it.source_item_quantity) || 0,
           target_item_id: parseInt(it.target_item_id),
-          target_item_quantity: parseInt(it.target_item_quantity)
+          target_item_quantity: parseFloat(it.target_item_quantity) || 0
         }))
       };
 
@@ -521,7 +521,7 @@ export default function ProcessRqForm() {
                       <td className="px-3.5 py-3">
                         <input
                           type="number"
-                           
+                          step="any"
                           value={itemRow.source_item_quantity}
                           onChange={(e) => handleItemChange(idx, 'source_item_quantity', e.target.value)}
                           className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg font-bold text-right focus:outline-none focus:border-indigo-600"
@@ -548,7 +548,7 @@ export default function ProcessRqForm() {
                       <td className="px-3.5 py-3">
                         <input
                           type="number"
-                           
+                          step="any"
                           value={itemRow.target_item_quantity}
                           onChange={(e) => handleItemChange(idx, 'target_item_quantity', e.target.value)}
                           className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg font-bold text-right focus:outline-none focus:border-indigo-600"

@@ -191,8 +191,8 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
 
     // Map remaining quantities
     const mappedItems = items.map(item => {
-      const original = parseInt(item.original_qty) || 0;
-      const delivered = parseInt(item.delivered_qty) || 0;
+      const original = parseFloat(item.original_qty) || 0;
+      const delivered = parseFloat(item.delivered_qty) || 0;
       const remaining = Math.max(0, original - delivered);
       return {
         ...item,
@@ -333,7 +333,7 @@ router.post('/', async (req, res) => {
             }] : []);
 
         for (const alloc of allocationsToProcess) {
-          const allocQty = parseInt(alloc.quantity) || 0;
+          const allocQty = parseFloat(alloc.quantity) || 0;
           const allocInvId = parseInt(alloc.inventory_id);
 
           if (allocInvId && allocQty > 0) {
@@ -344,7 +344,7 @@ router.post('/', async (req, res) => {
                RETURNING quantity`,
               [allocQty, allocInvId, req.user.company_id]
             );
-            if (invUpdate.rows.length > 0 && parseInt(invUpdate.rows[0].quantity) <= 0) {
+            if (invUpdate.rows.length > 0 && parseFloat(invUpdate.rows[0].quantity) <= 0) {
               await client.query(
                 'DELETE FROM inventory WHERE id = $1 AND company_id = $2',
                 [allocInvId, req.user.company_id]
@@ -400,9 +400,9 @@ router.post('/', async (req, res) => {
       }
 
       const allocations = [
-        { type: 'inventory', qty: parseInt(item.inv_qty) || 0, details: item.inv_details, defaultStatus: 'In Inventory' },
-        { type: 'sell', qty: parseInt(item.sell_qty) || 0, details: item.sell_details, defaultStatus: 'For Sell' },
-        { type: 'process', qty: parseInt(item.process_qty) || 0, details: item.process_details, defaultStatus: 'For process' }
+        { type: 'inventory', qty: parseFloat(item.inv_qty) || 0, details: item.inv_details, defaultStatus: 'In Inventory' },
+        { type: 'sell', qty: parseFloat(item.sell_qty) || 0, details: item.sell_details, defaultStatus: 'For Sell' },
+        { type: 'process', qty: parseFloat(item.process_qty) || 0, details: item.process_details, defaultStatus: 'For process' }
       ];
 
       const createdTraceItemIds = {};
@@ -486,9 +486,9 @@ router.post('/', async (req, res) => {
       }
 
       const next_activity = {
-        inventory: item.inv_qty > 0 ? { quantity: parseInt(item.inv_qty), P_item_id: createdTraceItemIds.inventory || targetTraceId || null } : null,
-        sell: item.sell_qty > 0 ? { quantity: parseInt(item.sell_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.sell || targetTraceId || null } : null,
-        process: item.process_qty > 0 ? { quantity: parseInt(item.process_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.process || targetTraceId || null } : null
+        inventory: item.inv_qty > 0 ? { quantity: parseFloat(item.inv_qty), P_item_id: createdTraceItemIds.inventory || targetTraceId || null } : null,
+        sell: item.sell_qty > 0 ? { quantity: parseFloat(item.sell_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.sell || targetTraceId || null } : null,
+        process: item.process_qty > 0 ? { quantity: parseFloat(item.process_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.process || targetTraceId || null } : null
       };
 
       const targetTraceRef = item.process_target_trace_item_id || targetTraceId || null;
@@ -499,7 +499,7 @@ router.post('/', async (req, res) => {
         [
           dnDbId,
           itemDbId,
-          parseInt(item.quantity) || 0,
+          parseFloat(item.quantity) || 0,
           parseFloat(item.rate_per_piece) || 0,
           item.shipping_address || null,
           item.delivery_date || null,
@@ -516,26 +516,8 @@ router.post('/', async (req, res) => {
            WHERE process_target_trace_item_id = $1 AND company_id = $2`,
           [targetTraceRef, req.user.company_id]
         );
-        const totalDelivered = parseInt(sumRes.rows[0].total_delivered) || 0;
-
-        const traceRes = await client.query(
-          'SELECT quantity FROM trace_item WHERE id = $1 AND company_id = $2',
-          [targetTraceRef, req.user.company_id]
-        );
-        if (traceRes.rows.length > 0) {
-          const expectedQty = parseInt(traceRes.rows[0].quantity) || 0;
-          if (expectedQty > 0 && totalDelivered >= expectedQty) {
-            await client.query(
-              "UPDATE trace_item SET status = 'In Inventory' WHERE id = $1 AND company_id = $2",
-              [targetTraceRef, req.user.company_id]
-            );
-          }
-        }
-      }
-
-      if (ppoDbId) {
-        const delQty = parseInt(item.quantity) || 0;
-        if (delQty > 0) {
+        const delQty = parseFloat(sumRes.rows[0].total_delivered) || 0;
+        if (ppoDbId && delQty > 0) {
           await processPoDeliveryTraceConversion(client, ppoDbId, itemDbId, delQty, req.user.company_id, delivery_note_no);
         }
       }
@@ -632,7 +614,7 @@ router.put('/:delivery_note_no', async (req, res) => {
             }] : []);
 
         for (const alloc of allocationsToProcess) {
-          const allocQty = parseInt(alloc.quantity) || 0;
+          const allocQty = parseFloat(alloc.quantity) || 0;
           const allocInvId = parseInt(alloc.inventory_id);
 
           if (allocInvId && allocQty > 0) {
@@ -643,7 +625,7 @@ router.put('/:delivery_note_no', async (req, res) => {
                RETURNING quantity`,
               [allocQty, allocInvId, req.user.company_id]
             );
-            if (invUpdate.rows.length > 0 && parseInt(invUpdate.rows[0].quantity) <= 0) {
+            if (invUpdate.rows.length > 0 && parseFloat(invUpdate.rows[0].quantity) <= 0) {
               await client.query(
                 'DELETE FROM inventory WHERE id = $1 AND company_id = $2',
                 [allocInvId, req.user.company_id]
@@ -699,9 +681,9 @@ router.put('/:delivery_note_no', async (req, res) => {
       }
 
       const allocations = [
-        { type: 'inventory', qty: parseInt(item.inv_qty) || 0, details: item.inv_details, defaultStatus: 'In Inventory' },
-        { type: 'sell', qty: parseInt(item.sell_qty) || 0, details: item.sell_details, defaultStatus: 'For Sell' },
-        { type: 'process', qty: parseInt(item.process_qty) || 0, details: item.process_details, defaultStatus: 'For process' }
+        { type: 'inventory', qty: parseFloat(item.inv_qty) || 0, details: item.inv_details, defaultStatus: 'In Inventory' },
+        { type: 'sell', qty: parseFloat(item.sell_qty) || 0, details: item.sell_details, defaultStatus: 'For Sell' },
+        { type: 'process', qty: parseFloat(item.process_qty) || 0, details: item.process_details, defaultStatus: 'For process' }
       ];
 
       const createdTraceItemIds = {};
@@ -785,9 +767,9 @@ router.put('/:delivery_note_no', async (req, res) => {
       }
 
       const next_activity = {
-        inventory: item.inv_qty > 0 ? { quantity: parseInt(item.inv_qty), P_item_id: createdTraceItemIds.inventory || targetTraceId || null } : null,
-        sell: item.sell_qty > 0 ? { quantity: parseInt(item.sell_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.sell || targetTraceId || null } : null,
-        process: item.process_qty > 0 ? { quantity: parseInt(item.process_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.process || targetTraceId || null } : null
+        inventory: item.inv_qty > 0 ? { quantity: parseFloat(item.inv_qty), P_item_id: createdTraceItemIds.inventory || targetTraceId || null } : null,
+        sell: item.sell_qty > 0 ? { quantity: parseFloat(item.sell_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.sell || targetTraceId || null } : null,
+        process: item.process_qty > 0 ? { quantity: parseFloat(item.process_qty), tradeID: trade_code, P_item_id: createdTraceItemIds.process || targetTraceId || null } : null
       };
 
       await client.query(
@@ -809,7 +791,7 @@ router.put('/:delivery_note_no', async (req, res) => {
         const ppoRes = await client.query('SELECT pp.id FROM process_po pp WHERE pp.trade_id = $1 AND pp.company_id = $2', [tradeDbId, req.user.company_id]);
         if (ppoRes.rows.length > 0) {
           const ppoDbId = ppoRes.rows[0].id;
-          const delQty = parseInt(item.quantity) || 0;
+          const delQty = parseFloat(item.quantity) || 0;
           if (delQty > 0) {
             await processPoDeliveryTraceConversion(client, ppoDbId, itemDbId, delQty, req.user.company_id, delivery_note_no);
           }

@@ -494,7 +494,7 @@ export default function ReleaseOrderForm() {
     setRoItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, [field]: value } : i));
 
   // Calculations
-  const calcItemBasic   = (item) => (parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 0);
+  const calcItemBasic   = (item) => (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
   const calcItemGst     = (item) => (calcItemBasic(item) * (parseFloat(item.gst_rate) || 0)) / 100;
   const calcItemTotal   = (item) => calcItemBasic(item) + calcItemGst(item);
 
@@ -562,7 +562,7 @@ export default function ReleaseOrderForm() {
       packing_forward: parseFloat(formData.packing_forward) || 0,
       items: activeItems.map(i => ({
         item_code:        i.item_code,
-        quantity:         parseInt(i.quantity)     || 1,
+        quantity:         parseFloat(i.quantity)   || 0,
         unit_price:       parseFloat(i.unit_price) || 0,
         gst_type:         i.gst_type  || null,
         gst_rate:         parseFloat(i.gst_rate)  || 0,
@@ -865,7 +865,7 @@ export default function ReleaseOrderForm() {
                               <label className={labelCls}>Quantity</label>
                               <input
                                 type="number"
-                                 
+                                step="any"
                                 required
                                 value={item.quantity}
                                 onChange={(e) => updateItem(item.item_code, 'quantity', e.target.value)}

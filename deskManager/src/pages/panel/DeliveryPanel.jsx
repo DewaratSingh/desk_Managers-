@@ -511,18 +511,18 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
   // Calculate items and totals for the selected active note
   const activeItems = activeNote ? (activeNote.items || []) : [];
   const activeGrandTotal = activeItems.reduce(
-    (sum, item) => sum + (parseFloat(item.rate_per_piece) || 0) * (parseInt(item.quantity) || 0), 0
+    (sum, item) => sum + (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0), 0
   );
 
   // Filter invoices for the active Delivery Note
   const noteInvoices = invoices.filter(inv => inv.delivery_note_no === activeDnNo);
 
   // Calculate billing status for active note
-  const totalDeliveredQty = activeItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0);
+  const totalDeliveredQty = activeItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
   const totalInvoicedQty = activeItems.reduce((sum, item) => {
     const invoiced = noteInvoices.reduce((s, inv) => {
       const invItem = (inv.items || []).find(ii => ii.item_code === item.item_code);
-      return s + (invItem ? parseInt(invItem.quantity) || 0 : 0);
+      return s + (invItem ? parseFloat(invItem.quantity) || 0 : 0);
     }, 0);
     return sum + invoiced;
   }, 0);
@@ -530,9 +530,9 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
   const hasUninvoicedItems = activeItems.some(item => {
     const invoiced = noteInvoices.reduce((s, inv) => {
       const invItem = (inv.items || []).find(ii => ii.item_code === item.item_code);
-      return s + (invItem ? parseInt(invItem.quantity) || 0 : 0);
+      return s + (invItem ? parseFloat(invItem.quantity) || 0 : 0);
     }, 0);
-    return (parseInt(item.quantity) || 0) > invoiced;
+    return (parseFloat(item.quantity) || 0) > invoiced;
   });
 
   const isFullyBilled = totalInvoicedQty >= totalDeliveredQty && totalDeliveredQty > 0;
@@ -644,7 +644,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
                       {activeItems.map((item, idx) => {
-                        const total = (parseFloat(item.rate_per_piece) || 0) * (parseInt(item.quantity) || 0);
+                        const total = (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0);
                         const hasActivity = item.next_activity && (item.next_activity.inventory || item.next_activity.sell || item.next_activity.process);
                         return (
                           <tr key={idx} className="hover:bg-slate-50 transition-colors">
@@ -705,7 +705,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                 {noteInvoices.map((inv, idx) => {
                   const invItems = inv.items || [];
                   const invGrandTotal = invItems.reduce(
-                    (sum, item) => sum + (parseFloat(item.rate_per_piece) || 0) * (parseInt(item.quantity) || 0), 0
+                    (sum, item) => sum + (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0), 0
                   );
 
                   return (
@@ -767,7 +767,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                               </thead>
                               <tbody className="divide-y divide-slate-100 bg-white">
                                 {invItems.map((item, idx) => {
-                                  const total = (parseFloat(item.rate_per_piece) || 0) * (parseInt(item.quantity) || 0);
+                                  const total = (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0);
                                   return (
                                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                       <td className="px-4 py-3">

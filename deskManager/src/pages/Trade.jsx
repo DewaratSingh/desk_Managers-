@@ -11,6 +11,7 @@ import RoPanel        from './panel/RoPanel';
 import DeliveryPanel  from './panel/DeliveryPanel';
 import InvoicePanel   from './panel/InvoicePanel';
 import PaymentPanel   from './panel/PaymentPanel';
+import TradeSummaryGraph from '../components/TradeSummaryGraph';
 
 // Status pill colours
 const statusStyle = (s) => {
@@ -490,7 +491,7 @@ export default function TradeView() {
   if (hasPoOrRo) {
     const calcPoTotal = (po) => {
       if (!po) return 0;
-      const itemsBasic = (po.items || []).reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseInt(i.quantity) || 0), 0);
+      const itemsBasic = (po.items || []).reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0), 0);
       const gstTotal = parseFloat(po.gst) || 0;
       const transport = parseFloat(po.transport) || 0;
       const packing = parseFloat(po.packing_forward) || 0;
@@ -597,34 +598,21 @@ export default function TradeView() {
       {/* ── Main ────────────────────────────────────────────────────────────── */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
-        {/* Document Pipeline Tracker */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-3">
-            <FileText size={12} style={{ color: 'var(--theme-color)' }} /> Trade Document Pipeline
-          </p>
-          {docs.length === 0 ? (
-            <p className="text-xs text-slate-400 font-medium">No documents generated yet for this trade.</p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              {docs.map((doc, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  {/* Doc badge */}
-                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-                    <span className="font-bold text-[10px] text-slate-600 uppercase tracking-wider">
-                      {DOC_LABELS[doc.type?.toUpperCase()] || doc.type}
-                    </span>
-                    <span className="text-slate-300">|</span>
-                    <span className="font-mono text-[10px] font-bold text-slate-800">{doc.id}</span>
-                  </div>
-                  {/* Arrow between items */}
-                  {idx < docs.length - 1 && (
-                    <span className="text-slate-300 font-bold text-xs">→</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Trade Summary & Interactive Graph Component */}
+        <TradeSummaryGraph
+          trade={trade}
+          docs={docs}
+          rfq={rfq}
+          quotation={quotation}
+          receivedQuotation={receivedQuotation}
+          processRq={processRq}
+          purchaseOrder={purchaseOrder}
+          releaseOrder={releaseOrder}
+          deliveryNotes={deliveryNotes}
+          invoices={invoices}
+          grns={grns}
+          payments={payments}
+        />
 
         {/* ── Status Updater (after PO / RO) ──────────────────────────── */}
         {showStatusUpdater && (
@@ -637,7 +625,7 @@ export default function TradeView() {
 
         {/* ── Section labels + Panels ─────────────────────────────────────── */}
         {panels.map((panel) => (
-          <div key={panel.key}>
+          <div key={panel.key} id={`panel-${panel.key}`}>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">
               {panel.label}
             </p>

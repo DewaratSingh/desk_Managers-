@@ -192,9 +192,9 @@ router.post('/', async (req, res) => {
         [
           rqDbId,
           sourceItemId,
-          parseInt(item.source_item_quantity) || 1,
+          parseFloat(item.source_item_quantity) || 1,
           targetItemId,
-          parseInt(item.target_item_quantity) || 1,
+          parseFloat(item.target_item_quantity) || 1,
           req.user.company_id
         ]
       );

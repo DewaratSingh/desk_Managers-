@@ -91,8 +91,8 @@ router.get('/items-lookup/:delivery_note_no', async (req, res) => {
     );
 
     const mappedItems = itemsRes.rows.map(item => {
-      const original = parseInt(item.original_qty) || 0;
-      const invoiced = parseInt(item.invoiced_qty) || 0;
+      const original = parseFloat(item.original_qty) || 0;
+      const invoiced = parseFloat(item.invoiced_qty) || 0;
       const remaining = Math.max(0, original - invoiced);
       return {
         ...item,
@@ -195,7 +195,7 @@ router.post('/', async (req, res) => {
         [
           invoiceDbId,
           itemDbId,
-          parseInt(item.quantity) || 0,
+          parseFloat(item.quantity) || 0,
           parseFloat(item.rate_per_piece) || 0,
           item.shipping_address || null,
           item.delivery_date || null,
@@ -270,7 +270,7 @@ router.put('/:invoice_no', async (req, res) => {
         [
           invoiceDbId,
           itemDbId,
-          parseInt(item.quantity) || 0,
+          parseFloat(item.quantity) || 0,
           parseFloat(item.rate_per_piece) || 0,
           item.shipping_address || null,
           item.delivery_date || null,

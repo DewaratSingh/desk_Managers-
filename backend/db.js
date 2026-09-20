@@ -155,7 +155,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         rfq_id INTEGER REFERENCES rfqs(id) ON DELETE CASCADE,
         item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+        quantity NUMERIC(12, 3) NOT NULL DEFAULT 1 CHECK (quantity > 0),
         unit VARCHAR(50) DEFAULT 'Piece',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -185,7 +185,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         quotation_id INTEGER REFERENCES quotations(id) ON DELETE CASCADE,
         item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
         unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
         unit VARCHAR(50) DEFAULT 'Piece',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
@@ -216,7 +216,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         received_quotation_id INTEGER REFERENCES received_quotations(id) ON DELETE CASCADE,
         item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
         unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -270,7 +270,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         po_id INTEGER REFERENCES purchase_orders(id) ON DELETE CASCADE,
         item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
         unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
         gst_type VARCHAR(50),
         gst_rate DECIMAL(5,2) DEFAULT 0.00,
@@ -314,7 +314,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         ro_id INTEGER REFERENCES release_orders(id) ON DELETE CASCADE,
         item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
         unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
         gst_type VARCHAR(50),
         gst_rate DECIMAL(5,2) DEFAULT 0.00,
@@ -352,7 +352,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         delivery_note_id INTEGER REFERENCES delivery_notes(id) ON DELETE CASCADE,
         item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity INTEGER NOT NULL CHECK (quantity >= 0),
+        quantity NUMERIC(12, 3) NOT NULL CHECK (quantity >= 0),
         rate_per_piece DECIMAL(12, 2) NOT NULL CHECK (rate_per_piece >= 0),
         shipping_address TEXT,
         delivery_date DATE,
@@ -404,7 +404,7 @@ const initializeDatabase = async () => {
         id             SERIAL PRIMARY KEY,
         invoice_id     INTEGER REFERENCES invoices(id) ON DELETE CASCADE,
         item_id        INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        quantity       INTEGER NOT NULL CHECK (quantity > 0),
+        quantity       NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
         rate_per_piece DECIMAL(12, 2) NOT NULL CHECK (rate_per_piece >= 0),
         shipping_address TEXT,
         delivery_date  DATE,
@@ -497,7 +497,7 @@ const initializeDatabase = async () => {
         item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
         process JSONB DEFAULT '[]'::jsonb,
         message TEXT,
-        quantity INTEGER DEFAULT 0,
+        quantity NUMERIC(12, 3) DEFAULT 0,
         price DECIMAL(12, 2) DEFAULT 0.00,
         status VARCHAR(50) DEFAULT 'In Inventory',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
@@ -520,7 +520,7 @@ const initializeDatabase = async () => {
         shelf_number VARCHAR(255),
         location VARCHAR(255),
         trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
-        quantity INTEGER DEFAULT 0,
+        quantity NUMERIC(12, 3) DEFAULT 0,
         price DECIMAL(12, 2) DEFAULT 0.00,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
@@ -587,13 +587,36 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE CASCADE,
         source_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        source_item_quantity INTEGER NOT NULL CHECK (source_item_quantity > 0),
+        source_item_quantity NUMERIC(12, 3) NOT NULL CHECK (source_item_quantity > 0),
         target_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        target_item_quantity INTEGER NOT NULL CHECK (target_item_quantity > 0),
+        target_item_quantity NUMERIC(12, 3) NOT NULL CHECK (target_item_quantity > 0),
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Auto-migrate existing quantity columns in PostgreSQL to NUMERIC(12, 3)
+    const tablesToMigrate = [
+      ['rfq_items', 'quantity'],
+      ['quotation_items', 'quantity'],
+      ['received_quotation_items', 'quantity'],
+      ['purchase_order_items', 'quantity'],
+      ['release_order_items', 'quantity'],
+      ['delivery_note_items', 'quantity'],
+      ['invoice_items', 'quantity'],
+      ['trace_item', 'quantity'],
+      ['inventory', 'quantity'],
+      ['process_item', 'source_item_quantity'],
+      ['process_item', 'target_item_quantity']
+    ];
+
+    for (const [tbl, col] of tablesToMigrate) {
+      try {
+        await client.query(`ALTER TABLE ${tbl} ALTER COLUMN ${col} TYPE NUMERIC(12, 3);`);
+      } catch (colErr) {
+        // Table or column migration error suppressed if already converted or missing
+      }
+    }
 
     // 32. Process PO Table
     await client.query(`

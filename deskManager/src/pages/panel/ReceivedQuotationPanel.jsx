@@ -12,7 +12,7 @@ export default function ReceivedQuotationPanel({ receivedQuotation, tradeId, has
   if (!receivedQuotation) return null;
 
   const itemsTotal = (receivedQuotation.items || []).reduce(
-    (a, i) => a + (parseFloat(i.unit_price) || 0) * (parseInt(i.quantity) || 0), 0
+    (a, i) => a + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0), 0
   );
 
   const qtnNo = receivedQuotation.received_quotation_no;
@@ -99,7 +99,7 @@ export default function ReceivedQuotationPanel({ receivedQuotation, tradeId, has
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {(receivedQuotation.items || []).map((item, idx) => {
-                  const lineTotal = (parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 0);
+                  const lineTotal = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
                   return (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3">

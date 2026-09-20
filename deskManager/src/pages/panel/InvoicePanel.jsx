@@ -29,12 +29,12 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
     let totalDelivered = 0;
     let totalInvoiced = 0;
     const itemsList = noteItems.map(item => {
-      const delivered = parseInt(item.quantity) || 0;
+      const delivered = parseFloat(item.quantity) || 0;
       totalDelivered += delivered;
 
       const invoiced = noteInvoices.reduce((sum, inv) => {
         const invItem = (inv.items || []).find(ii => ii.item_code === item.item_code);
-        return sum + (invItem ? parseInt(invItem.quantity) || 0 : 0);
+        return sum + (invItem ? parseFloat(invItem.quantity) || 0 : 0);
       }, 0);
       totalInvoiced += invoiced;
 
@@ -117,7 +117,7 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
             const isOpen = openInvoiceIndex === idx;
             const items = inv.items || [];
             const grandTotal = items.reduce(
-              (sum, item) => sum + (parseFloat(item.rate_per_piece) || 0) * (parseInt(item.quantity) || 0), 0
+              (sum, item) => sum + (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0), 0
             );
 
             return (
@@ -195,7 +195,7 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
                           </thead>
                           <tbody className="divide-y divide-slate-100 bg-white">
                             {items.map((item, idx) => {
-                              const total = (parseFloat(item.rate_per_piece) || 0) * (parseInt(item.quantity) || 0);
+                              const total = (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0);
                               return (
                                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                   <td className="px-4 py-3">

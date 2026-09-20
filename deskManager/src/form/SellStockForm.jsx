@@ -76,7 +76,7 @@ export default function SellStockForm() {
     
     // Default quantity to the smaller of available source qty or remaining order qty
     const remaining = trade.remaining_qty || 0;
-    const defaultQty = Math.min(parseInt(sourceQty) || 0, remaining);
+    const defaultQty = Math.min(parseFloat(sourceQty) || 0, remaining);
     setSellQty(defaultQty > 0 ? defaultQty.toString() : '');
   };
 
@@ -95,13 +95,13 @@ export default function SellStockForm() {
       return;
     }
 
-    const qty = parseInt(sellQty, 10);
+    const qty = parseFloat(sellQty);
     if (isNaN(qty) || qty <= 0) {
       toast.error('Please enter a valid quantity greater than 0.');
       return;
     }
 
-    if (qty > (parseInt(sourceQty) || 0)) {
+    if (qty > (parseFloat(sourceQty) || 0)) {
       toast.error(`Cannot sell more than available source quantity of ${sourceQty}.`);
       return;
     }
@@ -286,9 +286,9 @@ export default function SellStockForm() {
               </label>
               <input
                 type="number"
+                step="any"
                 required
-                 
-                max={selectedTrade ? Math.min(parseInt(sourceQty) || 0, selectedTrade.remaining_qty) : sourceQty}
+                max={selectedTrade ? Math.min(parseFloat(sourceQty) || 0, selectedTrade.remaining_qty) : sourceQty}
                 placeholder="Enter dispatch amount..."
                 value={sellQty}
                 onChange={(e) => setSellQty(e.target.value)}

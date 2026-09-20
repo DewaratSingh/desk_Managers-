@@ -45,7 +45,7 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
 
   // Calculated totals
   const itemsBasic = (releaseOrder.items || []).reduce(
-    (s, i) => s + (parseFloat(i.unit_price) || 0) * (parseInt(i.quantity) || 0), 0
+    (s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0), 0
   );
   const gstTotal   = parseFloat(releaseOrder.gst)             || 0;
   const transport  = parseFloat(releaseOrder.transport)       || 0;
@@ -148,7 +148,7 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {(releaseOrder.items || []).map((item, idx) => {
-                  const lineBasic = (parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 0);
+                  const lineBasic = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
                   const lineGst   = lineBasic * ((parseFloat(item.gst_rate) || 0) / 100);
                   const lineTotal = lineBasic + lineGst;
                   return (
@@ -162,7 +162,7 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
                       <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.description || '—'}</td>
                       <td className="px-4 py-3 text-right font-bold text-slate-800">{item.quantity}</td>
                       <td className="px-4 py-3 text-right font-bold text-slate-800">
-                        {Math.max(0, (parseInt(item.quantity) || 0) - (parseInt(item.delivered_qty) || 0))}
+                        {Math.max(0, (parseFloat(item.quantity) || 0) - (parseFloat(item.delivered_qty) || 0))}
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(item.unit_price)}</td>
                       <td className="px-4 py-3 text-right">

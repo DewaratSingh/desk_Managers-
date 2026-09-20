@@ -115,10 +115,10 @@ export default function DeliveryNoteForm() {
         const mergedItems = await Promise.all(lookupData.items.map(async (lookupItem) => {
           const dnItem = (noteData.items || []).find(di => di.item_code === lookupItem.item_code);
           const isSelected = !!dnItem;
-          const deliveryQty = dnItem ? parseInt(dnItem.quantity) || 0 : lookupItem.remaining_qty;
+          const deliveryQty = dnItem ? parseFloat(dnItem.quantity) || 0 : lookupItem.remaining_qty;
           
           // Re-calculate remaining_qty for editing to include this note's quantity
-          const remainingLimit = lookupItem.remaining_qty + (dnItem ? parseInt(dnItem.quantity) || 0 : 0);
+          const remainingLimit = lookupItem.remaining_qty + (dnItem ? parseFloat(dnItem.quantity) || 0 : 0);
 
           const currentTradeType = noteData.trade_type || 'sell';
           let inventory_qty = 0;
@@ -251,7 +251,7 @@ export default function DeliveryNoteForm() {
     const selectedAllocations = [];
 
     for (const invRow of stockList) {
-      const qty = parseInt(stockAllocations[invRow.id], 10) || 0;
+      const qty = parseFloat(stockAllocations[invRow.id]) || 0;
       if (qty > 0) {
         if (qty > invRow.quantity) {
           alert(`Cannot allocate ${qty} from batch TR-${invRow.trace_item_id || 'Stock'} as only ${invRow.quantity} is available.`);
@@ -330,7 +330,7 @@ export default function DeliveryNoteForm() {
   };
 
   const handleItemQtyChange = (index, value) => {
-    const parsedVal = parseInt(value, 10) || 0;
+    const parsedVal = parseFloat(value) || 0;
     setItems(prev => prev.map((item, idx) => {
       if (idx !== index) return item;
       
@@ -792,6 +792,7 @@ export default function DeliveryNoteForm() {
                       <td className="px-3 py-1.5 text-right">
                         <input
                           type="number"
+                          step="any"
                           value={item.delivery_qty}
                            
                           max={item.remaining_qty}
@@ -980,11 +981,11 @@ export default function DeliveryNoteForm() {
                           <td className="px-3.5 py-3 text-right">
                             <input
                               type="number"
-                               
+                              step="any"
                               max={inv.quantity}
                               value={allocQty}
                               onChange={(e) => {
-                                const val = parseInt(e.target.value) || 0;
+                                const val = parseFloat(e.target.value) || 0;
                                 setStockAllocations(prev => ({ ...prev, [inv.id]: val }));
                               }}
                               className="w-24 px-2 py-1 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none focus:border-indigo-500"
@@ -994,7 +995,7 @@ export default function DeliveryNoteForm() {
                             <button
                               type="button"
                               onClick={() => {
-                                const currentOtherAlloc = stockList.reduce((sum, item) => item.id === inv.id ? sum : sum + (parseInt(stockAllocations[item.id]) || 0), 0);
+                                const currentOtherAlloc = stockList.reduce((sum, item) => item.id === inv.id ? sum : sum + (parseFloat(stockAllocations[item.id]) || 0), 0);
                                 const needed = Math.max(0, openStockPickerItem.remaining_qty - currentOtherAlloc);
                                 const maxFill = Math.min(inv.quantity, needed);
                                 setStockAllocations(prev => ({ ...prev, [inv.id]: maxFill }));
@@ -1014,7 +1015,7 @@ export default function DeliveryNoteForm() {
 
             {/* Modal Actions */}
             {openStockPickerItem && (() => {
-              const currentTotalSelected = stockList.reduce((sum, inv) => sum + (parseInt(stockAllocations[inv.id]) || 0), 0);
+              const currentTotalSelected = stockList.reduce((sum, inv) => sum + (parseFloat(stockAllocations[inv.id]) || 0), 0);
               const isOverLimit = currentTotalSelected > openStockPickerItem.remaining_qty;
 
               return (

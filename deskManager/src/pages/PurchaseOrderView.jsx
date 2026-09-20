@@ -212,9 +212,9 @@ export default function PurchaseOrderView() {
 
   /* Totals */
   const itemsBasic = (po?.items || []).reduce((s, i) =>
-    s + (parseFloat(i.unit_price)||0) * (parseInt(i.quantity)||0), 0);
+    s + (parseFloat(i.unit_price)||0) * (parseFloat(i.quantity)||0), 0);
   const gstTotal = (po?.items || []).reduce((s, i) => {
-    const line = (parseFloat(i.unit_price)||0) * (parseInt(i.quantity)||0);
+    const line = (parseFloat(i.unit_price)||0) * (parseFloat(i.quantity)||0);
     return s + line * ((parseFloat(i.gst_rate)||0) / 100);
   }, 0);
   const transport  = parseFloat(po?.transport)       || 0;
@@ -366,7 +366,7 @@ export default function PurchaseOrderView() {
               <tbody className="divide-y divide-slate-100">
                 {(po.items || []).map((item) => {
                   const isEditing  = editingCode === item.item_code;
-                  const lineBasic  = (parseFloat(item.unit_price)||0) * (parseInt(item.quantity)||0);
+                  const lineBasic  = (parseFloat(item.unit_price)||0) * (parseFloat(item.quantity)||0);
                   const lineGst    = lineBasic * ((parseFloat(item.gst_rate)||0) / 100);
                   const lineTotal  = lineBasic + lineGst;
 
@@ -397,7 +397,7 @@ export default function PurchaseOrderView() {
 
                       {/* Pending Qty */}
                       <td className="px-4 py-3 text-right font-bold text-slate-800">
-                        {Math.max(0, (parseInt(item.quantity) || 0) - (parseInt(item.delivered_qty) || 0))}
+                        {Math.max(0, (parseFloat(item.quantity) || 0) - (parseFloat(item.delivered_qty) || 0))}
                       </td>
 
                       {/* Unit Price */}

@@ -372,7 +372,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
       case 'purchase-order': {
         const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
         const calcTotal = (ord) => {
-          const itemsBasic = (ord.items || []).reduce((s, i) => s + (parseFloat(i.unit_price)||0)*(parseInt(i.quantity)||0), 0);
+          const itemsBasic = (ord.items || []).reduce((s, i) => s + (parseFloat(i.unit_price)||0)*(parseFloat(i.quantity)||0), 0);
           const gst   = parseFloat(ord.gst)             || 0;
           const trans = parseFloat(ord.transport)       || 0;
           const pack  = parseFloat(ord.packing_forward) || 0;
@@ -394,8 +394,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             if (po.trade_status && (po.trade_status.trim().toLowerCase() === 'completed' || po.trade_status.trim().toLowerCase() === 'complete')) return;
             
             // Calculate delivered percentage to skip if fully delivered
-            const totalQty = (po.items || []).reduce((s, i) => s + (parseInt(i.quantity) || 0), 0);
-            const deliveredQty = (po.items || []).reduce((s, i) => s + (parseInt(i.delivered_qty) || 0), 0);
+            const totalQty = (po.items || []).reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
+            const deliveredQty = (po.items || []).reduce((s, i) => s + (parseFloat(i.delivered_qty) || 0), 0);
             const deliveredPct = totalQty > 0 ? (deliveredQty / totalQty) * 100 : 0;
             if (totalQty > 0 && deliveredPct >= 99.9) return;
 
@@ -425,8 +425,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             if (ro.trade_status && (ro.trade_status.trim().toLowerCase() === 'completed' || ro.trade_status.trim().toLowerCase() === 'complete')) return;
             
             // Calculate delivered percentage to skip if fully delivered
-            const totalQty = (ro.items || []).reduce((s, i) => s + (parseInt(i.quantity) || 0), 0);
-            const deliveredQty = (ro.items || []).reduce((s, i) => s + (parseInt(i.delivered_qty) || 0), 0);
+            const totalQty = (ro.items || []).reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
+            const deliveredQty = (ro.items || []).reduce((s, i) => s + (parseFloat(i.delivered_qty) || 0), 0);
             const deliveredPct = totalQty > 0 ? (deliveredQty / totalQty) * 100 : 0;
             if (totalQty > 0 && deliveredPct >= 99.9) return;
 
@@ -526,8 +526,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                     <tbody className="divide-y divide-slate-200 bg-white">
                       {displayOrders.map((ord) => {
                         const total = calcTotal(ord);
-                        const totalQty = ord.items.reduce((s, i) => s + (parseInt(i.quantity) || 0), 0);
-                        const deliveredQty = ord.items.reduce((s, i) => s + (parseInt(i.delivered_qty) || 0), 0);
+                        const totalQty = ord.items.reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
+                        const deliveredQty = ord.items.reduce((s, i) => s + (parseFloat(i.delivered_qty) || 0), 0);
                         const deliveredPct = totalQty > 0 ? ((deliveredQty / totalQty) * 100).toFixed(1) : '0.0';
 
                         return (

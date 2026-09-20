@@ -321,7 +321,7 @@ export default function QuotationForm({ activeTab }) {
   const calculateTotal = (itemsList) => {
     return itemsList.reduce((acc, curr) => {
       if (!curr.selected) return acc;
-      return acc + (parseFloat(curr.unit_price) || 0) * (parseInt(curr.quantity) || 0);
+      return acc + (parseFloat(curr.unit_price) || 0) * (parseFloat(curr.quantity) || 0);
     }, 0);
   };
 
@@ -362,7 +362,7 @@ export default function QuotationForm({ activeTab }) {
       terms_and_conditions: formData.terms_and_conditions,
       items: activeItems.map(i => ({
         item_code: i.item_code,
-        quantity: parseInt(i.quantity) || 1,
+        quantity: parseFloat(i.quantity) || 1,
         unit: i.unit,
         unit_price: parseFloat(i.unit_price) || 0
       })),

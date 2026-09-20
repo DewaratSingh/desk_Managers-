@@ -123,7 +123,7 @@ router.post('/', async (req, res) => {
         const itemDbId = itemRes.rows[0].id;
         await client.query(
           'INSERT INTO rfq_items (rfq_id, item_id, quantity, unit, company_id) VALUES ($1, $2, $3, $4, $5)',
-          [rfqDbId, itemDbId, parseInt(item.quantity) || 1, item.unit || 'Piece', req.user.company_id]
+          [rfqDbId, itemDbId, parseFloat(item.quantity) || 1, item.unit || 'Piece', req.user.company_id]
         );
       }
     }
@@ -142,7 +142,7 @@ router.post('/', async (req, res) => {
         const itemDbId = itemRes.rows[0].id;
         await client.query(
           'INSERT INTO quotation_items (quotation_id, item_id, quantity, unit_price, unit, company_id) VALUES ($1, $2, $3, $4, $5, $6)',
-          [quotationDbId, itemDbId, parseInt(item.quantity) || 1, parseFloat(item.unit_price) || 0, item.unit || 'Piece', req.user.company_id]
+          [quotationDbId, itemDbId, parseFloat(item.quantity) || 1, parseFloat(item.unit_price) || 0, item.unit || 'Piece', req.user.company_id]
         );
       }
     }
@@ -281,7 +281,7 @@ router.put('/:rfq_no', async (req, res) => {
         const itemDbId = itemRes.rows[0].id;
         await client.query(
           'INSERT INTO rfq_items (rfq_id, item_id, quantity, unit, company_id) VALUES ($1, $2, $3, $4, $5)',
-          [rfq.id, itemDbId, parseInt(item.quantity) || 1, item.unit || 'Piece', req.user.company_id]
+          [rfq.id, itemDbId, parseFloat(item.quantity) || 1, item.unit || 'Piece', req.user.company_id]
         );
       }
     }
@@ -294,7 +294,7 @@ router.put('/:rfq_no', async (req, res) => {
         const itemDbId = itemRes.rows[0].id;
         await client.query(
           'INSERT INTO quotation_items (quotation_id, item_id, quantity, unit_price, unit, company_id) VALUES ($1, $2, $3, $4, $5, $6)',
-          [quotationDbId, itemDbId, parseInt(item.quantity) || 1, parseFloat(item.unit_price) || 0, item.unit || 'Piece', req.user.company_id]
+          [quotationDbId, itemDbId, parseFloat(item.quantity) || 1, parseFloat(item.unit_price) || 0, item.unit || 'Piece', req.user.company_id]
         );
       }
     }

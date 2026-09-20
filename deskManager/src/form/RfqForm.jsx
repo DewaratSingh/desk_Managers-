@@ -261,7 +261,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
   };
 
   const handleQuantityChange = (itemCode, value) => {
-    const qty = parseInt(value) || 1;
+    const qty = parseFloat(value) || 1;
     setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, quantity: qty } : i));
   };
 
@@ -316,7 +316,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
       customer_id: formData.customer_id,
       items: selectedItems.map(item => ({
         item_code: item.item_code,
-        quantity: parseInt(item.quantity) || 1,
+        quantity: parseFloat(item.quantity) || 1,
         unit: item.unit || 'Piece',
         unit_price: parseFloat(item.unit_price) || 0
       }))
@@ -614,7 +614,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
                               <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Qty *</label>
                               <input
                                 type="number"
-                                 
+                                step="any"
                                 required
                                 value={item.quantity}
                                 onChange={(e) => handleQuantityChange(item.item_code, e.target.value)}

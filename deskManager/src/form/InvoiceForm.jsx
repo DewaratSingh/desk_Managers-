@@ -75,10 +75,10 @@ export default function InvoiceForm() {
         const mergedItems = lookupData.items.map(lookupItem => {
           const invItem = (invoiceData.items || []).find(ii => ii.item_code === lookupItem.item_code);
           const isSelected = !!invItem;
-          const invoiceQty = invItem ? parseInt(invItem.quantity) || 0 : lookupItem.remaining_qty;
+          const invoiceQty = invItem ? parseFloat(invItem.quantity) || 0 : lookupItem.remaining_qty;
           
           // Re-calculate remaining_qty for editing to include this invoice's quantity
-          const remainingLimit = lookupItem.remaining_qty + (invItem ? parseInt(invItem.quantity) || 0 : 0);
+          const remainingLimit = lookupItem.remaining_qty + (invItem ? parseFloat(invItem.quantity) || 0 : 0);
 
           return {
             ...lookupItem,
@@ -163,7 +163,7 @@ export default function InvoiceForm() {
   };
 
   const handleItemQtyChange = (index, value) => {
-    const qty = parseInt(value) || 0;
+    const qty = parseFloat(value) || 0;
     setItems(prev => prev.map((item, idx) => {
       if (idx !== index) return item;
       return {
@@ -449,6 +449,7 @@ export default function InvoiceForm() {
                       <td className="px-4 py-3 text-right">
                         <input
                           type="number"
+                          step="any"
                           value={item.quantity}
                            
                           max={item.remaining_qty}

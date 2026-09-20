@@ -164,7 +164,7 @@ router.post('/', async (req, res) => {
         const itemDbId = itemRes.rows[0].id;
         await client.query(
           'INSERT INTO received_quotation_items (received_quotation_id, item_id, quantity, unit_price, company_id) VALUES ($1, $2, $3, $4, $5)',
-          [rqDbId, itemDbId, parseInt(item.quantity) || 1, parseFloat(item.unit_price) || 0, req.user.company_id]
+          [rqDbId, itemDbId, parseFloat(item.quantity) || 1, parseFloat(item.unit_price) || 0, req.user.company_id]
         );
       }
     }
@@ -222,7 +222,7 @@ router.put('/:received_quotation_no', async (req, res) => {
         const itemDbId = itemRes.rows[0].id;
         await client.query(
           'INSERT INTO received_quotation_items (received_quotation_id, item_id, quantity, unit_price, company_id) VALUES ($1, $2, $3, $4, $5)',
-          [rqDbId, itemDbId, parseInt(item.quantity) || 1, parseFloat(item.unit_price) || 0, req.user.company_id]
+          [rqDbId, itemDbId, parseFloat(item.quantity) || 1, parseFloat(item.unit_price) || 0, req.user.company_id]
         );
       }
     }
