@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeskManage - Backup Manager</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">💻</div>
+        <div class="brand-text">
+          <h1>DeskManage</h1>
+          <span>Desktop Control Center</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button id="nav-local-backups" class="nav-btn active" onclick="switchTab('local-backups')">
+          <span class="icon">📁</span> Manage Local Backups
+        </button>
+        <button id="nav-online-backup" class="nav-btn" onclick="switchTab('online-backup')">
+          <span class="icon">☁️</span> Online Cloud Backup
+        </button>
+        <button id="nav-dashboard" class="nav-btn" onclick="switchTab('dashboard')">
+          <span class="icon">📊</span> Dashboard
+        </button>
+        <button id="nav-settings" class="nav-btn" onclick="switchTab('settings')">
+          <span class="icon">⚙️</span> Settings
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <p>v2.3.0 • Network QR & IPv4 Dashboard</p>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- TAB 1: LOCAL BACKUPS PANEL -->
+      <div id="panel-local-backups" class="tab-panel active">
+        <header class="content-header">
+          <div>
+            <h2>Manage Database & System Backups</h2>
+            <p>View backup folder, trigger dumps, apply new backup paths, restore database, and rename backups.</p>
+          </div>
+        </header>
+
+        <!-- Location Card -->
+        <section class="card location-card">
+          <div class="card-header">
+            <span class="card-icon">📂</span>
+            <h3>Current DeskManager Backup Directory</h3>
+          </div>
+          <div class="path-controls">
+            <input type="text" id="backupPathInput" readonly class="path-input" value="Loading backup path...">
+            <button id="applyNewPlaceBtn" class="btn btn-primary" onclick="applyNewBackupLocation()">
+              <span>✨</span> Apply New Place for Backup
+            </button>
+            <button class="btn btn-secondary" onclick="openBackupFolder()">
+              <span>📁</span> Open Folder ↗
+            </button>
+          </div>
+        </section>
+
+        <!-- Action Toolbar -->
+        <section class="toolbar">
+          <div class="toolbar-left">
+            <button class="btn btn-success" onclick="takeBackup()">
+              <span>⚡</span> Take Backup Now
+            </button>
+            <button class="btn btn-info" onclick="triggerRestore()">
+              <span>📥</span> Use Backup in Database
+            </button>
+            <button class="btn btn-warning" onclick="triggerRename()">
+              <span>✏️</span> Rename Backup File
+            </button>
+            <button class="btn btn-danger" onclick="triggerDelete()">
+              <span>🗑️</span> Delete
+            </button>
+          </div>
+          <div class="toolbar-right">
+            <button class="btn btn-secondary" onclick="loadBackupFiles()">
+              <span>🔄</span> Refresh List
+            </button>
+          </div>
+        </section>
+
+        <!-- Backup Files Table -->
+        <section class="card table-card">
+          <div class="table-wrapper">
+            <table class="backup-table">
+              <thead>
+                <tr>
+                  <th>Backup File Name</th>
+                  <th class="text-center">File Size</th>
+                  <th class="text-center">Date Created / Modified</th>
+                  <th>Full File Path</th>
+                </tr>
+              </thead>
+              <tbody id="backupTableBody">
+                <tr>
+                  <td colspan="4" class="text-center loading-cell">Loading backup files...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 2: ONLINE CLOUD BACKUP PANEL -->
+      <div id="panel-online-backup" class="tab-panel">
+        <header class="content-header">
+          <div>
+            <h2>☁️ Google Drive Cloud Backup</h2>
+            <p>Connect your Google Cloud Console OAuth Client credentials for permanent, automated cloud backup sync.</p>
+          </div>
+        </header>
+
+        <!-- Google API Credentials Card -->
+        <section class="card api-card">
+          <div class="card-header-split">
+            <div class="card-header">
+              <span class="card-icon">🔑</span>
+              <h3>Google Cloud Console OAuth 2.0 Integration (Permanent Sync)</h3>
+            </div>
+            <span id="gdriveStatusBadge" class="badge badge-disconnected">● Not Configured</span>
+          </div>
+
+          <div class="auth-type-tabs">
+            <button class="auth-tab-btn active" id="tabOAuthMode" onclick="setAuthMode('oauth')">Google Cloud OAuth App (Permanent)</button>
+            <button class="auth-tab-btn" id="tabTokenMode" onclick="setAuthMode('token')">Manual Access Token</button>
+          </div>
+
+          <!-- OAuth Mode Fields -->
+          <div id="oauthFields" class="form-grid">
+            <div class="form-group">
+              <label for="gdriveClientIdInput">Google Cloud Client ID:</label>
+              <input type="text" id="gdriveClientIdInput" class="form-input" placeholder="e.g. 123456789012-abcdefg.apps.googleusercontent.com">
+              <span class="form-hint">Created in Google Cloud Console -> APIs & Services -> Credentials -> OAuth 2.0 Client ID (Desktop App).</span>
+            </div>
+
+            <div class="form-group">
+              <label for="gdriveClientSecretInput">Google Cloud Client Secret:</label>
+              <input type="password" id="gdriveClientSecretInput" class="form-input" placeholder="e.g. GOCSPX-xxxxxxxxxxxxxxxxxxxx">
+            </div>
+
+            <div class="form-group">
+              <label for="gdriveFolderInput">Target Google Drive Folder ID (Optional):</label>
+              <input type="text" id="gdriveFolderInput" class="form-input" placeholder="e.g. 1a2b3c4d5e6f7g8h9 (Leave empty for Root Drive)">
+            </div>
+          </div>
+
+          <!-- Manual Token Fields (Hidden by default) -->
+          <div id="tokenFields" class="form-grid hidden">
+            <div class="form-group">
+              <label for="gdriveTokenInput">Google Drive Access Token (OAuth Playground):</label>
+              <input type="password" id="gdriveTokenInput" class="form-input" placeholder="Paste temporary ya29... token here">
+            </div>
+          </div>
+
+          <div class="card-footer-btns">
+            <button id="btnAuthorizeOAuth" class="btn btn-success btn-large" onclick="authorizePermanentGoogleDrive()">
+              <span>🔗</span> Connect & Authorize Google Drive
+            </button>
+            <button class="btn btn-primary" onclick="saveGDriveCredentials()">
+              <span>💾</span> Save Credentials
+            </button>
+            <button class="btn btn-secondary" onclick="testGDriveConnection()">
+              <span>🧪</span> Test Connection
+            </button>
+          </div>
+        </section>
+
+        <!-- Upload Backup File Card -->
+        <section class="card upload-card">
+          <div class="card-header">
+            <span class="card-icon">⬆️</span>
+            <h3>Upload Local Backup to Google Drive</h3>
+          </div>
+
+          <div class="upload-controls">
+            <div class="form-group flex-1">
+              <label for="selectBackupToUpload">Select Local Backup File:</label>
+              <select id="selectBackupToUpload" class="form-select">
+                <option value="">-- Select a backup file to upload --</option>
+              </select>
+            </div>
+            <button class="btn btn-success btn-large" onclick="uploadBackupToGDrive()">
+              <span>☁️</span> Upload File to Google Drive Now
+            </button>
+          </div>
+
+          <!-- Progress Bar -->
+          <div id="uploadProgressBox" class="progress-box hidden">
+            <div class="progress-bar-bg">
+              <div id="uploadProgressBar" class="progress-bar-fill"></div>
+            </div>
+            <span id="uploadProgressText">Uploading...</span>
+          </div>
+        </section>
+
+        <!-- Uploaded Cloud Files Table -->
+        <section class="card table-card">
+          <div class="card-header padding-header">
+            <span class="card-icon">📋</span>
+            <h3>Google Drive Cloud Upload History</h3>
+          </div>
+          <div class="table-wrapper">
+            <table class="backup-table">
+              <thead>
+                <tr>
+                  <th>Backup File Name</th>
+                  <th class="text-center">Cloud File ID</th>
+                  <th class="text-center">Upload Timestamp</th>
+                  <th class="text-center">Google Drive Access</th>
+                </tr>
+              </thead>
+              <tbody id="cloudTableBody">
+                <tr>
+                  <td colspan="4" class="text-center loading-cell">No cloud backups uploaded yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 3: DASHBOARD PANEL -->
+      <div id="panel-dashboard" class="tab-panel">
+        <header class="content-header">
+          <div>
+            <h2>📊 System Dashboard & Network Information</h2>
+            <p>Overview of local storage, active IPv4 address, and mobile connect QR code.</p>
+          </div>
+        </header>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-title">Local Backups</div>
+            <div class="stat-value" id="statLocalCount">0</div>
+            <div class="stat-sub">In D:\deskManager-backups</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Cloud Backups</div>
+            <div class="stat-value" id="statCloudCount">0</div>
+            <div class="stat-sub">Uploaded to Google Drive</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Network IPv4 Address</div>
+            <div class="stat-value text-accent" id="statIpv4Address">192.168.1.1</div>
+            <div class="stat-sub" id="statHostname">Host: DESKTOP-PC</div>
+          </div>
+        </div>
+
+        <!-- Network QR Code Card -->
+        <section class="card qr-card">
+          <div class="card-header-split">
+            <div class="card-header">
+              <span class="card-icon">🌐</span>
+              <h3>IPv4 Network Address & Scan QR Code</h3>
+            </div>
+            <span class="badge badge-connected">● Local Network Active</span>
+          </div>
+
+          <div class="qr-container">
+            <div class="qr-code-box">
+              <img id="qrCodeImg" src="" alt="IPv4 QR Code" class="qr-img">
+            </div>
+
+            <div class="qr-details">
+              <div class="ip-display-box">
+                <span class="ip-label">IPv4 Address:</span>
+                <span class="ip-value" id="ipValueText">192.168.1.1</span>
+              </div>
+              <div class="ip-display-box">
+                <span class="ip-label">Server Connection URL:</span>
+                <span class="ip-url-text" id="ipUrlText">http://192.168.1.1:5000</span>
+              </div>
+              <p class="qr-hint-text">
+                📱 <strong>Scan with your mobile camera:</strong> Connect mobile phones or other devices on the same Wi-Fi network directly to DeskManager!
+              </p>
+
+              <div class="qr-actions">
+                <button class="btn btn-primary" onclick="copyIpv4Address()">
+                  <span>📋</span> Copy IPv4 Address
+                </button>
+                <button class="btn btn-secondary" onclick="loadNetworkInfo()">
+                  <span>🔄</span> Refresh Network Info
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 4: SETTINGS PANEL -->
+      <div id="panel-settings" class="tab-panel">
+        <header class="content-header">
+          <div>
+            <h2>⚙️ App Settings</h2>
+            <p>Configure general preferences and application behavior.</p>
+          </div>
+        </header>
+
+        <section class="card">
+          <div class="card-header">
+            <h3>General Preferences</h3>
+          </div>
+          <p class="modal-desc">Automatic rotation retains backups up to 4 days. All settings are saved automatically.</p>
+        </section>
+      </div>
+
+      <!-- Status Log Footer -->
+      <footer class="status-bar" id="statusBar">
+        <span class="status-indicator"></span>
+        <span id="statusText">System Ready.</span>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Rename Modal Dialog -->
+  <div class="modal-backdrop" id="renameModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>✏️ Rename Backup File</h3>
+        <button class="close-btn" onclick="closeRenameModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Enter a new name for the backup file:</p>
+        <input type="text" id="renameInput" class="modal-input" placeholder="e.g. deskManager-backup-custom.dump">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
+        <button class="btn btn-warning" onclick="submitRename()">Rename File</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Restore Modal Dialog -->
+  <div class="modal-backdrop" id="restoreModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>📥 Use Backup in Database</h3>
+        <button class="close-btn" onclick="closeRestoreModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Are you sure you want to restore and use this backup in the database?</p>
+        <div class="backup-details-box" id="restoreDetailsBox">
+          <!-- Populated by JS -->
+        </div>
+        <p class="warning-text">⚠️ Warning: Existing database data will be updated with this backup!</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeRestoreModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitRestore()">Confirm Restore</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

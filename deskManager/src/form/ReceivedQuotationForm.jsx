@@ -675,7 +675,7 @@ export default function ReceivedQuotationForm({ onNavigateAndOpenForm }) {
                 <div ref={itemRef} className="relative">
                   <input
                     type="text"
-                    placeholder="Search item by code, short desc, or long desc..."
+                    placeholder="Search and Add item by code, short desc, or long desc..."
                     value={itemInput}
                     onChange={(e) => handleItemInput(e.target.value)}
                     onFocus={(e) => {

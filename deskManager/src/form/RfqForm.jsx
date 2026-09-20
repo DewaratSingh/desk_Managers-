@@ -686,7 +686,7 @@ export default function RfqForm({ onNavigateAndOpenForm }) {
               <div ref={itemRef} className="relative">
                 <input
                   type="text"
-                  placeholder="Search item by code or description to attach..."
+                  placeholder="Search  item by code or description to attach..."
                   value={itemSearch}
                   onChange={(e) => handleItemSearch(e.target.value)}
                   onFocus={(e) => {
