@@ -543,26 +543,45 @@ const initializeDatabase = async () => {
         date_of_start DATE,
         date_of_end DATE,
         message TEXT,
+        status VARCHAR(50) DEFAULT 'in_progress',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // 30. Manufacture Item Table
     await client.query(`
-      CREATE TABLE IF NOT EXISTS manufacture_item (
+      ALTER TABLE manufacture ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'in_progress';
+    `);
+
+    // 30. Source Item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS source_item (
         id SERIAL PRIMARY KEY,
         manufacture_id INTEGER REFERENCES manufacture(id) ON DELETE CASCADE,
-        source_item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
-        target_item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
-        source_trace_id_array JSONB DEFAULT '[]'::jsonb,
-        price DECIMAL(12, 2) DEFAULT 0.00,
-        source_qty NUMERIC DEFAULT 0,
-        target_qty NUMERIC DEFAULT 0,
-        target_trace_id_array JSONB DEFAULT '[]'::jsonb,
+        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
+        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    // 30b. Target Item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS target_item (
+        id SERIAL PRIMARY KEY,
+        manufacture_id INTEGER REFERENCES manufacture(id) ON DELETE CASCADE,
+        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
+        delivered_qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
+        price DECIMAL(12, 2) DEFAULT 0.00,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      ALTER TABLE target_item ADD COLUMN IF NOT EXISTS delivered_qty NUMERIC(12, 3) NOT NULL DEFAULT 0;
     `);
 
     // 31. RQ Process Table
@@ -581,7 +600,7 @@ const initializeDatabase = async () => {
       );
     `);
 
-    // 31. Process Item Table
+    // 31. Process Item Table (Legacy pair table)
     await client.query(`
       CREATE TABLE IF NOT EXISTS process_item (
         id SERIAL PRIMARY KEY,
@@ -590,6 +609,32 @@ const initializeDatabase = async () => {
         source_item_quantity NUMERIC(12, 3) NOT NULL CHECK (source_item_quantity > 0),
         target_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
         target_item_quantity NUMERIC(12, 3) NOT NULL CHECK (target_item_quantity > 0),
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 31b. RQ Process Source Item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS rq_process_source_item (
+        id SERIAL PRIMARY KEY,
+        rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE CASCADE,
+        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
+        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 31c. RQ Process Target Item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS rq_process_target_item (
+        id SERIAL PRIMARY KEY,
+        rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE CASCADE,
+        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
+        price DECIMAL(12, 2) DEFAULT 0.00,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -637,6 +682,18 @@ const initializeDatabase = async () => {
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS date_of_start DATE;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS date_of_end DATE;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS received_q_id INTEGER;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS seller VARCHAR(255);
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS party VARCHAR(255);
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS gst_type VARCHAR(50) DEFAULT 'CGST+SGST';
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS gst_rate DECIMAL(5,2) DEFAULT 0.00;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS gst DECIMAL(12,2) DEFAULT 0.00;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS transport DECIMAL(12,2) DEFAULT 0.00;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS packing_forward DECIMAL(12,2) DEFAULT 0.00;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS other DECIMAL(12,2) DEFAULT 0.00;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS basic_value DECIMAL(12,2) DEFAULT 0.00;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS delivery_date DATE;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS shipping_address TEXT;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS message TEXT;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS company_id INTEGER;
       
@@ -657,7 +714,39 @@ const initializeDatabase = async () => {
       END $$;
     `);
 
-    // 33. Process PO Item Table
+    // 33. Process PO Source Item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS process_po_source_item (
+        id SERIAL PRIMARY KEY,
+        process_po_id INTEGER REFERENCES process_po(id) ON DELETE CASCADE,
+        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
+        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 33b. Process PO Target Item Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS process_po_target_item (
+        id SERIAL PRIMARY KEY,
+        process_po_id INTEGER REFERENCES process_po(id) ON DELETE CASCADE,
+        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
+        delivered_qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
+        price DECIMAL(12, 2) DEFAULT 0.00,
+        gst_type VARCHAR(50),
+        gst_rate DECIMAL(5,2) DEFAULT 0.00,
+        shipping_address TEXT,
+        delivery_date DATE,
+        status VARCHAR(50) DEFAULT 'ordered',
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 33c. Process PO Item Table (Legacy pair mapping)
     await client.query(`
       CREATE TABLE IF NOT EXISTS process_po_item (
         id SERIAL PRIMARY KEY,

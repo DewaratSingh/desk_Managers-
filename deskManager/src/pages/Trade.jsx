@@ -18,6 +18,7 @@ const statusStyle = (s) => {
   const v = (s || '').toLowerCase();
   if (v === 'ordered')             return { color: '#4f46e5', borderColor: '#a5b4fc', backgroundColor: '#eef2ff' };
   if (v === 'quotation')           return { color: '#0369a1', borderColor: '#7dd3fc', backgroundColor: '#f0f9ff' };
+  if (v === 'process_rq' || v === 'rq_process' || v === 'r quotation' || v === 'r_quotation') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
   if (v === 'payment')             return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
   if (v === 'completed')           return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
   if (v === 'delivered')           return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
@@ -167,7 +168,7 @@ function StatusUpdater({ tradeId, currentStatus, onStatusChanged }) {
           className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-full border shrink-0"
           style={statusStyle(currentStatus)}
         >
-          {currentStatus || '—'}
+          {(currentStatus || '').toLowerCase() === 'process_rq' || (currentStatus || '').toLowerCase() === 'rq_process' ? 'R Quotation' : (currentStatus || '—')}
         </span>
 
         {/* Save button */}
@@ -457,7 +458,7 @@ export default function TradeView() {
   if (processRq) {
     panels.push({
       key: 'process_rq',
-      label: '① Process Trade Request (RQ)',
+      label: '① R Quotation (Process RQ)',
       component: <ProcessRqPanel processRq={processRq} tradeId={trade.trade_id} />
     });
   }

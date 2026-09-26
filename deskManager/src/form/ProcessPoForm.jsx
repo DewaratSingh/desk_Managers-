@@ -1,310 +1,423 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  ArrowLeft, FileText, Plus, Calendar, Package, ArrowRight, X,
-  Layers, AlertCircle, ChevronDown, Check, Trash2, RefreshCw, Cpu
-} from 'lucide-react';
+import { FileText, ArrowLeft, Layers, Package, RefreshCw, Trash2, Building2, User, Truck, Box, DollarSign, Search, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-toastify';
+
+import InventoryTraceSelectorModal from '../components/InventoryTraceSelectorModal';
+import TargetItemSelectorModal from '../components/TargetItemSelectorModal';
 
 export default function ProcessPoForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const rqProcessNo = searchParams.get('rq_process_no') || '';
-  const tradeId = searchParams.get('trade_id') || '';
 
-  const today = new Date().toISOString().split('T')[0];
-  const thirtyDaysLater = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+  const queryTradeId = searchParams.get('trade_id');
+  const queryRqId = searchParams.get('received_q_id') || searchParams.get('rq_id') || searchParams.get('rq_process_no') || searchParams.get('rq_process_id');
+  const queryRecQtnNo = searchParams.get('received_quotation_no') || searchParams.get('quotation_no');
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    po_no: '',
-    date_of_start: today,
-    date_of_end: thirtyDaysLater,
-    received_q_id: '',
-    message: '',
-    items: [
-      {
-        source_item_code: '',
-        target_item_code: '',
-        source_qty: '',
-        target_qty: '',
-        price: '',
-        source_trace_id_array: []
-      }
-    ]
-  });
+  // Header State
+  const [poNo, setPoNo] = useState('');
+  const [dateOfStart, setDateOfStart] = useState(new Date().toISOString().split('T')[0]);
+  const [dateOfEnd, setDateOfEnd] = useState('');
+  const [message, setMessage] = useState('');
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [receivedQId, setReceivedQId] = useState('');
 
-  // Catalog & Inventory Items for Searchable Dropdowns
-  const [inventoryItems, setInventoryItems] = useState([]);
-  const [catalogItems, setCatalogItems] = useState([]);
-  const [openDropdown, setOpenDropdown] = useState({ rowIndex: null, type: null }); // type: 'source' | 'target'
-  const dropdownContainerRef = useRef(null);
+  // Linked Received Quotation / Process RQ Search State
+  const [rqSearchInput, setRqSearchInput] = useState('');
+  const [rqSuggestions, setRqSuggestions] = useState([]);
+  const [showRqDropdown, setShowRqDropdown] = useState(false);
+  const [linkedRqLabel, setLinkedRqLabel] = useState('');
+  const rqRef = useRef(null);
 
-  // Trace Pop-up Modal State
-  const [traceModalState, setTraceModalState] = useState({
-    isOpen: false,
-    rowIndex: null,
-    source_item_code: '',
-    traceItems: [],
-    loading: false,
-    selectedSelections: {} // trace_id -> { trace_id, Qty, inventory_id, available_qty, price }
-  });
+  // Seller Search State (Compulsory)
+  const [seller, setSeller] = useState('');
+  const [sellerInput, setSellerInput] = useState('');
+  const [sellerSuggestions, setSellerSuggestions] = useState([]);
+  const [showSellerDropdown, setShowSellerDropdown] = useState(false);
+  const sellerRef = useRef(null);
 
-  // Fetch Catalogs & RQ Process Data on Mount
+  // Party Search State (Compulsory)
+  const [party, setParty] = useState('');
+  const [partyInput, setPartyInput] = useState('');
+  const [partySuggestions, setPartySuggestions] = useState([]);
+  const [showPartyDropdown, setShowPartyDropdown] = useState(false);
+  const partyRef = useRef(null);
+
+  // Source & Target Items
+  const [sourceItems, setSourceItems] = useState([]); // Array of { item_code, description, trace_item_id, qty, available_qty }
+  const [targetItems, setTargetItems] = useState([]); // Array of { item_code, description, qty, price }
+
+  // Financial Summary State
+  const [gstType, setGstType] = useState('CGST + SGST');
+  const [gstRate, setGstRate] = useState('18');
+  const [transport, setTransport] = useState('0');
+  const [packingForward, setPackingForward] = useState('0');
+  const [other, setOther] = useState('0');
+
+  // Modals
+  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+  const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Auto-fetch next PO Number
   useEffect(() => {
-    fetchCatalogItems();
-    fetchInventoryItems();
-    if (rqProcessNo) {
-      fetchRqData(rqProcessNo);
-    }
-  }, [rqProcessNo]);
+    fetch('/api/process-po/next-no')
+      .then(r => r.ok ? r.json() : {})
+      .then(data => {
+        if (data.po_no) setPoNo(data.po_no);
+      })
+      .catch(console.error);
+  }, []);
 
-  // Dismiss dropdowns on outside click
+  // Populate form fields from a Process RQ record object
+  const populateFromProcessRq = (rq) => {
+    if (!rq) return;
+    if (rq.id) setReceivedQId(String(rq.id));
+    if (rq.rq_process_no) {
+      setLinkedRqLabel(rq.rq_process_no);
+      setRqSearchInput(rq.rq_process_no);
+    }
+    if (rq.seller) {
+      setSeller(rq.seller);
+      setSellerInput(rq.seller);
+    }
+    if (rq.party) {
+      setParty(rq.party);
+      setPartyInput(rq.party);
+    }
+    if (Array.isArray(rq.source_items) && rq.source_items.length > 0) {
+      setSourceItems(rq.source_items.map(s => ({
+        item_code: s.item_code,
+        description: s.description || '',
+        trace_item_id: s.trace_item_id || null,
+        qty: String(s.qty || 1)
+      })));
+    }
+    if (Array.isArray(rq.target_items) && rq.target_items.length > 0) {
+      setTargetItems(rq.target_items.map(t => ({
+        item_code: t.item_code,
+        description: t.description || '',
+        qty: String(t.qty || 1),
+        price: String(t.price || 0)
+      })));
+    }
+  };
+
+  // Populate form fields from a Received Quotation record object
+  const populateFromReceivedQuotation = (rq) => {
+    if (!rq) return;
+    if (rq.received_quotation_no) {
+      setLinkedRqLabel(rq.received_quotation_no);
+      setRqSearchInput(rq.received_quotation_no);
+    }
+    if (rq.buyer_name) {
+      setSeller(rq.buyer_name);
+      setSellerInput(rq.buyer_name);
+    }
+    if (rq.customer_name) {
+      setParty(rq.customer_name);
+      setPartyInput(rq.customer_name);
+    }
+    if (Array.isArray(rq.items) && rq.items.length > 0) {
+      setTargetItems(rq.items.map(t => ({
+        item_code: t.item_code,
+        description: t.description || '',
+        qty: String(t.quantity || 1),
+        price: String(t.unit_price || 0)
+      })));
+    }
+  };
+
+  // Initial Pre-fill Logic from Query Params (trade_id, received_q_id, rq_process_no, received_quotation_no)
+  useEffect(() => {
+    if (queryRqId) {
+      fetch(`/api/rq-process/${encodeURIComponent(queryRqId)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) {
+            populateFromProcessRq(data);
+          } else if (queryRecQtnNo) {
+            return fetch(`/api/received-quotation/${encodeURIComponent(queryRecQtnNo)}`).then(r => r.ok ? r.json() : null);
+          }
+        })
+        .then(recData => {
+          if (recData) populateFromReceivedQuotation(recData);
+        })
+        .catch(console.error);
+    } else if (queryRecQtnNo) {
+      fetch(`/api/received-quotation/${encodeURIComponent(queryRecQtnNo)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) populateFromReceivedQuotation(data);
+        })
+        .catch(console.error);
+    }
+
+    if (queryTradeId) {
+      fetch(`/api/trades/${encodeURIComponent(queryTradeId)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(tradeData => {
+          if (tradeData) {
+            const docs = tradeData.documents || [];
+            const prDoc = docs.find(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
+            const recDoc = docs.find(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
+
+            if (prDoc && prDoc.id) {
+              fetch(`/api/rq-process/${encodeURIComponent(prDoc.id)}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => data && populateFromProcessRq(data))
+                .catch(console.error);
+            } else if (recDoc && recDoc.id) {
+              fetch(`/api/received-quotation/${encodeURIComponent(recDoc.id)}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => data && populateFromReceivedQuotation(data))
+                .catch(console.error);
+            } else {
+              if (tradeData.buyer_name) { setSeller(tradeData.buyer_name); setSellerInput(tradeData.buyer_name); }
+              if (tradeData.customer_name) { setParty(tradeData.customer_name); setPartyInput(tradeData.customer_name); }
+            }
+          }
+        })
+        .catch(console.error);
+    }
+  }, [queryRqId, queryRecQtnNo, queryTradeId]);
+
+  // Debounced Linked Process RQ / Received Quotation Lookup
+  useEffect(() => {
+    const trimmed = rqSearchInput.trim();
+    if (!trimmed) {
+      setRqSuggestions([]);
+      setShowRqDropdown(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      Promise.all([
+        fetch('/api/rq-process').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/received-quotations?q=${encodeURIComponent(trimmed)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => [])
+      ]).then(([rqList, recList]) => {
+        const filteredRq = (Array.isArray(rqList) ? rqList : []).filter(r =>
+          (r.rq_process_no && r.rq_process_no.toLowerCase().includes(trimmed.toLowerCase())) ||
+          (r.seller && r.seller.toLowerCase().includes(trimmed.toLowerCase())) ||
+          (r.party && r.party.toLowerCase().includes(trimmed.toLowerCase()))
+        ).map(r => ({ ...r, _type: 'PROCESS_RQ', label: r.rq_process_no }));
+
+        const filteredRec = (Array.isArray(recList) ? recList : []).map(r => ({
+          ...r,
+          _type: 'RECEIVED_QUOTATION',
+          label: r.received_quotation_no,
+          seller: r.buyer_name,
+          party: r.customer_name
+        }));
+
+        setRqSuggestions([...filteredRq, ...filteredRec]);
+        setShowRqDropdown(true);
+      });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [rqSearchInput]);
+
+  // Debounced Seller Lookup
+  useEffect(() => {
+    const trimmed = sellerInput.trim();
+    if (!trimmed) {
+      setSellerSuggestions([]);
+      setShowSellerDropdown(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      fetch(`/api/buyers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          if (Array.isArray(data)) setSellerSuggestions(data);
+        })
+        .catch(console.error);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [sellerInput]);
+
+  // Debounced Party Lookup
+  useEffect(() => {
+    const trimmed = partyInput.trim();
+    if (!trimmed) {
+      setPartySuggestions([]);
+      setShowPartyDropdown(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          if (Array.isArray(data)) setPartySuggestions(data);
+        })
+        .catch(console.error);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [partyInput]);
+
+  // Outside click to close dropdowns
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (dropdownContainerRef.current && !dropdownContainerRef.current.contains(e.target)) {
-        setOpenDropdown({ rowIndex: null, type: null });
+      if (rqRef.current && !rqRef.current.contains(e.target)) {
+        setShowRqDropdown(false);
+      }
+      if (sellerRef.current && !sellerRef.current.contains(e.target)) {
+        setShowSellerDropdown(false);
+      }
+      if (partyRef.current && !partyRef.current.contains(e.target)) {
+        setShowPartyDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchCatalogItems = async () => {
-    try {
-      const res = await fetch('/api/items?limit=200');
-      if (res.ok) {
-        const data = await res.json();
-        setCatalogItems(data);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  // Handlers for Source Items Selection
+  const handleApplySourceSelections = (selectionsArray) => {
+    if (!Array.isArray(selectionsArray) || selectionsArray.length === 0) return;
 
-  const fetchInventoryItems = async () => {
-    try {
-      const res = await fetch('/api/inventory?limit=200');
-      if (res.ok) {
-        const data = await res.json();
-        setInventoryItems(data);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchRqData = async (rqNo) => {
-    try {
-      const res = await fetch(`/api/rq-process/${encodeURIComponent(rqNo)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setFormData(prev => ({
-          ...prev,
-          received_q_id: data.id || '',
-          message: data.message ? `Linked RQ: ${rqNo} - ${data.message}` : `Linked RQ: ${rqNo}`,
-          items: Array.isArray(data.items) && data.items.length > 0
-            ? data.items.map(it => ({
-                source_item_code: it.source_item_code || '',
-                target_item_code: it.target_item_code || '',
-                source_qty: it.source_item_quantity || '',
-                target_qty: it.target_item_quantity || '',
-                price: it.price || '',
-                source_trace_id_array: []
-              }))
-            : prev.items
-        }));
-      }
-    } catch (err) {
-      console.error('Error fetching RQ process details:', err);
-    }
-  };
-
-  // Handlers for Form Item Rows
-  const handleItemChange = (index, field, value) => {
-    setFormData(prev => {
-      const newItems = [...prev.items];
-      newItems[index] = { ...newItems[index], [field]: value };
-      return { ...prev, items: newItems };
-    });
-  };
-
-  const handleSelectSourceItem = (index, itemCode) => {
-    handleItemChange(index, 'source_item_code', itemCode);
-    setOpenDropdown({ rowIndex: null, type: null });
-  };
-
-  const handleSelectTargetItem = (index, itemCode) => {
-    handleItemChange(index, 'target_item_code', itemCode);
-    setOpenDropdown({ rowIndex: null, type: null });
-  };
-
-  const handleAddItemRow = () => {
-    setFormData(prev => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        {
-          source_item_code: '',
-          target_item_code: '',
-          source_qty: '',
-          target_qty: '',
-          price: '',
-          source_trace_id_array: []
-        }
-      ]
+    const newSourceItems = selectionsArray.map(st => ({
+      item_code: st.item_code || '',
+      description: st.description || '',
+      trace_item_id: st.trace_id || st.trace_item_id || null,
+      qty: st.Qty !== undefined && st.Qty !== null ? String(st.Qty) : '1',
+      available_qty: st.available_qty || ''
     }));
+
+    setSourceItems(newSourceItems);
+    setIsSourceModalOpen(false);
+    toast.success(`Selected ${newSourceItems.length} source trace item(s)`);
   };
 
-  const handleRemoveItemRow = (index) => {
-    if (formData.items.length === 1) return;
-    setFormData(prev => ({
+  const handleRemoveSourceItem = (index) => {
+    setSourceItems(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Handlers for Target Items Selection
+  const handleApplyTargetSelection = (targetObj) => {
+    setTargetItems(prev => [
       ...prev,
-      items: prev.items.filter((_, idx) => idx !== index)
-    }));
+      {
+        item_code: targetObj.item_code,
+        description: targetObj.description || '',
+        qty: targetObj.qty !== undefined ? String(targetObj.qty) : '1',
+        price: targetObj.price !== undefined ? String(targetObj.price) : '0'
+      }
+    ]);
+
+    setIsTargetModalOpen(false);
+    toast.success(`Added Target Item ${targetObj.item_code}`);
   };
 
-  // Open Trace Modal (`btn()`)
-  const handleOpenTraceModal = async (rowIndex) => {
-    const row = formData.items[rowIndex];
-    if (!row.source_item_code) {
-      toast.warn('Please select a Source Item Code first before picking trace items');
-      return;
-    }
-
-    const initialSelections = {};
-    (row.source_trace_id_array || []).forEach(st => {
-      const tid = st.trace_id || st.traceid;
-      if (tid) {
-        initialSelections[tid] = { ...st };
-      }
-    });
-
-    setTraceModalState({
-      isOpen: true,
-      rowIndex,
-      source_item_code: row.source_item_code,
-      traceItems: [],
-      loading: true,
-      selectedSelections: initialSelections
-    });
-
-    try {
-      const res = await fetch(`/api/process-po/trace-items?item_code=${encodeURIComponent(row.source_item_code.trim())}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTraceModalState(prev => ({
-          ...prev,
-          traceItems: data,
-          loading: false
-        }));
-      } else {
-        toast.error('Failed to load trace items for source item');
-        setTraceModalState(prev => ({ ...prev, loading: false }));
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Error fetching trace items');
-      setTraceModalState(prev => ({ ...prev, loading: false }));
-    }
+  const handleRemoveTargetItem = (index) => {
+    setTargetItems(prev => prev.filter((_, idx) => idx !== index));
   };
 
-  const handleToggleTraceCheckbox = (item) => {
-    const tid = item.trace_id;
-    setTraceModalState(prev => {
-      const nextSelections = { ...prev.selectedSelections };
-      if (nextSelections[tid]) {
-        delete nextSelections[tid];
-      } else {
-        nextSelections[tid] = {
-          trace_id: tid,
-          inventory_id: item.inventory_id,
-          available_qty: item.available_qty,
-          Qty: item.available_qty,
-          price: item.price || 0
-        };
-      }
-      return { ...prev, selectedSelections: nextSelections };
-    });
+  // Financial Calculations
+  const calcTargetBasicTotal = () => {
+    return targetItems.reduce((sum, item) => {
+      const q = parseFloat(item.qty) || 0;
+      const p = parseFloat(item.price) || 0;
+      return sum + (q * p);
+    }, 0);
   };
 
-  const handleTraceQtyChange = (tid, newQty) => {
-    setTraceModalState(prev => {
-      const nextSelections = { ...prev.selectedSelections };
-      if (nextSelections[tid]) {
-        nextSelections[tid] = {
-          ...nextSelections[tid],
-          Qty: newQty
-        };
-      }
-      return { ...prev, selectedSelections: nextSelections };
-    });
+  const calcGstAmount = () => {
+    const basic = calcTargetBasicTotal();
+    const rate = parseFloat(gstRate) || 0;
+    return (basic * rate) / 100;
   };
 
-  const handleConfirmTraceSelections = () => {
-    const selectionsArray = Object.values(traceModalState.selectedSelections).map(s => ({
-      trace_id: s.trace_id,
-      inventory_id: s.inventory_id,
-      Qty: parseFloat(s.Qty) || 0
-    })).filter(s => s.Qty > 0);
-
-    const totalSourceQty = selectionsArray.reduce((sum, s) => sum + s.Qty, 0);
-
-    let totalPrice = 0;
-    Object.values(traceModalState.selectedSelections).forEach(s => {
-      if (parseFloat(s.Qty) > 0) {
-        totalPrice += (parseFloat(s.price) || 0) * (parseFloat(s.Qty) || 0);
-      }
-    });
-
-    const calculatedUnitPrice = totalSourceQty > 0 ? (totalPrice / totalSourceQty).toFixed(2) : '';
-
-    setFormData(prev => {
-      const newItems = [...prev.items];
-      const targetIndex = traceModalState.rowIndex;
-      newItems[targetIndex] = {
-        ...newItems[targetIndex],
-        source_trace_id_array: selectionsArray,
-        source_qty: totalSourceQty > 0 ? totalSourceQty : newItems[targetIndex].source_qty,
-        target_qty: totalSourceQty > 0 ? totalSourceQty : newItems[targetIndex].target_qty,
-        price: calculatedUnitPrice !== '' ? calculatedUnitPrice : newItems[targetIndex].price
-      };
-      return { ...prev, items: newItems };
-    });
-
-    setTraceModalState({
-      isOpen: false,
-      rowIndex: null,
-      source_item_code: '',
-      traceItems: [],
-      loading: false,
-      selectedSelections: {}
-    });
-    toast.success(`Populated ${selectionsArray.length} trace item(s)`);
+  const calcGrandTotal = () => {
+    return (
+      calcTargetBasicTotal() +
+      calcGstAmount() +
+      (parseFloat(transport) || 0) +
+      (parseFloat(packingForward) || 0) +
+      (parseFloat(other) || 0)
+    );
   };
 
   // Submit Process PO Form
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    for (let i = 0; i < formData.items.length; i++) {
-      const row = formData.items[i];
-      if (!row.target_item_code.trim()) {
-        toast.error(`Item Row #${i + 1}: Target Item Code is required`);
-        return;
-      }
-      if (!row.target_qty || parseFloat(row.target_qty) <= 0) {
-        toast.error(`Item Row #${i + 1}: Target Quantity must be greater than 0`);
+    if (!poNo || !poNo.trim()) {
+      toast.error('Process PO Number is required');
+      return;
+    }
+
+    if (!seller || !seller.trim()) {
+      toast.error('Seller / Processor Vendor is required');
+      return;
+    }
+
+    if (!party || !party.trim()) {
+      toast.error('Party / Client Customer is required');
+      return;
+    }
+
+    if (sourceItems.length === 0) {
+      toast.error('Please select at least one Source Item using "Select Source Trace Items"');
+      return;
+    }
+
+    if (targetItems.length === 0) {
+      toast.error('Please select at least one Target Item using "Add Target Item"');
+      return;
+    }
+
+    for (let i = 0; i < sourceItems.length; i++) {
+      const src = sourceItems[i];
+      const q = parseFloat(src.qty);
+      if (isNaN(q) || q <= 0) {
+        toast.error(`Source Item #${i + 1} (${src.item_code}): Quantity must be greater than 0`);
         return;
       }
     }
 
-    setIsSubmitting(true);
+    for (let i = 0; i < targetItems.length; i++) {
+      const tgt = targetItems[i];
+      const q = parseFloat(tgt.qty);
+      if (isNaN(q) || q <= 0) {
+        toast.error(`Target Item #${i + 1} (${tgt.item_code}): Target Quantity must be greater than 0`);
+        return;
+      }
+    }
+
+    setIsSaving(true);
     try {
       const payload = {
-        ...formData,
-        trade_id: tradeId || null,
-        rq_process_no: rqProcessNo || null
+        po_no: poNo.trim(),
+        date_of_start: dateOfStart,
+        date_of_end: dateOfEnd || null,
+        received_q_id: receivedQId || queryRqId || null,
+        trade_id: queryTradeId || null,
+        seller: seller.trim(),
+        party: party.trim(),
+        gst_type: gstType,
+        gst_rate: parseFloat(gstRate) || 0,
+        gst: calcGstAmount(),
+        transport: parseFloat(transport) || 0,
+        packing_forward: parseFloat(packingForward) || 0,
+        other: parseFloat(other) || 0,
+        basic_value: calcTargetBasicTotal(),
+        delivery_date: dateOfEnd || null,
+        shipping_address: shippingAddress || null,
+        message: message || null,
+        source_items: sourceItems.map(s => ({
+          item_code: s.item_code,
+          trace_item_id: s.trace_item_id,
+          qty: parseFloat(s.qty) || 0
+        })),
+        target_items: targetItems.map(t => ({
+          item_code: t.item_code,
+          qty: parseFloat(t.qty) || 0,
+          price: parseFloat(t.price) || 0,
+          gst_type: gstType,
+          gst_rate: parseFloat(gstRate) || 0,
+          shipping_address: shippingAddress || null,
+          delivery_date: dateOfEnd || null
+        }))
       };
 
       const res = await fetch('/api/process-po', {
@@ -313,418 +426,605 @@ export default function ProcessPoForm() {
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
       if (res.ok) {
-        toast.success(data.message || 'Process PO created successfully!');
-        if (tradeId) {
-          navigate(`/trade/${tradeId}`);
-        } else {
-          navigate('/order');
-        }
+        const data = await res.json();
+        toast.success(`Process Purchase Order ${data.po_no || ''} created successfully!`);
+        const destTradeId = queryTradeId || data.trade_id;
+        navigate(destTradeId ? `/trade/${encodeURIComponent(destTradeId)}` : '/dashboard');
       } else {
-        toast.error(data.error || 'Failed to create Process PO job');
+        const errData = await res.json();
+        toast.error(errData.error || 'Failed to create Process Purchase Order');
       }
     } catch (err) {
       console.error(err);
-      toast.error('Server error creating Process PO job');
+      toast.error('Error creating Process Purchase Order');
     } finally {
-      setIsSubmitting(false);
+      setIsSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header Bar */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="p-2.5 rounded-xl text-white shadow-sm flex items-center justify-center shrink-0"
-              style={{ backgroundColor: 'var(--theme-color)' }}
-            >
-              <Cpu size={20} />
+    <div className="flex-1 p-6 bg-slate-100 text-slate-900 font-sans min-h-screen">
+      <div className="max-w-5xl mx-auto space-y-6">
+
+        {/* PAGE HEADER */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b border-slate-300 gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl text-white shadow-sm" style={{ backgroundColor: 'var(--theme-color)' }}>
+              <FileText size={22} />
             </div>
             <div>
-              <h1 className="text-lg font-black text-slate-950">Create Process Purchase Order</h1>
-              <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                {rqProcessNo && <>RQ Ref: <span className="font-mono font-bold text-indigo-700">{rqProcessNo}</span></>}
-                {tradeId && <> · Trade: <span className="font-mono font-bold text-slate-700">{tradeId}</span></>}
-                {!rqProcessNo && !tradeId && 'Create a new standalone process purchase order'}
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Create Process Purchase Order</h1>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                Raise an official Process PO for processing raw materials into target items with pricing, vendor details & tax structure.
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() => tradeId ? navigate(`/trade/${tradeId}`) : navigate('/order')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all cursor-pointer shrink-0"
+            onClick={() => navigate(queryTradeId ? `/trade/${queryTradeId}` : '/dashboard')}
+            className="px-3.5 py-2 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-50 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
           >
-            <ArrowLeft size={14} /> Back
+            <ArrowLeft size={15} /> Back
           </button>
         </div>
 
-        {/* Main Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Metadata Grid */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
-            <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">Process PO Details</h3>
+        {/* FORM CONTAINER CARD */}
+        <div className="border border-slate-300 rounded-3xl bg-white p-6 shadow-sm space-y-6">
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* LINKED RECEIVED QUOTATION / PROCESS RQ BANNER & SELECTOR */}
+          <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <span className="text-[10px] font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1">
+                <FileText size={12} className="text-indigo-600" /> Linked Received Quotation / Process RQ
+              </span>
+              <p className="text-xs text-indigo-700 font-semibold m-0">
+                {linkedRqLabel ? (
+                  <span className="flex items-center gap-1.5 text-emerald-800 font-bold bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-lg w-fit mt-1">
+                    <CheckCircle2 size={13} className="text-emerald-600" /> Pre-filled from Received Quotation: {linkedRqLabel}
+                  </span>
+                ) : (
+                  'Select a Received Quotation or Process RQ to automatically load Seller, Party, and items.'
+                )}
+              </p>
+            </div>
+
+            <div ref={rqRef} className="relative w-full sm:w-72">
+              <input
+                type="text"
+                placeholder="Search Received Quotation / Process RQ..."
+                value={rqSearchInput}
+                onChange={(e) => {
+                  setRqSearchInput(e.target.value);
+                  setShowRqDropdown(true);
+                }}
+                onFocus={() => {
+                  if (rqSearchInput.trim()) setShowRqDropdown(true);
+                }}
+                className="w-full pl-8 pr-3.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                autoComplete="off"
+              />
+              <Search size={14} className="absolute left-2.5 top-2.5 text-indigo-400" />
+
+              {showRqDropdown && rqSuggestions.length > 0 && (
+                <div className="absolute right-0 z-50 w-full sm:w-80 mt-1 bg-white border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto text-xs">
+                  {rqSuggestions.map((item, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (item._type === 'PROCESS_RQ') {
+                          populateFromProcessRq(item);
+                        } else {
+                          populateFromReceivedQuotation(item);
+                        }
+                        setShowRqDropdown(false);
+                        toast.success(`Loaded details from ${item.label}`);
+                      }}
+                      className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 border-b border-slate-100 last:border-0 cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900">{item.label}</span>
+                        <span className="text-[9px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded">
+                          {item._type === 'PROCESS_RQ' ? 'Process RQ' : 'Rec Quotation'}
+                        </span>
+                      </div>
+                      {(item.seller || item.party) && (
+                        <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                          Seller: {item.seller || '—'} &bull; Party: {item.party || '—'}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+
+            {/* BASIC HEADER METADATA SECTION */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              
+              {/* Process PO No */}
               <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Process PO Number/Name</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Process PO No. <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
-                  placeholder="Auto-generated if blank (e.g. PPO-0001)"
-                  value={formData.po_no}
-                  onChange={(e) => setFormData(prev => ({ ...prev, po_no: e.target.value }))}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                  required
+                  placeholder="e.g. PPO-0001"
+                  value={poNo}
+                  onChange={(e) => setPoNo(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
+              {/* Start Date */}
               <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">PO Date *</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Start Date <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="date"
                   required
-                  value={formData.date_of_start}
-                  onChange={(e) => setFormData(prev => ({ ...prev, date_of_start: e.target.value }))}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                  value={dateOfStart}
+                  onChange={(e) => setDateOfStart(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
+              {/* Delivery Date */}
               <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Expected Delivery Date</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Delivery Date
+                </label>
                 <input
                   type="date"
-                  value={formData.date_of_end}
-                  onChange={(e) => setFormData(prev => ({ ...prev, date_of_end: e.target.value }))}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                  value={dateOfEnd}
+                  onChange={(e) => setDateOfEnd(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
-              <div className="sm:col-span-3">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Process Message / Description</label>
+              {/* Process Note / Message */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Process Instruction / Note
+                </label>
                 <input
                   type="text"
-                  placeholder="Additional processing instructions or notes..."
-                  value={formData.message}
-                  onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                  placeholder="e.g. Precision machining & polishing"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
-            </div>
-          </div>
 
-          {/* Items Table Grid */}
-          <div ref={dropdownContainerRef} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">Process Item Mappings</h3>
-              <button
-                type="button"
-                onClick={handleAddItemRow}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-xs font-bold text-slate-700 rounded-lg transition-all cursor-pointer"
-              >
-                <Plus size={14} />
-                <span>Add Item Row</span>
-              </button>
-            </div>
-
-            {formData.items.map((item, idx) => (
-              <div key={idx} className="bg-slate-50/70 border border-slate-200 p-4 rounded-2xl space-y-4 relative">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <span className="text-xs font-bold text-indigo-700">Item Row #{idx + 1}</span>
-                  {formData.items.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveItemRow(idx)}
-                      className="text-red-600 hover:text-red-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                    >
-                      <Trash2 size={14} />
-                      <span>Remove Row</span>
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-                  {/* Searchable Source Item Code Dropdown */}
-                  <div className="relative">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Source Item Code</label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Type to search..."
-                        value={item.source_item_code}
-                        onChange={(e) => {
-                          handleItemChange(idx, 'source_item_code', e.target.value);
-                          setOpenDropdown({ rowIndex: idx, type: 'source' });
+              {/* Seller / Processor Vendor (COMPULSORY - Pre-filled from Received Quotation) */}
+              <div ref={sellerRef} className="relative">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
+                  <User size={12} className="text-slate-500" /> Seller / Processor Vendor <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Search seller vendor..."
+                  value={sellerInput}
+                  onChange={(e) => {
+                    setSellerInput(e.target.value);
+                    setSeller(e.target.value);
+                    setShowSellerDropdown(true);
+                  }}
+                  onFocus={() => {
+                    if (sellerInput.trim()) setShowSellerDropdown(true);
+                  }}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  autoComplete="off"
+                />
+                {showSellerDropdown && sellerSuggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
+                    {sellerSuggestions.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSellerInput(b.name);
+                          setSeller(b.name);
+                          setShowSellerDropdown(false);
                         }}
-                        onFocus={() => setOpenDropdown({ rowIndex: idx, type: 'source' })}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 pr-7"
-                      />
-                      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    </div>
-
-                    {/* Source Item Dropdown */}
-                    {openDropdown.rowIndex === idx && openDropdown.type === 'source' && (
-                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-30 divide-y divide-slate-100">
-                        {inventoryItems
-                          .filter(inv => (inv.item_code || '').toLowerCase().includes((item.source_item_code || '').toLowerCase()))
-                          .map((inv, iIdx) => (
-                            <button
-                              key={iIdx}
-                              type="button"
-                              onClick={() => handleSelectSourceItem(idx, inv.item_code)}
-                              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 text-slate-800 flex flex-col cursor-pointer"
-                            >
-                              <span className="font-bold text-indigo-700 font-mono">{inv.item_code}</span>
-                              <span className="text-[10px] text-slate-500 truncate">{inv.description || 'No description'}</span>
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Source Trace ID Array Button */}
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Source Trace Pop-up</label>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenTraceModal(idx)}
-                      className="w-full bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                    >
-                      <Layers size={14} />
-                      <span>Trace ({item.source_trace_id_array.length})</span>
-                    </button>
-                  </div>
-
-                  {/* Searchable Target Item Code Dropdown */}
-                  <div className="relative">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Target Item Code *</label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Type target code..."
-                        value={item.target_item_code}
-                        onChange={(e) => {
-                          handleItemChange(idx, 'target_item_code', e.target.value);
-                          setOpenDropdown({ rowIndex: idx, type: 'target' });
+                        onClick={() => {
+                          setSellerInput(b.name);
+                          setSeller(b.name);
+                          setShowSellerDropdown(false);
                         }}
-                        onFocus={() => setOpenDropdown({ rowIndex: idx, type: 'target' })}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 pr-7"
-                      />
-                      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    </div>
-
-                    {/* Target Item Dropdown */}
-                    {openDropdown.rowIndex === idx && openDropdown.type === 'target' && (
-                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-30 divide-y divide-slate-100">
-                        {catalogItems
-                          .filter(c => (c.item_code || '').toLowerCase().includes((item.target_item_code || '').toLowerCase()))
-                          .map((cat, cIdx) => (
-                            <button
-                              key={cIdx}
-                              type="button"
-                              onClick={() => handleSelectTargetItem(idx, cat.item_code)}
-                              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 text-slate-800 flex flex-col cursor-pointer"
-                            >
-                              <span className="font-bold text-indigo-700 font-mono">{cat.item_code}</span>
-                              <span className="text-[10px] text-slate-500 truncate">{cat.description || 'No description'}</span>
-                            </button>
-                          ))}
-                      </div>
-                    )}
+                        className="w-full text-left px-3.5 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0 cursor-pointer"
+                      >
+                        <div className="font-bold text-slate-900">{b.name}</div>
+                        {(b.email || b.phone) && (
+                          <div className="text-[10px] text-slate-500">{b.email} &bull; {b.phone}</div>
+                        )}
+                      </button>
+                    ))}
                   </div>
+                )}
+              </div>
 
-                  {/* Quantities & Price */}
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Source Qty</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0"
-                      value={item.source_qty}
-                      onChange={(e) => handleItemChange(idx, 'source_qty', e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
-                    />
+              {/* Party / Client Customer (COMPULSORY - Pre-filled from Received Quotation) */}
+              <div ref={partyRef} className="relative">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
+                  <Building2 size={12} className="text-slate-500" /> Party / Client Customer <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Search party client..."
+                  value={partyInput}
+                  onChange={(e) => {
+                    setPartyInput(e.target.value);
+                    setParty(e.target.value);
+                    setShowPartyDropdown(true);
+                  }}
+                  onFocus={() => {
+                    if (partyInput.trim()) setShowPartyDropdown(true);
+                  }}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  autoComplete="off"
+                />
+                {showPartyDropdown && partySuggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
+                    {partySuggestions.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setPartyInput(c.name);
+                          setParty(c.name);
+                          setShowPartyDropdown(false);
+                        }}
+                        onClick={() => {
+                          setPartyInput(c.name);
+                          setParty(c.name);
+                          setShowPartyDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0 cursor-pointer"
+                      >
+                        <div className="font-bold text-slate-900">{c.name}</div>
+                        {c.address && (
+                          <div className="text-[10px] text-slate-500 truncate">{c.address}</div>
+                        )}
+                      </button>
+                    ))}
                   </div>
+                )}
+              </div>
 
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Target Qty *</label>
-                    <input
-                      type="number"
-                      step="any"
-                      required
-                      placeholder="0"
-                      value={item.target_qty}
-                      onChange={(e) => handleItemChange(idx, 'target_qty', e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
+              {/* Shipping Address (Optional) */}
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Shipping Address <span className="text-slate-400 font-normal lowercase">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Factory site address or delivery location"
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                />
+              </div>
 
+            </div>
+
+            {/* 1. SOURCE ITEMS SECTION */}
+            <div className="border border-amber-200 rounded-2xl bg-amber-50/30 p-5 space-y-3.5 shadow-2xs">
+              <div className="flex items-center justify-between border-b border-amber-200/70 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <Layers size={16} className="text-amber-600" />
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Price (₹)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={item.price}
-                      onChange={(e) => handleItemChange(idx, 'price', e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
-                    />
+                    <h3 className="text-xs font-black text-amber-950 uppercase tracking-wider m-0">
+                      Source Raw Materials ({sourceItems.length})
+                    </h3>
+                    <p className="text-[10px] text-slate-500 m-0 font-medium">Select trace items from inventory to process</p>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Form Actions */}
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => tradeId ? navigate(`/trade/${tradeId}`) : navigate('/order')}
-              className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all cursor-pointer bg-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex items-center gap-2 px-6 py-2.5 text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              style={{ backgroundColor: 'var(--theme-color)' }}
-            >
-              {isSubmitting ? (
-                <>
-                  <RefreshCw size={14} className="animate-spin" />
-                  <span>Creating Process PO...</span>
-                </>
-              ) : (
-                <>
-                  <Check size={16} />
-                  <span>Create Process PO</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* TRACE SELECTION POP-UP MODAL */}
-      {traceModalState.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2.5">
-                <Layers className="text-indigo-600" size={20} />
-                <h3 className="text-sm font-bold text-slate-900">
-                  Select Trace Items for <span className="text-indigo-700 font-mono">{traceModalState.source_item_code}</span>
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTraceModalState(prev => ({ ...prev, isOpen: false }))}
-                className="text-slate-400 hover:text-slate-700"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {traceModalState.loading ? (
-              <div className="py-12 flex flex-col items-center justify-center text-slate-400">
-                <RefreshCw size={24} className="animate-spin mb-2 text-indigo-600" />
-                <span className="text-xs font-semibold">Fetching available trace items from inventory...</span>
-              </div>
-            ) : traceModalState.traceItems.length === 0 ? (
-              <div className="py-10 text-center text-slate-500 text-xs font-medium">
-                No active inventory trace items found for item code "{traceModalState.source_item_code}".
-              </div>
-            ) : (
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 border border-slate-200 rounded-xl">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-2.5 px-3">Select</th>
-                      <th className="py-2.5 px-3">Trace ID</th>
-                      <th className="py-2.5 px-3">Available Qty</th>
-                      <th className="py-2.5 px-3">Price (₹)</th>
-                      <th className="py-2.5 px-3">Consume Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white font-semibold text-slate-800">
-                    {traceModalState.traceItems.map((tItem) => {
-                      const isSelected = !!traceModalState.selectedSelections[tItem.trace_id];
-                      const selectedObj = traceModalState.selectedSelections[tItem.trace_id] || {};
-
-                      return (
-                        <tr key={tItem.trace_id} className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-indigo-50/60' : ''}`}>
-                          <td className="py-2.5 px-3">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleToggleTraceCheckbox(tItem)}
-                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                            />
-                          </td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">#{tItem.trace_id}</td>
-                          <td className="py-2.5 px-3 text-slate-800">{tItem.available_qty}</td>
-                          <td className="py-2.5 px-3 text-emerald-700 font-mono font-bold">₹{parseFloat(tItem.price || 0).toFixed(2)}</td>
-                          <td className="py-2.5 px-3">
-                            {isSelected ? (
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="number"
-                                  step="any"
-                                  max={tItem.available_qty}
-                                  min="0.01"
-                                  value={selectedObj.Qty || ''}
-                                  onChange={(e) => handleTraceQtyChange(tItem.trace_id, e.target.value)}
-                                  className="w-24 bg-white border border-indigo-400 rounded-lg px-2 py-1 text-xs text-slate-900 font-bold focus:outline-none"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleTraceQtyChange(tItem.trace_id, tItem.available_qty)}
-                                  className="px-1.5 py-0.5 text-[9px] font-black uppercase bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded border border-indigo-300 cursor-pointer"
-                                >
-                                  Max
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 text-[11px]">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between border-t border-slate-200 pt-4">
-              <span className="text-xs text-slate-500 font-bold">
-                Selected: <span className="text-indigo-700 font-black">{Object.keys(traceModalState.selectedSelections).length}</span> item(s)
-              </span>
-              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setTraceModalState(prev => ({ ...prev, isOpen: false }))}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmTraceSelections}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm cursor-pointer"
+                  onClick={() => setIsSourceModalOpen(true)}
+                  className="px-3 py-1.5 text-white font-bold text-xs rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
                   style={{ backgroundColor: 'var(--theme-color)' }}
                 >
-                  Confirm Trace Items
+                  <Layers size={13} /> Select Source Trace Items
                 </button>
               </div>
+
+              {sourceItems.length > 0 ? (
+                <div className="space-y-2">
+                  {sourceItems.map((src, idx) => (
+                    <div key={idx} className="bg-white border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                      <div className="space-y-0.5 flex-1">
+                        <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                          <span>{src.item_code}</span>
+                          {src.trace_item_id && (
+                            <span className="text-[9px] font-mono font-bold text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded">
+                              TR-{src.trace_item_id}
+                            </span>
+                          )}
+                        </div>
+                        {src.description && <div className="text-[10px] text-slate-500 truncate">{src.description}</div>}
+                        {src.available_qty && <div className="text-[10px] text-slate-400 font-mono">Available Stock: {src.available_qty}</div>}
+                      </div>
+
+                      <div className="flex items-center gap-3 w-full sm:w-auto">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">Qty:</span>
+                          <span className="text-xs font-mono font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                            {src.qty || 0}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSourceItem(idx)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 transition-colors cursor-pointer rounded-lg hover:bg-slate-100"
+                          title="Remove Source Item"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 text-center border border-dashed border-amber-300/80 rounded-xl bg-white text-slate-400 text-xs font-medium">
+                  No Source Items selected. Click "Select Source Trace Items" to pick stock items to process.
+                </div>
+              )}
             </div>
-          </div>
+
+            {/* 2. TARGET ITEMS SECTION */}
+            <div className="border border-emerald-200 rounded-2xl bg-emerald-50/30 p-5 space-y-3.5 shadow-2xs">
+              <div className="flex items-center justify-between border-b border-emerald-200/70 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <Package size={16} className="text-emerald-600" />
+                  <div>
+                    <h3 className="text-xs font-black text-emerald-950 uppercase tracking-wider m-0">
+                      Target Output Products ({targetItems.length})
+                    </h3>
+                    <p className="text-[10px] text-slate-500 m-0 font-medium">Add target output product catalog items, quantity & pricing</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsTargetModalOpen(true)}
+                  className="px-3 py-1.5 text-white font-bold text-xs rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+                  style={{ backgroundColor: 'var(--theme-color)' }}
+                >
+                  <Package size={13} /> Add Target Item
+                </button>
+              </div>
+
+              {targetItems.length > 0 ? (
+                <div className="space-y-2">
+                  {targetItems.map((tgt, idx) => {
+                    const itemQty = parseFloat(tgt.qty) || 0;
+                    const itemPrice = parseFloat(tgt.price) || 0;
+                    const itemTotal = itemQty * itemPrice;
+
+                    return (
+                      <div key={idx} className="bg-white border border-emerald-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                        <div className="space-y-0.5 flex-1">
+                          <div className="font-bold text-slate-900 text-xs">{tgt.item_code}</div>
+                          {tgt.description && <div className="text-[10px] text-slate-500 truncate">{tgt.description}</div>}
+                        </div>
+
+                        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">Target Qty:</span>
+                            <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                              {tgt.qty || 0}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price:</span>
+                            <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                              ₹{itemPrice.toFixed(2)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">Total:</span>
+                            <span className="text-xs font-mono font-black text-emerald-950 bg-emerald-100/80 border border-emerald-300 px-2.5 py-1 rounded-lg shadow-2xs">
+                              ₹{itemTotal.toFixed(2)}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTargetItem(idx)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 transition-colors cursor-pointer rounded-lg hover:bg-slate-100"
+                            title="Remove Target Item"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl bg-white text-slate-400 text-xs font-medium">
+                  No Target Items added. Click "Add Target Item" to select target product code, quantity & price.
+                </div>
+              )}
+            </div>
+
+            {/* 3. FINANCIAL SUMMARY & TAXES / CHARGES SECTION */}
+            <div className="border border-slate-300 rounded-2xl bg-slate-50 p-5 space-y-4 shadow-2xs">
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-2.5">
+                <DollarSign size={18} className="text-slate-700" />
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider m-0">
+                  Financial Summary & Charges (PO Card)
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                
+                {/* Basic Value */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Basic Value (₹)
+                  </label>
+                  <div className="px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800">
+                    ₹{calcTargetBasicTotal().toFixed(2)}
+                  </div>
+                </div>
+
+                {/* GST Type */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    GST Type
+                  </label>
+                  <select
+                    value={gstType}
+                    onChange={(e) => setGstType(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  >
+                    <option value="CGST + SGST">CGST + SGST</option>
+                    <option value="IGST">IGST</option>
+                    <option value="Exempt">Exempt</option>
+                  </select>
+                </div>
+
+                {/* GST Rate % */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    GST Rate (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="18"
+                    value={gstRate}
+                    onChange={(e) => setGstRate(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  />
+                  <div className="text-[10px] text-slate-500 mt-1 font-mono">
+                    GST Amount: ₹{calcGstAmount().toFixed(2)}
+                  </div>
+                </div>
+
+                {/* Transport Charges */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Transport (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={transport}
+                    onChange={(e) => setTransport(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  />
+                </div>
+
+                {/* Packing & Forwarding */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Packing/Forwarding (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={packingForward}
+                    onChange={(e) => setPackingForward(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  />
+                </div>
+
+              </div>
+
+              {/* Other Charges & Grand Total Callout */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-2 border-t border-slate-200">
+                <div className="w-full sm:w-48">
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Other Charges (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={other}
+                    onChange={(e) => setOther(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  />
+                </div>
+
+                {/* GRAND TOTAL CALLOUT BOX */}
+                <div className="w-full sm:w-auto p-4 rounded-2xl text-white shadow-md flex items-center gap-4 justify-between sm:justify-end" style={{ backgroundColor: 'var(--theme-color)' }}>
+                  <div>
+                    <span className="text-[10px] uppercase font-black text-white/80 tracking-wider block">
+                      Grand Total PO Amount
+                    </span>
+                    <span className="text-2xl font-black font-mono tracking-tight">
+                      ₹{calcGrandTotal().toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* FORM ACTIONS */}
+            <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(queryTradeId ? `/trade/${queryTradeId}` : '/dashboard')}
+                className="px-5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-6 py-2.5 text-white font-bold text-xs rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                style={{ backgroundColor: 'var(--theme-color)' }}
+                onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
+                onMouseLeave={(e) => e.target.style.filter = 'none'}
+              >
+                {isSaving ? (
+                  <><RefreshCw size={15} className="animate-spin" /> Creating Process PO...</>
+                ) : (
+                  'Create Process Purchase Order'
+                )}
+              </button>
+            </div>
+
+          </form>
         </div>
-      )}
+      </div>
+
+      {/* SOURCE ITEM SELECTOR MODAL */}
+      <InventoryTraceSelectorModal
+        isOpen={isSourceModalOpen}
+        onClose={() => setIsSourceModalOpen(false)}
+        onApply={handleApplySourceSelections}
+        initialSelections={sourceItems}
+      />
+
+      {/* TARGET ITEM SELECTOR MODAL */}
+      <TargetItemSelectorModal
+        isOpen={isTargetModalOpen}
+        onClose={() => setIsTargetModalOpen(false)}
+        onApply={handleApplyTargetSelection}
+        initialTargetItem={{}}
+      />
     </div>
   );
 }

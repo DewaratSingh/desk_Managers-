@@ -330,7 +330,7 @@ export default function InventoryView() {
 
     setIsSaving(true);
     try {
-      if (linkMetadata) {
+      if (linkMetadata && linkMetadata.returnUrl) {
         const targetStatus = formData.status || linkMetadata.status || 'In Inventory';
         const selectedPos = existingPositions.find(p => p.id === selectedPositionId);
         
@@ -339,7 +339,7 @@ export default function InventoryView() {
           selectedItemCode: formData.item_code || linkMetadata.returnState?.selectedItemCode
         };
 
-        toast.success(`Inventory location configured for Delivery Note!`);
+        toast.success(`Inventory location configured!`);
         navigate(linkMetadata.returnUrl, {
           state: {
             returnState: updatedReturnState,
@@ -354,7 +354,8 @@ export default function InventoryView() {
               shelf_number: formData.shelf_number,
               location: formData.location,
               message: formData.message || null,
-              status: targetStatus
+              status: targetStatus,
+              configured: true
             }
           }
         });
@@ -376,22 +377,23 @@ export default function InventoryView() {
         body: JSON.stringify(payload)
       });
 
-      if (res.ok) {
-        const saved = await res.json();
-
-        if (editingId) {
-          setInventoryList(prev => prev.map(item => item.id === editingId ? saved : item));
-          toast.success('Inventory record updated successfully!');
-        } else {
-          setInventoryList(prev => [saved, ...prev]);
-          toast.success('Inventory record added successfully!');
-        }
-
-        handleBackToDirectory();
-      } else {
+      if (!res.ok) {
         const errData = await res.json();
         toast.error(errData.error || 'Failed to save inventory record');
+        return;
       }
+
+      const saved = await res.json();
+
+      if (editingId) {
+        setInventoryList(prev => prev.map(item => item.id === editingId ? saved : item));
+        toast.success('Inventory record updated successfully in database!');
+      } else {
+        setInventoryList(prev => [saved, ...prev]);
+        toast.success('Inventory record added successfully to database!');
+      }
+
+      handleBackToDirectory();
     } catch (err) {
       console.error(err);
       toast.error('An error occurred while saving inventory record');
@@ -618,107 +620,37 @@ export default function InventoryView() {
         <div className="max-w-3xl mx-auto space-y-5">
           <button
             onClick={handleBackToDirectory}
-            className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
+            className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-lg transition-colors self-start"
           >
             <ArrowLeft size={14} />
             Back to Stock
           </button>
 
-          <h1 className="text-2xl font-bold text-slate-900 m-0">
-            {editingId ? 'Update Stock Record' : 'Record New Stock'}
-          </h1>
+          <div className="flex items-center justify-between pb-1">
+            <h1 className="text-xl font-bold text-slate-900 m-0 flex items-center gap-2">
+              <Package size={22} style={{ color: 'var(--theme-color)' }} />
+              {editingId ? 'Update Stock Record' : 'Record New Stock'}
+            </h1>
+          </div>
 
-          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-5">
-              {formData.status && (
-                <div className={`p-4 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${
-                  formData.status === 'For process'
-                    ? 'bg-amber-50 border-amber-200 text-amber-800'
-                    : formData.status === 'For Sell'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : 'bg-indigo-50 border-indigo-200 text-indigo-800'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <Tag size={16} className="shrink-0" />
-                    <span>Target Stock Status: <strong>{formData.status}</strong></span>
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded bg-white border border-slate-200 shadow-xs">
-                    {formData.status}
-                  </span>
-                </div>
-              )}
               {linkMetadata && (
-                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs font-bold text-indigo-700 flex items-center gap-2">
-                  <Tag size={14} className="shrink-0" />
-                  <span>Linked Trace Item ID: {linkMetadata.p_id || linkMetadata.trace_id}</span>
+                <div
+                  className="rounded-xl p-3.5 text-xs font-bold flex items-center gap-2 border"
+                  style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(0,0,0,0.03)' }}
+                >
+                  <Tag size={15} style={{ color: 'var(--theme-color)' }} className="shrink-0" />
+                  <span>Linked Trace Item ID: <strong>{linkMetadata.p_id || linkMetadata.trace_id}</strong></span>
                 </div>
               )}
               {(formData.trace_item_id || formData.p_item_id) && (
-                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs font-bold text-indigo-700 flex items-center gap-2">
-                  <Tag size={14} className="shrink-0" />
-                  <span>Linked Trace Item ID: TR-{formData.trace_item_id || formData.p_item_id}</span>
-                </div>
-              )}
-
-              {/* Comprehensive Process Traceability Array Details */}
-              {Array.isArray(formData.trace_process) && formData.trace_process.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                      <Tag size={16} className="text-indigo-600" />
-                      Detailed Process & Cost Traceability Breakdown
-                    </span>
-                    <span className="text-xs font-mono font-black text-slate-900 bg-white border border-slate-300 px-2.5 py-1 rounded-md shadow-xs">
-                      Total Unit Price: ₹{(() => {
-                        const sumProcess = Array.isArray(formData.trace_process) && formData.trace_process.length > 0
-                          ? formData.trace_process.reduce((sum, step) => sum + (parseFloat(step.unit_price) || 0), 0)
-                          : 0;
-                        const finalPrice = sumProcess > 0 ? sumProcess : (parseFloat(formData.calculated_price || formData.price || 0));
-                        return finalPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-                      })()}
-                    </span>
-                  </div>
-
-                  <div className="overflow-hidden border border-slate-200 rounded-lg bg-white shadow-xs">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
-                          <th className="px-3 py-2 text-center w-10">Step</th>
-                          <th className="px-3 py-2">Process Type</th>
-                          <th className="px-3 py-2">Trade / Job ID</th>
-                          <th className="px-3 py-2">Delivery Note ID</th>
-                          <th className="px-3 py-2 text-right">Unit Price</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-semibold">
-                        {formData.trace_process.map((step, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="px-3 py-2.5 text-center font-bold text-slate-400">
-                              #{idx + 1}
-                            </td>
-                            <td className="px-3 py-2.5 font-bold uppercase text-slate-800">
-                              {step.id && String(step.id).startsWith('TRD-') ? 'BUY' : (step.type || 'BUY')}
-                            </td>
-                            <td className="px-3 py-2.5 font-mono font-bold text-slate-800">
-                              {step.id ? step.id : '—'}
-                            </td>
-                            <td className="px-3 py-2.5 font-mono text-slate-700">
-                              {step.delivery_id ? (
-                                <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">
-                                  {step.delivery_id}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300">—</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-mono font-black text-slate-900">
-                              + ₹{parseFloat(step.unit_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                <div
+                  className="rounded-xl p-3.5 text-xs font-bold flex items-center gap-2 border"
+                  style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(0,0,0,0.03)' }}
+                >
+                  <Tag size={15} style={{ color: 'var(--theme-color)' }} className="shrink-0" />
+                  <span>Linked Trace Item ID: <strong>TR-{formData.trace_item_id || formData.p_item_id}</strong></span>
                 </div>
               )}
               
@@ -737,7 +669,7 @@ export default function InventoryView() {
                       onChange={(e) => handleItemInput(e.target.value)}
                       onFocus={() => !editingId && (!linkMetadata || !linkMetadata.item_code) && setShowItemDropdown(true)}
                       disabled={!!editingId || (!!linkMetadata && !!linkMetadata.item_code)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                       autoComplete="off"
                     />
                     {showItemDropdown && items.length > 0 && (
@@ -776,7 +708,7 @@ export default function InventoryView() {
                       onChange={(e) => handleTradeInput(e.target.value)}
                       onFocus={() => !editingId && !linkMetadata && setShowTradeDropdown(true)}
                       disabled={!!editingId || !!linkMetadata}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                       autoComplete="off"
                     />
                     {showTradeDropdown && trades.length > 0 && (
@@ -813,12 +745,11 @@ export default function InventoryView() {
                     type="number"
                     step="any"
                     required
-                     
                     placeholder="e.g. 500"
                     value={formData.quantity}
                     onChange={set('quantity')}
                     disabled={!!editingId}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                   {editingId && (
                     <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
@@ -836,7 +767,6 @@ export default function InventoryView() {
                     type="number"
                     step="0.01"
                     required
-                     
                     placeholder="e.g. 15.50"
                     value={(() => {
                       const sumProcess = Array.isArray(formData.trace_process) && formData.trace_process.length > 0
@@ -846,7 +776,7 @@ export default function InventoryView() {
                     })()}
                     onChange={set('price')}
                     disabled={!!editingId || !!linkMetadata}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                   {(editingId || linkMetadata) && (
                     <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
@@ -860,12 +790,12 @@ export default function InventoryView() {
               <div className="border-t border-slate-200 pt-4 mt-2 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Building2 size={16} className="text-indigo-600" />
+                    <Building2 size={16} style={{ color: 'var(--theme-color)' }} />
                     Warehouse Position <span className="text-red-500">*</span>
                   </h3>
                   {isLoadingPositions && (
                     <span className="text-xs text-slate-500 flex items-center gap-1 font-medium animate-pulse">
-                      <RefreshCw size={12} className="animate-spin text-indigo-600" />
+                      <RefreshCw size={12} className="animate-spin" style={{ color: 'var(--theme-color)' }} />
                       Searching existing locations for {formData.item_code}...
                     </span>
                   )}
@@ -873,7 +803,7 @@ export default function InventoryView() {
 
                 {/* Informative message if no item code selected yet */}
                 {!editingId && !formData.item_code && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-xs">
+                  <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1 text-xs">
                     <div className="font-bold text-amber-900 flex items-center gap-1.5">
                       <AlertCircle size={15} className="text-amber-600" />
                       No Catalog Item Selected
@@ -889,7 +819,7 @@ export default function InventoryView() {
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                       <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                        <Layers size={14} className="text-indigo-600" />
+                        <Layers size={14} style={{ color: 'var(--theme-color)' }} />
                         Existing Locations with Item Code "{formData.item_code}" ({existingPositions.length})
                       </span>
                       <span className="text-[10px] font-semibold text-slate-500">
@@ -901,20 +831,28 @@ export default function InventoryView() {
                       {/* Option for New Location */}
                       <div
                         onClick={() => handleSelectPosition(null)}
-                        className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                        style={selectedPositionId === null ? {
+                          borderColor: 'var(--theme-color)',
+                          backgroundColor: 'rgba(0,0,0,0.02)'
+                        } : {}}
+                        className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
                           selectedPositionId === null
-                            ? 'border-indigo-600 bg-indigo-50/60 shadow-xs ring-2 ring-indigo-500/20'
+                            ? 'shadow-2xs'
                             : 'border-dashed border-slate-300 hover:border-slate-400 bg-white'
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                            selectedPositionId === null ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300 bg-white'
-                          }`}>
+                          <div
+                            className="w-4 h-4 rounded-full border flex items-center justify-center shrink-0"
+                            style={{
+                              borderColor: selectedPositionId === null ? 'var(--theme-color)' : '#cbd5e1',
+                              backgroundColor: selectedPositionId === null ? 'var(--theme-color)' : 'white'
+                            }}
+                          >
                             {selectedPositionId === null && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                           </div>
                           <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            <Plus size={14} className="text-indigo-600" />
+                            <Plus size={14} style={{ color: 'var(--theme-color)' }} />
                             Enter Brand New Location
                           </span>
                         </div>
@@ -930,22 +868,30 @@ export default function InventoryView() {
                           <div
                             key={pos.id}
                             onClick={() => handleSelectPosition(pos)}
-                            className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                            style={isSelected ? {
+                              borderColor: 'var(--theme-color)',
+                              backgroundColor: 'rgba(0,0,0,0.02)'
+                            } : {}}
+                            className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
                               isSelected
-                                ? 'border-indigo-600 bg-indigo-50/60 shadow-xs ring-2 ring-indigo-500/20'
+                                ? 'shadow-2xs'
                                 : 'border-slate-200 hover:border-slate-300 bg-white'
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex items-center gap-2">
-                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                                  isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300 bg-white'
-                                }`}>
+                                <div
+                                  className="w-4 h-4 rounded-full border flex items-center justify-center shrink-0"
+                                  style={{
+                                    borderColor: isSelected ? 'var(--theme-color)' : '#cbd5e1',
+                                    backgroundColor: isSelected ? 'var(--theme-color)' : 'white'
+                                  }}
+                                >
                                   {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                                 </div>
                                 <div>
                                   <div className="text-xs font-bold text-slate-900 flex items-center gap-1">
-                                    <MapPin size={12} className="text-indigo-600" />
+                                    <MapPin size={12} style={{ color: 'var(--theme-color)' }} />
                                     {pos.location || 'Default Location'}
                                   </div>
                                   {(pos.rack || pos.shelf_number) && (
@@ -958,7 +904,10 @@ export default function InventoryView() {
                                 </div>
                               </div>
                               {pos.trace_item_id && (
-                                <span className="text-[9px] font-mono font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded shrink-0">
+                                <span
+                                  className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 border"
+                                  style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(0,0,0,0.03)' }}
+                                >
                                   TR-{pos.trace_item_id}
                                 </span>
                               )}
@@ -994,7 +943,7 @@ export default function InventoryView() {
                         setSelectedPositionId(null);
                         set('location')(e);
                       }}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                     />
                   </div>
 
@@ -1007,7 +956,7 @@ export default function InventoryView() {
                       placeholder="e.g. Rack-03"
                       value={formData.rack}
                       onChange={set('rack')}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                     />
                   </div>
 
@@ -1020,7 +969,7 @@ export default function InventoryView() {
                       placeholder="e.g. Shelf-12"
                       value={formData.shelf_number}
                       onChange={set('shelf_number')}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
+                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                     />
                   </div>
                 </div>
@@ -1042,35 +991,38 @@ export default function InventoryView() {
                     : addedPrice;
 
                   return (
-                    <div className="p-3.5 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs space-y-2.5 animate-fade-in">
-                      <div className="flex items-center justify-between border-b border-indigo-200/70 pb-2">
-                        <span className="font-bold text-indigo-900 flex items-center gap-1.5 uppercase text-[11px]">
-                          <CheckCircle2 size={14} className="text-indigo-600" />
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2.5 animate-fade-in shadow-2xs">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <span className="font-bold text-slate-900 flex items-center gap-1.5 uppercase text-[11px]">
+                          <CheckCircle2 size={14} style={{ color: 'var(--theme-color)' }} />
                           Selected Location Merger & Weighted Average Price Preview
                         </span>
-                        <span className="text-[10px] font-mono font-bold text-indigo-700 bg-white border border-indigo-200 px-2 py-0.5 rounded shadow-2xs">
+                        <span
+                          className="text-[10px] font-mono font-bold bg-white border px-2 py-0.5 rounded shadow-2xs"
+                          style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
+                        >
                           Merging into TR-{selectedPos.trace_item_id || selectedPos.id}
                         </span>
                       </div>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
-                        <div className="bg-white p-2 rounded border border-indigo-100 shadow-2xs">
+                        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
                           <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Existing Stock</div>
                           <div className="font-black text-slate-900">{fmtQty(existingQty)} pcs</div>
                           <div className="text-[10px] text-slate-600">@ ₹{existingPrice.toFixed(2)}</div>
                         </div>
-                        <div className="bg-white p-2 rounded border border-indigo-100 shadow-2xs">
+                        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
                           <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Added Stock</div>
-                          <div className="font-black text-indigo-700">+{fmtQty(addedQty)} pcs</div>
+                          <div className="font-black" style={{ color: 'var(--theme-color)' }}>+{fmtQty(addedQty)} pcs</div>
                           <div className="text-[10px] text-slate-600">@ ₹{addedPrice.toFixed(2)}</div>
                         </div>
-                        <div className="bg-white p-2 rounded border border-indigo-100 shadow-2xs">
+                        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
                           <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Updated Total Qty</div>
                           <div className="font-black text-emerald-700">{fmtQty(finalQty)} pcs</div>
                         </div>
-                        <div className="bg-white p-2 rounded border border-indigo-100 shadow-2xs">
+                        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
                           <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Weighted Avg Price</div>
-                          <div className="font-black text-indigo-950">₹{avgPrice.toFixed(2)} / pc</div>
+                          <div className="font-black text-slate-900">₹{avgPrice.toFixed(2)} / pc</div>
                         </div>
                       </div>
                     </div>
@@ -1090,7 +1042,7 @@ export default function InventoryView() {
                       placeholder="e.g. For process, For Sell, In Inventory, manufacturing, active..."
                       value={formData.status || ''}
                       onChange={set('status')}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-800 focus:outline-none focus:border-[var(--theme-color)]"
+                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                     />
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -1099,10 +1051,15 @@ export default function InventoryView() {
                         key={preset}
                         type="button"
                         onClick={() => setFormData(prev => ({ ...prev, status: preset }))}
-                        className={`px-2.5 py-1 text-[10px] font-black rounded-lg border transition-colors cursor-pointer ${
+                        style={formData.status === preset ? {
+                          backgroundColor: 'var(--theme-color)',
+                          borderColor: 'var(--theme-color)',
+                          color: '#ffffff'
+                        } : {}}
+                        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
                           formData.status === preset
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                            ? 'shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                         }`}
                       >
                         {preset}
@@ -1125,7 +1082,7 @@ export default function InventoryView() {
                   placeholder="Enter any specific storage instructions or details..."
                   value={formData.message}
                   onChange={set('message')}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] resize-y"
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all resize-y"
                 />
               </div>
 
@@ -1136,14 +1093,14 @@ export default function InventoryView() {
                   <button
                     type="button"
                     onClick={handleBackToDirectory}
-                    className="px-5 py-2.5 border border-slate-300 rounded text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                    className="px-5 py-2.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="px-5 py-2.5 rounded text-sm font-bold text-white transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
                     style={{ backgroundColor: 'var(--theme-color)' }}
                     onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
                     onMouseLeave={(e) => e.target.style.filter = 'none'}

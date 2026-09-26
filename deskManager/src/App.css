@@ -4,7 +4,99 @@
 }
 
 :root {
-	/* --theme-color: #D9352D; blue-600 */
-	--theme-color:black;
+	/* 2-Color Theme System for whole system (except home page) */
+	--theme-primary: #0f172a;           /* Primary Theme: Onyx Dark (#0f172a / #000000) */
+	--theme-primary-hover: #1e293b;
+	--theme-primary-light: #283d53;
+	--theme-primary-border: #334155;
+	--theme-primary-text: #ffffff;
+
+	--theme-secondary: #D9352D;         /* Secondary Theme: Accent Crimson Red (#D9352D) */
+	--theme-secondary-hover: #b91c1c;
+	--theme-secondary-light: rgba(217, 53, 45, 0.08);
+	--theme-secondary-border: rgba(217, 53, 45, 0.3);
+	--theme-secondary-text: #D9352D;
+
+	/* Theme Color Aliases for universal & legacy support */
+	--theme-color: var(--theme-secondary);
+	--theme-dark: var(--theme-primary);
+	--theme-color-secondary: var(--theme-secondary);
+	--theme-accent: var(--theme-secondary);
 	--logo-size: 64px;
+}
+
+/* System-Wide 2-Color Theme Styling Rules (Excludes .pds-root Home Page) */
+
+/* 1. Header Badges & Form Icons Header */
+:not(.pds-root) .theme-header-badge,
+:not(.pds-root) .form-icon-header {
+	background-color: var(--theme-primary);
+	color: var(--theme-primary-text);
+}
+
+/* 2. Focus Rings for Form Inputs & Selects */
+:not(.pds-root) input:focus,
+:not(.pds-root) select:focus,
+:not(.pds-root) textarea:focus {
+	border-color: var(--theme-secondary) !important;
+	outline: none;
+	box-shadow: 0 0 0 2px var(--theme-secondary-light) !important;
+}
+
+/* 3. Primary Action Buttons across all forms & pages */
+:not(.pds-root) button[type="submit"],
+:not(.pds-root) .btn-primary,
+:not(.pds-root) .bg-theme-action {
+	background-color: var(--theme-secondary);
+	color: #ffffff;
+}
+
+:not(.pds-root) button[type="submit"]:hover,
+:not(.pds-root) .btn-primary:hover,
+:not(.pds-root) .bg-theme-action:hover {
+	background-color: var(--theme-secondary-hover);
+}
+
+/* 4. Secondary Action Buttons / Headers */
+:not(.pds-root) .btn-dark,
+:not(.pds-root) .bg-theme-dark-header {
+	background-color: var(--theme-primary);
+	color: #ffffff;
+}
+
+:not(.pds-root) .btn-dark:hover,
+:not(.pds-root) .bg-theme-dark-header:hover {
+	background-color: var(--theme-primary-hover);
+}
+
+/* 5. Accent Badges & Highlights */
+:not(.pds-root) .theme-accent-badge {
+	background-color: var(--theme-secondary-light);
+	color: var(--theme-secondary-text);
+	border: 1px solid var(--theme-secondary-border);
+}
+
+/* 6. Helper utility classes */
+.bg-theme-primary {
+	background-color: var(--theme-primary);
+}
+
+.bg-theme-secondary {
+	background-color: var(--theme-secondary);
+}
+
+.text-theme-primary {
+	color: var(--theme-primary);
+}
+
+.text-theme-secondary {
+	color: var(--theme-secondary);
+}
+
+.border-theme-primary {
+	border-color: var(--theme-primary);
+}
+
+.border-theme-secondary {
+	border-color: var(--theme-secondary);
 }

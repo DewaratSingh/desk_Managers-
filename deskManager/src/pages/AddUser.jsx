@@ -22,6 +22,8 @@ const AVAILABLE_PERMISSIONS = [
   { value: 'manage_quotations', label: 'Manage Quotations' },
   { value: 'manage_orders', label: 'Manage Orders (PO/RO)' },
   { value: 'manage_inventory', label: 'Manage Inventory' },
+  { value: 'view_history', label: 'View Item Quote & Stock History' },
+  { value: 'view_pricing', label: 'View Pricing & Financial Details' },
   { value: 'manage_users', label: 'Manage Users' }
 ];
 

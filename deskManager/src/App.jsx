@@ -64,7 +64,11 @@ function App() {
             <Route path="/item" element={<AddItemView />} />
             <Route path="/inventory" element={<InventoryView />} />
             <Route path="/inventory/sell" element={<SellStockForm />} />
+            <Route path="/manufacture" element={<ManufactureList />} />
             <Route path="/manufactures" element={<ManufactureList />} />
+            <Route path="/addProcessRq" element={<ProcessRqForm />} />
+            <Route path="/process-rq" element={<ProcessRqForm />} />
+            <Route path="/updateProcessRq/:id" element={<ProcessRqForm />} />
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />
@@ -77,8 +81,6 @@ function App() {
           <Route path="/updateReleaseOrder/*" element={<ReleaseOrderForm />} />
           <Route path="/addReceivedQuotation" element={<ReceivedQuotationForm />} />
           <Route path="/updateReceivedQuotation/:id" element={<ReceivedQuotationForm />} />
-          <Route path="/addProcessRq" element={<ProcessRqForm />} />
-          <Route path="/updateProcessRq/:id" element={<ProcessRqForm />} />
           <Route path="/addProcessPurchaseOrder" element={<ProcessPoForm />} />
           <Route path="/party/form" element={<AddCustomerView />} />
           <Route path="/buyer/form" element={<AddBuyerView />} />
