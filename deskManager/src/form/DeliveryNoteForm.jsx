@@ -492,12 +492,9 @@ export default function DeliveryNoteForm() {
           linked_inventory_id: item.linked_inventory_id || item.inv_details?.inventory_id || null,
           linked_trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null,
           linked_p_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null,
-          stock_allocations: item.stock_allocations || (item.linked_inventory_id ? [{
-            inventory_id: item.linked_inventory_id,
-            trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id,
-            quantity: item.delivery_qty,
-            price: item.inv_details?.price || item.rate_per_piece
-          }] : [])
+          stock_allocations: (tradeType === 'sell' || tradeType === 'ARC') && Array.isArray(item.stock_allocations)
+            ? item.stock_allocations
+            : []
         }))
       };
 

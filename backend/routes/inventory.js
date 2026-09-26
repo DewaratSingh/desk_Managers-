@@ -73,7 +73,55 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Create inventory entry
+// GET inventory positions for a specific item code
+router.get('/locations-by-item', async (req, res) => {
+  const { item_code } = req.query || {};
+  if (!item_code) {
+    return res.status(400).json({ error: 'item_code is required' });
+  }
+
+  try {
+    const itemRes = await pool.query(
+      'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
+      [item_code.trim(), req.user.company_id]
+    );
+
+    if (itemRes.rows.length === 0) {
+      return res.json([]);
+    }
+
+    const itemDbId = itemRes.rows[0].id;
+    const invRes = await pool.query(
+      `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
+              inv.location, t.trade_id, inv.message, inv.trace_item_id,
+              p.status AS trace_status, p.process AS trace_process,
+              COALESCE((
+                SELECT SUM((elem->>'unit_price')::numeric)
+                FROM jsonb_array_elements(
+                  CASE 
+                    WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
+                    ELSE '[]'::jsonb 
+                  END
+                ) elem
+                WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
+              ), inv.price) AS calculated_price
+       FROM inventory inv
+       LEFT JOIN items it ON inv.item_code = it.id
+       LEFT JOIN trades t ON inv.trade_id = t.id
+       LEFT JOIN trace_item p ON inv.trace_item_id = p.id
+       WHERE inv.item_code = $1 AND inv.company_id = $2 AND inv.quantity > 0
+       ORDER BY inv.created_at DESC`,
+      [itemDbId, req.user.company_id]
+    );
+
+    res.json(invRes.rows);
+  } catch (err) {
+    console.error('Error fetching locations by item code:', err.message);
+    res.status(500).json({ error: 'Failed to fetch positions for item' });
+  }
+});
+
+// Create or merge inventory entry
 router.post('/', async (req, res) => {
   const {
     item_code,
@@ -85,7 +133,8 @@ router.post('/', async (req, res) => {
     trade_id,
     message,
     status,
-    trace_item_id
+    trace_item_id,
+    selected_inventory_id
   } = req.body || {};
 
   if (!item_code) {
@@ -109,80 +158,186 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Create or resolve trace_item_id with status
-    let finalTraceItemId = trace_item_id ? parseInt(trace_item_id) : null;
     const targetStatus = status || 'In Inventory';
+    const addedQty = parseFloat(quantity) || 0;
+    const addedPrice = parseFloat(price) || 0.00;
 
-    if (!finalTraceItemId) {
-      const processList = trade_id ? [{ type: 'BUY', id: trade_id, unit_price: parseFloat(price) || 0.00 }] : [];
-      const traceRes = await pool.query(
-        `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-         VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7) RETURNING id`,
+    // Check if an existing inventory position was selected or matches location
+    let targetInvId = selected_inventory_id ? parseInt(selected_inventory_id) : null;
+    if (!targetInvId && location) {
+      // Check if there's an existing stock record with identical item_code, location, rack, shelf
+      const checkInv = await pool.query(
+        `SELECT id FROM inventory 
+         WHERE item_code = $1 AND company_id = $2 
+           AND LOWER(COALESCE(location, '')) = LOWER($3)
+           AND LOWER(COALESCE(rack, '')) = LOWER($4)
+           AND LOWER(COALESCE(shelf_number, '')) = LOWER($5)`,
+        [itemDbId, req.user.company_id, location || '', rack || '', shelf_number || '']
+      );
+      if (checkInv.rows.length > 0) {
+        targetInvId = checkInv.rows[0].id;
+      }
+    }
+
+    if (targetInvId) {
+      // --- EXISTING LOCATION MERGE CASE ---
+      const existingInv = await pool.query(
+        'SELECT * FROM inventory WHERE id = $1 AND company_id = $2',
+        [targetInvId, req.user.company_id]
+      );
+
+      if (existingInv.rows.length === 0) {
+        return res.status(404).json({ error: 'Selected inventory position not found' });
+      }
+
+      const invRow = existingInv.rows[0];
+      const existingQty = parseFloat(invRow.quantity) || 0;
+      const existingPrice = parseFloat(invRow.price) || 0.00;
+
+      const newQty = existingQty + addedQty;
+      // Weighted average unit price calculation
+      const newPrice = newQty > 0
+        ? parseFloat(((existingQty * existingPrice + addedQty * addedPrice) / newQty).toFixed(2))
+        : addedPrice;
+
+      // Update inventory record
+      await pool.query(
+        `UPDATE inventory 
+         SET quantity = $1,
+             price = $2,
+             rack = COALESCE($3, rack),
+             shelf_number = COALESCE($4, shelf_number),
+             location = COALESCE($5, location),
+             message = COALESCE($6, message),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $7 AND company_id = $8`,
         [
-          itemDbId,
-          JSON.stringify(processList),
+          newQty,
+          newPrice,
+          rack || null,
+          shelf_number || null,
+          location || null,
           message || null,
-          parseInt(quantity) || 0,
-          parseFloat(price) || 0.00,
-          targetStatus,
+          targetInvId,
           req.user.company_id
         ]
       );
-      finalTraceItemId = traceRes.rows[0].id;
-    } else {
-      await pool.query(
-        `UPDATE trace_item SET status = $1 WHERE id = $2 AND company_id = $3`,
-        [targetStatus, finalTraceItemId, req.user.company_id]
+
+      // Update linked trace_item if present
+      const targetTraceId = invRow.trace_item_id || (trace_item_id ? parseInt(trace_item_id) : null);
+      if (targetTraceId) {
+        await pool.query(
+          `UPDATE trace_item
+           SET quantity = $1,
+               price = $2,
+               status = $3
+           WHERE id = $4 AND company_id = $5`,
+          [newQty, newPrice, targetStatus, targetTraceId, req.user.company_id]
+        );
+      }
+
+      // Fetch the updated inventory record with joined details
+      const joinedRes = await pool.query(
+        `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
+               inv.location, t.trade_id, inv.message, inv.trace_item_id,
+               p.status AS trace_status, p.process AS trace_process,
+               COALESCE((
+                 SELECT SUM((elem->>'unit_price')::numeric)
+                 FROM jsonb_array_elements(
+                   CASE 
+                     WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
+                     ELSE '[]'::jsonb 
+                   END
+                 ) elem
+                 WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
+               ), inv.price) AS calculated_price,
+               inv.company_id, inv.created_at, inv.updated_at,
+               it.description, it.drawing_number
+        FROM inventory inv
+        LEFT JOIN items it ON inv.item_code = it.id
+        LEFT JOIN trades t ON inv.trade_id = t.id
+        LEFT JOIN trace_item p ON inv.trace_item_id = p.id
+        WHERE inv.id = $1 AND inv.company_id = $2`,
+        [targetInvId, req.user.company_id]
       );
+
+      return res.status(200).json(joinedRes.rows[0]);
+
+    } else {
+      // --- NEW LOCATION CREATION CASE ---
+      let finalTraceItemId = trace_item_id ? parseInt(trace_item_id) : null;
+
+      if (!finalTraceItemId) {
+        const processList = trade_id ? [{ type: 'BUY', id: trade_id, unit_price: addedPrice }] : [];
+        const traceRes = await pool.query(
+          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
+           VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7) RETURNING id`,
+          [
+            itemDbId,
+            JSON.stringify(processList),
+            message || null,
+            addedQty,
+            addedPrice,
+            targetStatus,
+            req.user.company_id
+          ]
+        );
+        finalTraceItemId = traceRes.rows[0].id;
+      } else {
+        await pool.query(
+          `UPDATE trace_item SET status = $1 WHERE id = $2 AND company_id = $3`,
+          [targetStatus, finalTraceItemId, req.user.company_id]
+        );
+      }
+
+      const result = await pool.query(
+        `INSERT INTO inventory (
+          item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, trace_item_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [
+          itemDbId,
+          addedQty,
+          addedPrice,
+          rack || null,
+          shelf_number || null,
+          location || null,
+          tradeDbId,
+          message || null,
+          req.user.company_id,
+          finalTraceItemId
+        ]
+      );
+
+      // Fetch the inserted record with joined details
+      const joinedRes = await pool.query(
+        `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
+               inv.location, t.trade_id, inv.message, inv.trace_item_id,
+               p.status AS trace_status, p.process AS trace_process,
+               COALESCE((
+                 SELECT SUM((elem->>'unit_price')::numeric)
+                 FROM jsonb_array_elements(
+                   CASE 
+                     WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
+                     ELSE '[]'::jsonb 
+                   END
+                 ) elem
+                 WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
+               ), inv.price) AS calculated_price,
+               inv.company_id, inv.created_at, inv.updated_at,
+               it.description, it.drawing_number
+        FROM inventory inv
+        LEFT JOIN items it ON inv.item_code = it.id
+        LEFT JOIN trades t ON inv.trade_id = t.id
+        LEFT JOIN trace_item p ON inv.trace_item_id = p.id
+        WHERE inv.id = $1 AND inv.company_id = $2`,
+        [result.rows[0].id, req.user.company_id]
+      );
+
+      return res.status(201).json(joinedRes.rows[0]);
     }
-
-    const result = await pool.query(
-      `INSERT INTO inventory (
-        item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, trace_item_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-      [
-        itemDbId,
-        parseInt(quantity) || 0,
-        parseFloat(price) || 0.00,
-        rack || null,
-        shelf_number || null,
-        location || null,
-        tradeDbId,
-        message || null,
-        req.user.company_id,
-        finalTraceItemId
-      ]
-    );
-
-    // Fetch the inserted record with joined details
-    const joinedRes = await pool.query(
-      `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-             inv.location, t.trade_id, inv.message, inv.trace_item_id,
-             p.status AS trace_status, p.process AS trace_process,
-             COALESCE((
-               SELECT SUM((elem->>'unit_price')::numeric)
-               FROM jsonb_array_elements(
-                 CASE 
-                   WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
-                   ELSE '[]'::jsonb 
-                 END
-               ) elem
-               WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
-             ), inv.price) AS calculated_price,
-             inv.company_id, inv.created_at, inv.updated_at,
-             it.description, it.drawing_number
-      FROM inventory inv
-      LEFT JOIN items it ON inv.item_code = it.id
-      LEFT JOIN trades t ON inv.trade_id = t.id
-      LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-       WHERE inv.id = $1 AND inv.company_id = $2`,
-      [result.rows[0].id, req.user.company_id]
-    );
-
-    res.status(201).json(joinedRes.rows[0]);
   } catch (err) {
-    console.error('Error creating inventory entry:', err.message);
-    res.status(500).json({ error: 'Failed to create inventory entry' });
+    console.error('Error creating/updating inventory entry:', err.message);
+    res.status(500).json({ error: 'Failed to save inventory entry' });
   }
 });
 

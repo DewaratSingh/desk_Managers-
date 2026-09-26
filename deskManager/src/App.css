@@ -4,6 +4,7 @@
 }
 
 :root {
-	--theme-color: #D9352D; /* blue-600 */
+	/* --theme-color: #D9352D; blue-600 */
+	--theme-color:black;
 	--logo-size: 64px;
 }

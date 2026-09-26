@@ -47,16 +47,12 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET trace items from inventory for a specific source item code
+// GET trace items from inventory for a specific source item code (or all items)
 router.get('/trace-items', async (req, res) => {
   const { item_code } = req.query || {};
-  if (!item_code) {
-    return res.status(400).json({ error: 'item_code is required' });
-  }
 
   try {
-    const result = await pool.query(
-      `SELECT 
+    let queryStr = `SELECT 
          inv.id AS inventory_id,
          inv.trace_item_id,
          COALESCE(ti.id, inv.trace_item_id) AS trace_id,
@@ -66,14 +62,25 @@ router.get('/trace-items', async (req, res) => {
          inv.price,
          inv.location,
          inv.rack,
-         inv.shelf_number
+         inv.shelf_number,
+         COALESCE(ti.status, 'In Inventory') AS status
        FROM inventory inv
        JOIN items it ON inv.item_code = it.id
        LEFT JOIN trace_item ti ON inv.trace_item_id = ti.id
-       WHERE it.item_code = $1 AND inv.company_id = $2 AND inv.quantity > 0
-       ORDER BY inv.created_at ASC`,
-      [item_code.trim(), req.user.company_id]
-    );
+       WHERE inv.company_id = $1 
+         AND inv.quantity > 0 
+         AND LOWER(COALESCE(ti.status, 'in inventory')) = 'in inventory'`;
+
+    const queryParams = [req.user.company_id];
+
+    if (item_code && item_code.trim()) {
+      queryStr += ` AND it.item_code = $2`;
+      queryParams.push(item_code.trim());
+    }
+
+    queryStr += ` ORDER BY inv.created_at ASC`;
+
+    const result = await pool.query(queryStr, queryParams);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching trace items:', err.message);
@@ -122,15 +129,28 @@ router.post('/', async (req, res) => {
         source_trace_id_array
       } = item;
 
+      const cleanSourceTraceArray = Array.isArray(source_trace_id_array) ? source_trace_id_array : [];
+
       // Resolve source_item_id
       let sourceDbId = null;
-      if (source_item_code) {
+      if (source_item_code && source_item_code.trim()) {
         const srcRes = await client.query(
           'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
           [source_item_code.trim(), companyId]
         );
         if (srcRes.rows.length > 0) {
           sourceDbId = srcRes.rows[0].id;
+        }
+      } else if (cleanSourceTraceArray.length > 0) {
+        const firstTraceCode = cleanSourceTraceArray[0].item_code;
+        if (firstTraceCode) {
+          const srcRes = await client.query(
+            'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
+            [firstTraceCode.trim(), companyId]
+          );
+          if (srcRes.rows.length > 0) {
+            sourceDbId = srcRes.rows[0].id;
+          }
         }
       }
 
@@ -151,7 +171,6 @@ router.post('/', async (req, res) => {
       const parsedSourceQty = parseFloat(source_qty) || 0;
       const parsedTargetQty = parseFloat(target_qty) || 0;
       const parsedPrice = parseFloat(price) || 0.00;
-      const cleanSourceTraceArray = Array.isArray(source_trace_id_array) ? source_trace_id_array : [];
 
       const targetTraceIdArray = [];
 

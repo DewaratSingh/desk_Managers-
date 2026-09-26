@@ -50,7 +50,7 @@ export default function Sidebar({ user, onLogout }) {
   ];
 
   const NavContent = () => (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden bg-black">
       {/* Brand */}
       <div className={`py-4 border-b border-slate-200 flex items-center shrink-0 ${isShrunk ? 'px-2.5 justify-center gap-1.5' : 'px-4 justify-between'}`}>
         <div className="flex items-center gap-3">

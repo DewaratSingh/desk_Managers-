@@ -10,7 +10,10 @@ import {
   Package,
   MapPin,
   Tag,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2,
+  Layers,
+  Building2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -50,6 +53,10 @@ export default function InventoryView() {
   const [editingId, setEditingId] = useState(null);
   const [linkMetadata, setLinkMetadata] = useState(null);
   
+  const [existingPositions, setExistingPositions] = useState([]);
+  const [selectedPositionId, setSelectedPositionId] = useState(null);
+  const [isLoadingPositions, setIsLoadingPositions] = useState(false);
+
   const [hasMore, setHasMore] = useState(true);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const [showTradeDropdown, setShowTradeDropdown] = useState(false);
@@ -169,6 +176,54 @@ export default function InventoryView() {
     }
   }, [formData.item_code, viewMode]);
 
+  // Auto-fetch existing stock positions/locations for selected item_code in form mode
+  useEffect(() => {
+    if (viewMode === 'form' && formData.item_code && formData.item_code.trim() && !editingId) {
+      setIsLoadingPositions(true);
+      fetch(`/api/inventory/locations-by-item?item_code=${encodeURIComponent(formData.item_code.trim())}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0) {
+            setExistingPositions(data);
+            // Auto-select position if formData.location matches
+            if (formData.location) {
+              const matched = data.find(p => (p.location || '').toLowerCase() === formData.location.toLowerCase());
+              if (matched) setSelectedPositionId(matched.id);
+            }
+          } else {
+            setExistingPositions([]);
+            setSelectedPositionId(null);
+          }
+        })
+        .catch(err => console.error('Failed to fetch positions for item:', err))
+        .finally(() => setIsLoadingPositions(false));
+    } else {
+      setExistingPositions([]);
+      setSelectedPositionId(null);
+    }
+  }, [formData.item_code, viewMode, editingId]);
+
+  const handleSelectPosition = (pos) => {
+    if (pos) {
+      setSelectedPositionId(pos.id);
+      setFormData(prev => ({
+        ...prev,
+        location: pos.location || '',
+        rack: pos.rack || '',
+        shelf_number: pos.shelf_number || '',
+        trace_item_id: pos.trace_item_id || prev.trace_item_id
+      }));
+    } else {
+      setSelectedPositionId(null);
+      setFormData(prev => ({
+        ...prev,
+        location: '',
+        rack: '',
+        shelf_number: ''
+      }));
+    }
+  };
+
   const fetchInventory = async (isLoadMore = false, query = searchQuery) => {
     setIsLoading(true);
     try {
@@ -222,7 +277,14 @@ export default function InventoryView() {
   };
 
   const handleSelectItem = (item) => {
-    setFormData(prev => ({ ...prev, item_code: item.item_code }));
+    setFormData(prev => ({
+      ...prev,
+      item_code: item.item_code,
+      location: '',
+      rack: '',
+      shelf_number: ''
+    }));
+    setSelectedPositionId(null);
     setShowItemDropdown(false);
   };
 
@@ -261,19 +323,32 @@ export default function InventoryView() {
       toast.warn('Please enter a valid quantity');
       return;
     }
+    if (!editingId && !selectedPositionId && (!formData.location || !formData.location.trim())) {
+      toast.warn('Selecting an existing warehouse location or entering a new location is required.');
+      return;
+    }
 
     setIsSaving(true);
     try {
       if (linkMetadata) {
         const targetStatus = formData.status || linkMetadata.status || 'In Inventory';
-        toast.success(`Inventory configuration saved for Delivery Note!`);
+        const selectedPos = existingPositions.find(p => p.id === selectedPositionId);
+        
+        const updatedReturnState = {
+          ...linkMetadata.returnState,
+          selectedItemCode: formData.item_code || linkMetadata.returnState?.selectedItemCode
+        };
+
+        toast.success(`Inventory location configured for Delivery Note!`);
         navigate(linkMetadata.returnUrl, {
           state: {
-            returnState: linkMetadata.returnState,
+            returnState: updatedReturnState,
             updatedQty: parseFloat(formData.quantity) || 0,
             actionType: linkMetadata.actionType,
             status: targetStatus,
             inventoryDetails: {
+              inventory_id: selectedPositionId || null,
+              trace_item_id: selectedPos?.trace_item_id || formData.trace_item_id || null,
               price: parseFloat(formData.price) || 0.00,
               rack: formData.rack,
               shelf_number: formData.shelf_number,
@@ -290,30 +365,26 @@ export default function InventoryView() {
       const url = editingId ? `/api/inventory/${editingId}` : '/api/inventory';
       const method = editingId ? 'PUT' : 'POST';
 
+      const payload = {
+        ...formData,
+        selected_inventory_id: selectedPositionId
+      };
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
         const saved = await res.json();
+
         if (editingId) {
           setInventoryList(prev => prev.map(item => item.id === editingId ? saved : item));
           toast.success('Inventory record updated successfully!');
         } else {
           setInventoryList(prev => [saved, ...prev]);
           toast.success('Inventory record added successfully!');
-        }
-        
-        if (linkMetadata) {
-          navigate(linkMetadata.returnUrl, {
-            state: {
-              returnState: linkMetadata.returnState,
-              updatedQty: parseFloat(formData.quantity) || 0
-            }
-          });
-          return;
         }
 
         handleBackToDirectory();
@@ -664,8 +735,8 @@ export default function InventoryView() {
                       placeholder="Search by item code or description..."
                       value={formData.item_code}
                       onChange={(e) => handleItemInput(e.target.value)}
-                      onFocus={() => !editingId && !linkMetadata && setShowItemDropdown(true)}
-                      disabled={!!editingId || !!linkMetadata}
+                      onFocus={() => !editingId && (!linkMetadata || !linkMetadata.item_code) && setShowItemDropdown(true)}
+                      disabled={!!editingId || (!!linkMetadata && !!linkMetadata.item_code)}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                       autoComplete="off"
                     />
@@ -786,18 +857,143 @@ export default function InventoryView() {
               </div>
 
               {/* Location details */}
-              <div className="border-t border-slate-200 pt-4 mt-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Warehouse Position</h3>
+              <div className="border-t border-slate-200 pt-4 mt-2 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Building2 size={16} className="text-indigo-600" />
+                    Warehouse Position <span className="text-red-500">*</span>
+                  </h3>
+                  {isLoadingPositions && (
+                    <span className="text-xs text-slate-500 flex items-center gap-1 font-medium animate-pulse">
+                      <RefreshCw size={12} className="animate-spin text-indigo-600" />
+                      Searching existing locations for {formData.item_code}...
+                    </span>
+                  )}
+                </div>
+
+                {/* Informative message if no item code selected yet */}
+                {!editingId && !formData.item_code && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-xs">
+                    <div className="font-bold text-amber-900 flex items-center gap-1.5">
+                      <AlertCircle size={15} className="text-amber-600" />
+                      No Catalog Item Selected
+                    </div>
+                    <p className="text-amber-800 text-[11px] font-medium m-0">
+                      Please select a Catalog Item above to view all existing warehouse stock positions and locations.
+                    </p>
+                  </div>
+                )}
+
+                {/* Existing Location Positions Selector (if positions exist) */}
+                {!editingId && formData.item_code && existingPositions.length > 0 && (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <Layers size={14} className="text-indigo-600" />
+                        Existing Locations with Item Code "{formData.item_code}" ({existingPositions.length})
+                      </span>
+                      <span className="text-[10px] font-semibold text-slate-500">
+                        Select to merge quantity & average unit price, or select new location.
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {/* Option for New Location */}
+                      <div
+                        onClick={() => handleSelectPosition(null)}
+                        className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                          selectedPositionId === null
+                            ? 'border-indigo-600 bg-indigo-50/60 shadow-xs ring-2 ring-indigo-500/20'
+                            : 'border-dashed border-slate-300 hover:border-slate-400 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                            selectedPositionId === null ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300 bg-white'
+                          }`}>
+                            {selectedPositionId === null && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                            <Plus size={14} className="text-indigo-600" />
+                            Enter Brand New Location
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-semibold mt-1.5 pl-6">
+                          Create a separate stock entry at a new location.
+                        </p>
+                      </div>
+
+                      {/* Options for Existing Locations */}
+                      {existingPositions.map((pos) => {
+                        const isSelected = selectedPositionId === pos.id;
+                        return (
+                          <div
+                            key={pos.id}
+                            onClick={() => handleSelectPosition(pos)}
+                            className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                              isSelected
+                                ? 'border-indigo-600 bg-indigo-50/60 shadow-xs ring-2 ring-indigo-500/20'
+                                : 'border-slate-200 hover:border-slate-300 bg-white'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                  isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300 bg-white'
+                                }`}>
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                                    <MapPin size={12} className="text-indigo-600" />
+                                    {pos.location || 'Default Location'}
+                                  </div>
+                                  {(pos.rack || pos.shelf_number) && (
+                                    <div className="text-[10px] text-slate-500 font-medium">
+                                      {pos.rack && `Rack: ${pos.rack}`}
+                                      {pos.rack && pos.shelf_number && ' | '}
+                                      {pos.shelf_number && `Shelf: ${pos.shelf_number}`}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              {pos.trace_item_id && (
+                                <span className="text-[9px] font-mono font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded shrink-0">
+                                  TR-{pos.trace_item_id}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-2 pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-mono">
+                              <span className="text-slate-600 font-semibold">
+                                Stock: <strong className="text-slate-900">{fmtQty(pos.quantity)} pcs</strong>
+                              </span>
+                              <span className="text-slate-700 font-bold">
+                                ₹{parseFloat(pos.calculated_price || pos.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} / pc
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Input Fields for Location, Rack, Shelf */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
-                      Warehouse Location
+                      Warehouse Location <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
+                      required
                       placeholder="e.g. Warehouse A"
                       value={formData.location}
-                      onChange={set('location')}
+                      onChange={(e) => {
+                        setSelectedPositionId(null);
+                        set('location')(e);
+                      }}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-medium focus:outline-none focus:border-[var(--theme-color)]"
                     />
                   </div>
@@ -828,6 +1024,58 @@ export default function InventoryView() {
                     />
                   </div>
                 </div>
+
+                {/* Weighted Average Unit Price Preview Card */}
+                {(() => {
+                  if (!selectedPositionId) return null;
+                  const selectedPos = existingPositions.find(p => p.id === selectedPositionId);
+                  if (!selectedPos) return null;
+
+                  const existingQty = parseFloat(selectedPos.quantity) || 0;
+                  const existingPrice = parseFloat(selectedPos.calculated_price || selectedPos.price) || 0;
+                  const addedQty = parseFloat(formData.quantity) || 0;
+                  const addedPrice = parseFloat(formData.price) || 0;
+
+                  const finalQty = existingQty + addedQty;
+                  const avgPrice = finalQty > 0
+                    ? ((existingQty * existingPrice + addedQty * addedPrice) / finalQty)
+                    : addedPrice;
+
+                  return (
+                    <div className="p-3.5 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs space-y-2.5 animate-fade-in">
+                      <div className="flex items-center justify-between border-b border-indigo-200/70 pb-2">
+                        <span className="font-bold text-indigo-900 flex items-center gap-1.5 uppercase text-[11px]">
+                          <CheckCircle2 size={14} className="text-indigo-600" />
+                          Selected Location Merger & Weighted Average Price Preview
+                        </span>
+                        <span className="text-[10px] font-mono font-bold text-indigo-700 bg-white border border-indigo-200 px-2 py-0.5 rounded shadow-2xs">
+                          Merging into TR-{selectedPos.trace_item_id || selectedPos.id}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+                        <div className="bg-white p-2 rounded border border-indigo-100 shadow-2xs">
+                          <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Existing Stock</div>
+                          <div className="font-black text-slate-900">{fmtQty(existingQty)} pcs</div>
+                          <div className="text-[10px] text-slate-600">@ ₹{existingPrice.toFixed(2)}</div>
+                        </div>
+                        <div className="bg-white p-2 rounded border border-indigo-100 shadow-2xs">
+                          <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Added Stock</div>
+                          <div className="font-black text-indigo-700">+{fmtQty(addedQty)} pcs</div>
+                          <div className="text-[10px] text-slate-600">@ ₹{addedPrice.toFixed(2)}</div>
+                        </div>
+                        <div className="bg-white p-2 rounded border border-indigo-100 shadow-2xs">
+                          <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Updated Total Qty</div>
+                          <div className="font-black text-emerald-700">{fmtQty(finalQty)} pcs</div>
+                        </div>
+                        <div className="bg-white p-2 rounded border border-indigo-100 shadow-2xs">
+                          <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Weighted Avg Price</div>
+                          <div className="font-black text-indigo-950">₹{avgPrice.toFixed(2)} / pc</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Trace Item Status Update Input */}

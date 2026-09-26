@@ -20,7 +20,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50 text-slate-900">
       <Sidebar user={user} onLogout={handleLogout} />
-      <main className="flex-1 overflow-x-hidden">
+      <main className="flex-1 overflow-x-hidden bg-black">
         <Outlet />
       </main>
     </div>

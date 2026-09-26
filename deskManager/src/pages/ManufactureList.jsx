@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Factory, Search, RefreshCw, Plus, Calendar, Package, ArrowRight, X, MapPin, CheckCircle2, Clock, Trash2, Check, Layers, AlertCircle, ChevronDown, Eye, CheckSquare } from 'lucide-react';
 import { toast } from 'react-toastify';
 
+import InventoryTraceSelectorModal from '../components/InventoryTraceSelectorModal';
+
 export default function ManufactureList() {
   const [manufactureList, setManufactureList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,10 +40,7 @@ export default function ManufactureList() {
   const [traceModalState, setTraceModalState] = useState({
     isOpen: false,
     rowIndex: null,
-    source_item_code: '',
-    traceItems: [],
-    loading: false,
-    selectedSelections: {} // trace_id -> { trace_id, Qty, inventory_id, available_qty, price }
+    initialSelections: []
   });
 
   // Manufacture Job Details Pop-up Modal State
@@ -152,103 +151,37 @@ export default function ManufactureList() {
     }));
   };
 
-  // Open Trace Modal (`btn()`)
-  const handleOpenTraceModal = async (rowIndex) => {
+  // Open Inventory Trace Selection Modal
+  const handleOpenTraceModal = (rowIndex) => {
     const row = formData.items[rowIndex];
-    if (!row.source_item_code) {
-      toast.warn('Please select a Source Item Code first before picking trace items');
-      return;
-    }
-
-    // Pre-populate existing selections
-    const initialSelections = {};
-    (row.source_trace_id_array || []).forEach(st => {
-      const tid = st.trace_id || st.traceid;
-      if (tid) {
-        initialSelections[tid] = { ...st };
-      }
-    });
-
     setTraceModalState({
       isOpen: true,
       rowIndex,
-      source_item_code: row.source_item_code,
-      traceItems: [],
-      loading: true,
-      selectedSelections: initialSelections
-    });
-
-    try {
-      const res = await fetch(`/api/manufacture/trace-items?item_code=${encodeURIComponent(row.source_item_code.trim())}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTraceModalState(prev => ({
-          ...prev,
-          traceItems: data,
-          loading: false
-        }));
-      } else {
-        toast.error('Failed to load trace items for source item');
-        setTraceModalState(prev => ({ ...prev, loading: false }));
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Error fetching trace items');
-      setTraceModalState(prev => ({ ...prev, loading: false }));
-    }
-  };
-
-  const handleTraceQtyInput = (traceItem, qtyVal) => {
-    const tid = traceItem.trace_id || traceItem.trace_item_id;
-    const numQty = parseFloat(qtyVal);
-
-    setTraceModalState(prev => {
-      const newSelections = { ...prev.selectedSelections };
-      if (isNaN(numQty) || numQty <= 0) {
-        delete newSelections[tid];
-      } else {
-        newSelections[tid] = {
-          trace_id: tid,
-          Qty: numQty,
-          inventory_id: traceItem.inventory_id,
-          available_qty: traceItem.available_qty,
-          price: traceItem.price
-        };
-      }
-      return { ...prev, selectedSelections: newSelections };
+      initialSelections: row.source_trace_id_array || []
     });
   };
 
-  const handleMaxSelectTrace = (traceItem) => {
-    handleTraceQtyInput(traceItem, traceItem.available_qty);
-  };
-
-  // Confirm Trace Modal Selections ("Select" button)
-  const handleConfirmTraceSelections = () => {
-    const { rowIndex, selectedSelections } = traceModalState;
+  // Confirm Trace Modal Selections ("Select Items" button)
+  const handleApplyTraceSelections = (selectionsArray) => {
+    const { rowIndex } = traceModalState;
     if (rowIndex === null) return;
 
-    const selectionsArray = Object.values(selectedSelections).map(s => ({
-      trace_id: s.trace_id,
-      Qty: parseFloat(s.Qty) || 0,
-      inventory_id: s.inventory_id
-    }));
-
-    // Auto calculate total source_qty from trace selections
-    const totalSourceQty = selectionsArray.reduce((sum, s) => sum + s.Qty, 0);
+    const itemCodes = Array.from(new Set(selectionsArray.map(s => s.item_code).filter(Boolean)));
+    const primarySourceItemCode = itemCodes.length > 0 ? itemCodes.join(', ') : '';
 
     setFormData(prev => {
       const newItems = [...prev.items];
       newItems[rowIndex] = {
         ...newItems[rowIndex],
-        source_trace_id_array: selectionsArray,
-        source_qty: totalSourceQty > 0 ? totalSourceQty : newItems[rowIndex].source_qty
+        source_item_code: primarySourceItemCode,
+        source_trace_id_array: selectionsArray
+        // Note: source_qty is kept blank ('') initially per user comment!
       };
       return { ...prev, items: newItems };
     });
 
-    setTraceModalState(prev => ({ ...prev, isOpen: false }));
-    toast.success(`Selected ${selectionsArray.length} trace item(s) (Total Qty: ${totalSourceQty})`);
+    setTraceModalState({ isOpen: false, rowIndex: null, initialSelections: [] });
+    toast.success(`Selected ${selectionsArray.length} trace item(s)`);
   };
 
   // Open Details Pop-up Modal when clicking a manufacture row
@@ -950,11 +883,11 @@ export default function ManufactureList() {
                           )}
                         </div>
 
-                        {/* Row Inputs: 12-Column Grid Layout for Spacious Fit */}
+                        {/* Row Inputs: 12-Column Grid Layout */}
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
                           
-                          {/* Trace Button (2 Cols) */}
-                          <div className="md:col-span-2">
+                          {/* Trace Button (3 Cols) */}
+                          <div className="md:col-span-3">
                             <button
                               type="button"
                               onClick={() => handleOpenTraceModal(idx)}
@@ -967,65 +900,14 @@ export default function ManufactureList() {
                               <Layers size={14} className="shrink-0" />
                               <span>
                                 {row.source_trace_id_array && row.source_trace_id_array.length > 0
-                                  ? `Traced (${row.source_trace_id_array.length})`
+                                  ? `Traced (${row.source_trace_id_array.length} stock items)`
                                   : 'Trace Stock'}
                               </span>
                             </button>
                           </div>
 
-                          {/* Source Item Searchable Select Dropdown (3 Cols) */}
-                          <div className="md:col-span-3 relative">
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                              Source Item (Inventory Stock)
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                placeholder="Search inventory item..."
-                                value={row.source_item_code}
-                                onChange={(e) => handleItemChange(idx, 'source_item_code', e.target.value)}
-                                onFocus={() => setOpenDropdown({ rowIndex: idx, type: 'source' })}
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:border-[var(--theme-color)] pr-8"
-                                autoComplete="off"
-                              />
-                              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            </div>
-
-                            {/* Dropdown Suggestions */}
-                            {isSourceDropdownOpen && filteredSourceSuggestions.length > 0 && (
-                              <div className="absolute z-40 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-slate-100 animate-fade-in">
-                                {filteredSourceSuggestions.map((inv) => (
-                                  <button
-                                    key={inv.item_code}
-                                    type="button"
-                                    onClick={() => handleSelectSourceItem(idx, inv.item_code)}
-                                    className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors cursor-pointer flex flex-col gap-0.5"
-                                  >
-                                    <div className="font-bold text-xs text-slate-900">{inv.item_code}</div>
-                                    <div className="text-[10px] text-slate-500 truncate">{inv.description || 'No description'}</div>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Source Qty (1.5 Cols) */}
-                          <div className="md:col-span-1 border-r border-slate-200 pr-2">
-                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                              Source Qty
-                            </label>
-                            <input
-                              type="number"
-                              step="any"
-                              placeholder="0"
-                              value={row.source_qty}
-                              onChange={(e) => handleItemChange(idx, 'source_qty', e.target.value)}
-                              className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:border-[var(--theme-color)] text-right font-mono"
-                            />
-                          </div>
-
-                          {/* Target Item Searchable Select Dropdown (3.5 Cols) */}
-                          <div className="md:col-span-3.5 relative">
+                          {/* Target Item Searchable Select Dropdown (4.5 Cols) */}
+                          <div className="md:col-span-4.5 relative">
                             <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                               Target Item (Catalog) <span className="text-red-500">*</span>
                             </label>
@@ -1061,8 +943,8 @@ export default function ManufactureList() {
                             )}
                           </div>
 
-                          {/* Target Qty (1 Col) */}
-                          <div className="md:col-span-1">
+                          {/* Target Qty (2.25 Cols) */}
+                          <div className="md:col-span-2.25">
                             <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                               Target Qty <span className="text-red-500">*</span>
                             </label>
@@ -1077,8 +959,8 @@ export default function ManufactureList() {
                             />
                           </div>
 
-                          {/* Price (1 Col) */}
-                          <div className="md:col-span-1">
+                          {/* Price (2.25 Cols) */}
+                          <div className="md:col-span-2.25">
                             <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
                               Price (₹)
                             </label>
@@ -1094,17 +976,66 @@ export default function ManufactureList() {
 
                         </div>
 
-                        {/* Display Selected Trace Summary */}
-                        {row.source_trace_id_array && row.source_trace_id_array.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] font-semibold text-slate-600 border-t border-slate-200 mt-2">
-                            <span className="font-black text-amber-900 uppercase text-[10px]">Selected Source Traces:</span>
-                            {row.source_trace_id_array.map((st, i) => (
-                              <span key={i} className="bg-amber-100 border border-amber-300 text-amber-900 px-2 py-0.5 rounded-md font-mono font-bold text-[10px] shadow-2xs">
-                                TR-{st.trace_id} (Qty: {st.Qty})
+                        {/* Enhanced Selected Source Traces Section */}
+                        <div className="pt-2 border-t border-slate-200 mt-2">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-black text-amber-950 uppercase text-[10px] tracking-wider flex items-center gap-1.5">
+                              <Layers size={13} className="text-amber-600" />
+                              Selected Source Traces ({row.source_trace_id_array?.length || 0})
+                            </span>
+                            {row.source_trace_id_array && row.source_trace_id_array.length > 0 && (
+                              <span className="text-[10px] font-mono font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md shadow-2xs">
+                                Total Consumed Qty: {row.source_trace_id_array.reduce((sum, s) => sum + (parseFloat(s.Qty) || 0), 0)}
                               </span>
-                            ))}
+                            )}
                           </div>
-                        )}
+
+                          {row.source_trace_id_array && row.source_trace_id_array.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                              {row.source_trace_id_array.map((st, i) => {
+                                const locParts = [
+                                  st.location,
+                                  st.rack ? `Rack: ${st.rack}` : null,
+                                  st.shelf_number ? `Shelf: ${st.shelf_number}` : null
+                                ].filter(Boolean).join(' | ');
+
+                                return (
+                                  <div key={i} className="bg-amber-50/70 border border-amber-200 rounded-xl p-2.5 space-y-1 text-xs shadow-2xs">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="font-mono font-black text-amber-950 bg-amber-200/80 px-1.5 py-0.2 rounded text-[10px]">
+                                        TR-{st.trace_id}
+                                      </span>
+                                      <span className="font-mono font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.2 rounded text-[10px]">
+                                        Qty: {st.Qty}
+                                      </span>
+                                    </div>
+
+                                    <div className="font-bold text-slate-900 truncate" title={st.item_code}>
+                                      {st.item_code || 'Stock Item'}
+                                    </div>
+
+                                    {locParts && (
+                                      <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600">
+                                        <MapPin size={10} className="text-amber-600 shrink-0" />
+                                        <span className="truncate" title={locParts}>{locParts}</span>
+                                      </div>
+                                    )}
+
+                                    {st.price && parseFloat(st.price) > 0 && (
+                                      <div className="text-[10px] font-mono text-slate-500 pt-0.5">
+                                        Rate: ₹{parseFloat(st.price).toFixed(2)}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-400 italic bg-slate-100/60 rounded-xl p-2.5 text-center border border-dashed border-slate-300">
+                              No source traces selected. Click "Trace Stock" above to select inventory stock to consume.
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -1140,134 +1071,13 @@ export default function ManufactureList() {
         </div>
       )}
 
-      {/* TRACE FROM INVENTORY POP-UP MODAL (`btn()`) */}
-      {traceModalState.isOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-          <div className="bg-white border border-slate-300 rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
-            
-            {/* Modal Header */}
-            <div className="bg-amber-50 px-6 py-4 border-b border-amber-200 flex justify-between items-center">
-              <div>
-                <h3 className="text-base font-black text-amber-950 flex items-center gap-2">
-                  <Layers size={18} className="text-amber-700" />
-                  Select Trace Items for Source ({traceModalState.source_item_code})
-                </h3>
-                <p className="text-xs text-amber-800 font-medium mt-0.5">
-                  Pick specific inventory trace items to consume and specify quantity for each
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTraceModalState(prev => ({ ...prev, isOpen: false }))}
-                className="p-1 hover:bg-amber-100 rounded-xl text-amber-800 transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Modal Body / Table */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {traceModalState.loading ? (
-                <div className="p-12 text-center text-slate-400 text-xs font-semibold flex flex-col items-center justify-center gap-2">
-                  <RefreshCw size={20} className="animate-spin text-amber-600" />
-                  Loading inventory trace items for {traceModalState.source_item_code}...
-                </div>
-              ) : traceModalState.traceItems.length === 0 ? (
-                <div className="p-10 text-center text-slate-500 text-xs font-semibold flex flex-col items-center justify-center gap-2 bg-amber-50/50 rounded-2xl border border-amber-200">
-                  <AlertCircle size={24} className="text-amber-600" />
-                  <span>No available inventory stock found for source item code <strong>'{traceModalState.source_item_code}'</strong>.</span>
-                </div>
-              ) : (
-                <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
-                  <table className="w-full border-collapse text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                        <th className="px-3.5 py-2.5">Trace ID</th>
-                        <th className="px-3.5 py-2.5">Item Code</th>
-                        <th className="px-3.5 py-2.5 text-right">Available Qty</th>
-                        <th className="px-3.5 py-2.5 text-right">Price (₹)</th>
-                        <th className="px-3.5 py-2.5">Qty to Consume</th>
-                        <th className="px-3.5 py-2.5 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white font-semibold">
-                      {traceModalState.traceItems.map((item) => {
-                        const tid = item.trace_id || item.trace_item_id;
-                        const currentSel = traceModalState.selectedSelections[tid];
-                        const currentQty = currentSel ? currentSel.Qty : '';
-
-                        return (
-                          <tr key={item.inventory_id || tid} className="hover:bg-amber-50/30 transition-colors">
-                            <td className="px-3.5 py-2.5 font-mono font-bold text-slate-900">
-                              <span className="bg-amber-100 border border-amber-300 text-amber-900 px-1.5 py-0.5 rounded text-[10px]">
-                                TR-{tid}
-                              </span>
-                            </td>
-                            <td className="px-3.5 py-2.5 text-slate-800">{item.item_code}</td>
-                            <td className="px-3.5 py-2.5 text-right font-mono font-black text-slate-900">
-                              {item.available_qty}
-                            </td>
-                            <td className="px-3.5 py-2.5 text-right font-mono text-slate-700">
-                              ₹{parseFloat(item.price || 0).toFixed(2)}
-                            </td>
-                            <td className="px-3.5 py-2.5">
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                max={item.available_qty}
-                                placeholder="0"
-                                value={currentQty}
-                                onChange={(e) => handleTraceQtyInput(item, e.target.value)}
-                                className="w-24 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
-                              />
-                            </td>
-                            <td className="px-3.5 py-2.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleMaxSelectTrace(item)}
-                                className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 border border-slate-200 transition-colors cursor-pointer"
-                              >
-                                Max Select
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex justify-between items-center">
-              <div className="text-xs font-bold text-slate-700">
-                Selected: <span className="text-amber-900 font-mono font-black">{Object.keys(traceModalState.selectedSelections).length}</span> trace item(s)
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTraceModalState(prev => ({ ...prev, isOpen: false }))}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmTraceSelections}
-                  className="px-5 py-2 text-white font-bold text-xs rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
-                  style={{ backgroundColor: 'var(--theme-color)' }}
-                >
-                  <Check size={14} />
-                  Select & Apply Traces
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
+      {/* INVENTORY TRACE SELECTOR MODAL COMPONENT */}
+      <InventoryTraceSelectorModal
+        isOpen={traceModalState.isOpen}
+        onClose={() => setTraceModalState({ isOpen: false, rowIndex: null, initialSelections: [] })}
+        onApply={handleApplyTraceSelections}
+        initialSelections={traceModalState.initialSelections}
+      />
 
     </div>
   );
