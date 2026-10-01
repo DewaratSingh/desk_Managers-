@@ -4,21 +4,39 @@ let currentLocalFiles = [];
 let currentAuthMode = "oauth";
 let currentNetworkInfo = { ipv4: "127.0.0.1", hostname: "DESKTOP", url: "http://127.0.0.1:5000" };
 
+let appInitialized = false;
+
+async function checkAndInitApp() {
+  if (appInitialized) return;
+  if (window.pywebview && window.pywebview.api) {
+    appInitialized = true;
+    await initApp();
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  checkAndInitApp();
+
   window.addEventListener("pywebviewready", () => {
-    initApp();
+    checkAndInitApp();
   });
 
-  setTimeout(() => {
+  let attempts = 0;
+  const interval = setInterval(() => {
+    attempts++;
     if (window.pywebview && window.pywebview.api) {
-      initApp();
+      checkAndInitApp();
+      clearInterval(interval);
+    } else if (attempts > 50) {
+      clearInterval(interval);
     }
-  }, 300);
+  }, 100);
 });
 
 async function initApp() {
   await loadBackupConfig();
   await loadGDriveConfig();
+  await loadFullConfigToSettings();
   await loadBackupFiles();
   await loadCloudHistory();
   await loadNetworkInfo();
@@ -121,15 +139,69 @@ async function loadGDriveConfig() {
     if (window.pywebview && window.pywebview.api) {
       const gconfig = await window.pywebview.api.get_gdrive_config();
       if (gconfig) {
-        document.getElementById("gdriveClientIdInput").value = gconfig.client_id || "";
-        document.getElementById("gdriveClientSecretInput").value = gconfig.client_secret || "";
-        document.getElementById("gdriveTokenInput").value = gconfig.access_token || "";
-        document.getElementById("gdriveFolderInput").value = gconfig.folder_id || "";
+        const clientIdEl = document.getElementById("gdriveClientIdInput");
+        const clientSecretEl = document.getElementById("gdriveClientSecretInput");
+        const tokenEl = document.getElementById("gdriveTokenInput");
+        const folderEl = document.getElementById("gdriveFolderInput");
+        const cookiesEl = document.getElementById("gdriveCookiesInput");
+
+        if (clientIdEl) clientIdEl.value = gconfig.client_id || "";
+        if (clientSecretEl) clientSecretEl.value = gconfig.client_secret || "";
+        if (tokenEl) tokenEl.value = gconfig.access_token || "";
+        if (folderEl) folderEl.value = gconfig.folder_id || "";
+        if (cookiesEl) cookiesEl.value = gconfig.cookies || "";
+
         updateGDriveBadge(!!gconfig.refresh_token || !!gconfig.access_token, !!gconfig.refresh_token);
       }
     }
   } catch (err) {
     console.error("Error loading GDrive config:", err);
+  }
+}
+
+async function loadFullConfigToSettings() {
+  try {
+    if (window.pywebview && window.pywebview.api) {
+      const fullConfig = await window.pywebview.api.get_full_config();
+      if (fullConfig) {
+        const backupDirEl = document.getElementById("settingBackupDirInput");
+        const hostEl = document.getElementById("settingHostInput");
+        const portEl = document.getElementById("settingPortInput");
+        const retentionEl = document.getElementById("settingRetentionInput");
+
+        if (backupDirEl) backupDirEl.value = fullConfig.backup_dir || fullConfig.selected_location?.backup_dir || "";
+        if (hostEl) hostEl.value = fullConfig.server_settings?.host || "127.0.0.1";
+        if (portEl) portEl.value = fullConfig.server_settings?.port || 5000;
+        if (retentionEl) retentionEl.value = fullConfig.app_settings?.backup_retention_days || 4;
+      }
+    }
+  } catch (err) {
+    console.error("Error loading full config to settings:", err);
+  }
+}
+
+async function saveSettingsTabConfig() {
+  const backupDir = document.getElementById("settingBackupDirInput")?.value.trim();
+  const host = document.getElementById("settingHostInput")?.value.trim();
+  const port = parseInt(document.getElementById("settingPortInput")?.value.trim() || "5000", 10);
+  const retention = parseInt(document.getElementById("settingRetentionInput")?.value.trim() || "4", 10);
+
+  try {
+    if (window.pywebview && window.pywebview.api) {
+      const res = await window.pywebview.api.save_full_config({
+        backup_dir: backupDir,
+        selected_location: { backup_dir: backupDir },
+        server_settings: { host, port, auto_start: true },
+        app_settings: { backup_retention_days: retention }
+      });
+      if (res && res.success) {
+        showToast("Settings successfully saved to config.json!", "success");
+        await loadBackupConfig();
+        await loadBackupFiles();
+      }
+    }
+  } catch (err) {
+    showToast(`Failed to save settings: ${err}`, "danger");
   }
 }
 
@@ -145,10 +217,11 @@ function updateGDriveBadge(configured, isPermanent = false) {
 }
 
 async function saveGDriveCredentials() {
-  const clientId = document.getElementById("gdriveClientIdInput").value.trim();
-  const clientSecret = document.getElementById("gdriveClientSecretInput").value.trim();
-  const token = document.getElementById("gdriveTokenInput").value.trim();
-  const folder = document.getElementById("gdriveFolderInput").value.trim();
+  const clientId = document.getElementById("gdriveClientIdInput") ? document.getElementById("gdriveClientIdInput").value.trim() : "";
+  const clientSecret = document.getElementById("gdriveClientSecretInput") ? document.getElementById("gdriveClientSecretInput").value.trim() : "";
+  const token = document.getElementById("gdriveTokenInput") ? document.getElementById("gdriveTokenInput").value.trim() : "";
+  const folder = document.getElementById("gdriveFolderInput") ? document.getElementById("gdriveFolderInput").value.trim() : "";
+  const cookies = document.getElementById("gdriveCookiesInput") ? document.getElementById("gdriveCookiesInput").value.trim() : "";
 
   try {
     if (window.pywebview && window.pywebview.api) {
@@ -156,10 +229,12 @@ async function saveGDriveCredentials() {
         client_id: clientId,
         client_secret: clientSecret,
         access_token: token,
-        folder_id: folder
+        folder_id: folder,
+        cookies: cookies
       });
       if (res && res.success) {
-        showToast("Google Drive API credentials saved successfully!", "success");
+        showToast("Google Drive API credentials & cookies saved to config.json!", "success");
+        await loadGDriveConfig();
       }
     }
   } catch (err) {

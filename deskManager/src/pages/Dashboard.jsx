@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, RefreshCw, X } from 'lucide-react';
+import { hasPermission } from '../utils/permissions';
 
 const statusStyle = (s) => {
   const v = (s || '').toLowerCase();
@@ -19,6 +20,9 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   const [activeTab, setActiveTab] = useState(propActiveTab || 'dashboard');
   const navigate = useNavigate();
   const location = useLocation();
+
+  const userStr = sessionStorage.getItem('user');
+  const currentUser = userStr ? JSON.parse(userStr) : null;
 
   const [trades, setTrades] = useState([]);
   const [tradesLoading, setTradesLoading] = useState(false);
@@ -140,8 +144,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
     finally { setRosLoading(false); }
   };
 
-
-
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -153,39 +155,47 @@ export default function Dashboard({ activeTab: propActiveTab }) {
               <p className="text-xs text-slate-500 mt-1">Quick stats and recent activity.</p>
             </div>
 
-            {/* 4 Buttons at top */}
+            {/* Action Buttons filtered by user permissions */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <button
-                onClick={() => navigate('/addRfq')}
-                className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
-              >
-                <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">SELL</span>
-                <span className="text-xs text-slate-500 font-semibold">Create Sale Trade (RFQ)</span>
-              </button>
+              {hasPermission(currentUser, 'manage_rfqs') && (
+                <button
+                  onClick={() => navigate('/addRfq')}
+                  className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
+                >
+                  <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">SELL</span>
+                  <span className="text-xs text-slate-500 font-semibold">Create Sale Trade (RFQ)</span>
+                </button>
+              )}
               
-              <button
-                onClick={() => navigate('/addReleaseOrder')}
-                className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
-              >
-                <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">ARC</span>
-                <span className="text-xs text-slate-500 font-semibold">Annual Rate Contract</span>
-              </button>
+              {hasPermission(currentUser, 'manage_orders') && (
+                <button
+                  onClick={() => navigate('/addReleaseOrder')}
+                  className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
+                >
+                  <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">ARC</span>
+                  <span className="text-xs text-slate-500 font-semibold">Annual Rate Contract</span>
+                </button>
+              )}
 
-              <button
-                onClick={() => navigate('/addReceivedQuotation')}
-                className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
-              >
-                <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">BUY</span>
-                <span className="text-xs text-slate-500 font-semibold">Create Buy Trade</span>
-              </button>
+              {hasPermission(currentUser, 'manage_quotations') && (
+                <button
+                  onClick={() => navigate('/addReceivedQuotation')}
+                  className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
+                >
+                  <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">BUY</span>
+                  <span className="text-xs text-slate-500 font-semibold">Create Buy Trade</span>
+                </button>
+              )}
 
-              <button
-                onClick={() => navigate('/addProcessRq')}
-                className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
-              >
-                <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">PROCESS</span>
-                <span className="text-xs text-slate-500 font-semibold">Create Process Trade</span>
-              </button>
+              {hasPermission(currentUser, 'manage_inventory') && (
+                <button
+                  onClick={() => navigate('/addProcessRq')}
+                  className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
+                >
+                  <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">PROCESS</span>
+                  <span className="text-xs text-slate-500 font-semibold">Create Process Trade</span>
+                </button>
+              )}
             </div>
 
             {/* List all trade at bottom */}
@@ -551,7 +561,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                               {ord.partyId}
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-slate-900">
-                              ₹{fmt(total)}
+                              {hasPermission(currentUser, 'view_pricing') ? `₹${fmt(total)}` : '***'}
                             </td>
                             <td className="px-4 py-3 text-right font-semibold">
                               <span 

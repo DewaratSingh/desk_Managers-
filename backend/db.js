@@ -807,16 +807,33 @@ const calculateTradeStatus = (documents = []) => {
 const appendDocToTrade = async (client, tradeId, docType, docId, companyId) => {
   if (!tradeId || !companyId) return;
   try {
-    const res = await client.query('SELECT documents FROM trades WHERE trade_id = $1 AND company_id = $2', [tradeId, companyId]);
+    const strVal = String(tradeId).trim();
+    const numVal = parseInt(strVal);
+    const isNum = !isNaN(numVal);
+
+    let res;
+    if (isNum) {
+      res = await client.query(
+        'SELECT id, documents FROM trades WHERE (trade_id = $1 OR id = $2) AND company_id = $3 LIMIT 1',
+        [strVal, numVal, companyId]
+      );
+    } else {
+      res = await client.query(
+        'SELECT id, documents FROM trades WHERE trade_id = $1 AND company_id = $2 LIMIT 1',
+        [strVal, companyId]
+      );
+    }
+
     if (res.rows.length > 0) {
       const documents = res.rows[0].documents || [];
+      const dbTradeId = res.rows[0].id;
 
       // Only append the new doc if not already present
       if (!documents.some(d => d.type === docType && d.id === docId)) {
         const updatedDocs = [...documents, { type: docType, id: docId }];
         await client.query(
-          'UPDATE trades SET documents = $1 WHERE trade_id = $2 AND company_id = $3',
-          [JSON.stringify(updatedDocs), tradeId, companyId]
+          'UPDATE trades SET documents = $1 WHERE id = $2 AND company_id = $3',
+          [JSON.stringify(updatedDocs), dbTradeId, companyId]
         );
       }
     }

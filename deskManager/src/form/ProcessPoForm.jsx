@@ -69,6 +69,9 @@ export default function ProcessPoForm() {
       .catch(console.error);
   }, []);
 
+  // State for restricting inventory trace modal to source items defined in RQ
+  const [rqSourceItemCodes, setRqSourceItemCodes] = useState([]);
+
   // Populate form fields from a Process RQ record object
   const populateFromProcessRq = (rq) => {
     if (!rq) return;
@@ -85,14 +88,16 @@ export default function ProcessPoForm() {
       setParty(rq.party);
       setPartyInput(rq.party);
     }
+    // Record source item codes from RQ to restrict inventory picker (do NOT auto-copy sourceItems)
     if (Array.isArray(rq.source_items) && rq.source_items.length > 0) {
-      setSourceItems(rq.source_items.map(s => ({
-        item_code: s.item_code,
-        description: s.description || '',
-        trace_item_id: s.trace_item_id || null,
-        qty: String(s.qty || 1)
-      })));
+      const allowedCodes = rq.source_items.map(s => s.item_code).filter(Boolean);
+      setRqSourceItemCodes(allowedCodes);
+    } else if (Array.isArray(rq.items) && rq.items.length > 0) {
+      const allowedCodes = rq.items.map(s => s.source_item_code || s.item_code).filter(Boolean);
+      setRqSourceItemCodes(allowedCodes);
     }
+    setSourceItems([]);
+
     if (Array.isArray(rq.target_items) && rq.target_items.length > 0) {
       setTargetItems(rq.target_items.map(t => ({
         item_code: t.item_code,
@@ -337,7 +342,7 @@ export default function ProcessPoForm() {
     );
   };
 
-  // Submit Process PO Form
+    // Submit Process PO Form
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -356,32 +361,38 @@ export default function ProcessPoForm() {
       return;
     }
 
-    if (sourceItems.length === 0) {
-      toast.error('Please select at least one Source Item using "Select Source Trace Items"');
+    // Derive source and target items if modal arrays are empty
+    let finalSourceItems = sourceItems;
+    let finalTargetItems = targetItems;
+
+    if (finalSourceItems.length === 0 && Array.isArray(items) && items.length > 0) {
+      finalSourceItems = items.map(s => ({
+        item_code: s.source_item_code || s.target_item_code,
+        trace_item_id: s.trace_item_id || null,
+        qty: parseFloat(s.source_qty) || parseFloat(s.target_qty) || 1
+      }));
+    }
+
+    if (finalTargetItems.length === 0 && Array.isArray(items) && items.length > 0) {
+      finalTargetItems = items.map(t => ({
+        item_code: t.target_item_code,
+        qty: parseFloat(t.target_qty) || 1,
+        price: parseFloat(t.price) || 0,
+        gst_type: gstType,
+        gst_rate: parseFloat(gstRate) || 0,
+        shipping_address: shippingAddress || null,
+        delivery_date: dateOfEnd || null
+      }));
+    }
+
+    if (finalSourceItems.length === 0) {
+      toast.error('Please enter at least one source item or target item in the table');
       return;
     }
 
-    if (targetItems.length === 0) {
-      toast.error('Please select at least one Target Item using "Add Target Item"');
+    if (finalTargetItems.length === 0) {
+      toast.error('Please enter at least one target output product in the table');
       return;
-    }
-
-    for (let i = 0; i < sourceItems.length; i++) {
-      const src = sourceItems[i];
-      const q = parseFloat(src.qty);
-      if (isNaN(q) || q <= 0) {
-        toast.error(`Source Item #${i + 1} (${src.item_code}): Quantity must be greater than 0`);
-        return;
-      }
-    }
-
-    for (let i = 0; i < targetItems.length; i++) {
-      const tgt = targetItems[i];
-      const q = parseFloat(tgt.qty);
-      if (isNaN(q) || q <= 0) {
-        toast.error(`Target Item #${i + 1} (${tgt.item_code}): Target Quantity must be greater than 0`);
-        return;
-      }
     }
 
     setIsSaving(true);
@@ -404,20 +415,8 @@ export default function ProcessPoForm() {
         delivery_date: dateOfEnd || null,
         shipping_address: shippingAddress || null,
         message: message || null,
-        source_items: sourceItems.map(s => ({
-          item_code: s.item_code,
-          trace_item_id: s.trace_item_id,
-          qty: parseFloat(s.qty) || 0
-        })),
-        target_items: targetItems.map(t => ({
-          item_code: t.item_code,
-          qty: parseFloat(t.qty) || 0,
-          price: parseFloat(t.price) || 0,
-          gst_type: gstType,
-          gst_rate: parseFloat(gstRate) || 0,
-          shipping_address: shippingAddress || null,
-          delivery_date: dateOfEnd || null
-        }))
+        source_items: finalSourceItems,
+        target_items: finalTargetItems
       };
 
       const res = await fetch('/api/process-po', {
@@ -1016,6 +1015,9 @@ export default function ProcessPoForm() {
         onClose={() => setIsSourceModalOpen(false)}
         onApply={handleApplySourceSelections}
         initialSelections={sourceItems}
+        allowedItemCodes={rqSourceItemCodes.length > 0 ? rqSourceItemCodes : null}
+        rqId={receivedQId || queryRqId}
+        apiEndpoint="/api/process-po/trace-items"
       />
 
       {/* TARGET ITEM SELECTOR MODAL */}

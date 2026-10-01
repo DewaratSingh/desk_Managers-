@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -19,14 +19,31 @@ import {
   ChevronRight
 } from "lucide-react";
 import logoImg from "../assets/image.jpeg";
+import { hasPermission } from "../utils/permissions";
 
 export default function Sidebar({ user, onLogout }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isShrunk, setIsShrunk] = useState(() => {
     return localStorage.getItem("sidebar-shrunk") === "true";
   });
+  const [backendMenuItems, setBackendMenuItems] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    // Fetch server-side computed permissions and allowed navigation from backend
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.user) {
+          sessionStorage.setItem('user', JSON.stringify(data.user));
+          if (Array.isArray(data.allowedNavigation)) {
+            setBackendMenuItems(data.allowedNavigation);
+          }
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const toggleShrunk = () => {
     setIsShrunk((prev) => {
@@ -36,18 +53,45 @@ export default function Sidebar({ user, onLogout }) {
     });
   };
 
-  const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
-    { id: "purchase-order", label: "Order", icon: ClipboardList, path: "/order" },
-    { id: "add-customer", label: "Party", icon: Building2, path: "/party" },
-    { id: "add-buyer", label: "Contact", icon: UserPlus, path: "/buyer" },
-    { id: "add-item", label: "Item", icon: Package, path: "/item" },
-    { id: "inventory", label: "Inventory", icon: Warehouse, path: "/inventory" },
-    { id: "manufacture", label: "Manufacture", icon: Factory, path: "/manufactures" },
-    { id: "arc", label: "ARC", icon: FileSignature, path: "/arc" },
-    { id: "gst-category", label: "GST Categories", icon: Percent, path: "/gst-category" },
-    { id: "users", label: "Users", icon: Users, path: "/users" },
+  const iconMap = {
+    LayoutDashboard,
+    ClipboardList,
+    UserPlus,
+    Users,
+    Package,
+    Warehouse,
+    Factory,
+    FileText,
+    FileSignature,
+    Percent,
+    Building2
+  };
+
+  const defaultMenuItems = [
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard", permission: "view_dashboard" },
+    { id: "purchase-order", label: "Order", icon: ClipboardList, path: "/order", permission: "manage_orders" },
+    { id: "add-customer", label: "Party", icon: Building2, path: "/party", permission: "manage_parties" },
+    { id: "add-buyer", label: "Contact", icon: UserPlus, path: "/buyer", permission: "manage_contacts" },
+    { id: "add-item", label: "Item", icon: Package, path: "/item", permission: "manage_items" },
+    { id: "inventory", label: "Inventory", icon: Warehouse, path: "/inventory", permission: "manage_inventory" },
+    { id: "manufacture", label: "Manufacture", icon: Factory, path: "/manufactures", permission: "manage_manufacture" },
+    { id: "arc", label: "ARC", icon: FileSignature, path: "/arc", permission: "manage_arc" },
+    { id: "gst-category", label: "GST Categories", icon: Percent, path: "/gst-category", permission: "manage_gst" },
+    { id: "users", label: "Users", icon: Users, path: "/users", permission: "manage_users" },
   ];
+
+  // Resolve backend-authorized navigation items
+  const menuItems = backendMenuItems
+    ? backendMenuItems.map(item => ({
+        ...item,
+        icon: typeof item.icon === 'string' ? (iconMap[item.icon] || LayoutDashboard) : item.icon
+      }))
+    : defaultMenuItems;
+
+  // Filter out any menu options that are NOT ALLOWED for this user
+  const visibleMenuItems = menuItems.filter(
+    (item) => !item.permission || hasPermission(user, item.permission)
+  );
 
   const NavContent = () => (
     <div className="flex flex-col h-full overflow-hidden text-slate-100" style={{ backgroundColor: "var(--theme-primary)" }}>
@@ -86,65 +130,71 @@ export default function Sidebar({ user, onLogout }) {
 
       {/* Menu Links — scrolls independently */}
       <nav className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden ${isShrunk ? 'px-2' : 'px-3'} py-2`}>
-        {menuItems.map((item) => {
-          const isActive =
-            item.id === "dashboard"
-              ? location.pathname === "/dashboard" ||
-                location.pathname.startsWith("/trade/") ||
-                location.pathname === "/addRfq" ||
-                location.pathname.startsWith("/updateRfq/") ||
-                location.pathname === "/addQuotation" ||
-                location.pathname.startsWith("/updateQuotation/") ||
-                location.pathname === "/addReceivedQuotation" ||
-                location.pathname.startsWith("/updateReceivedQuotation/")
-              : item.id === "purchase-order"
-                ? location.pathname.startsWith("/order") ||
-                  location.pathname.startsWith("/addPurchaseOrder") ||
-                  location.pathname.startsWith("/updatePurchaseOrder/") ||
-                  location.pathname.startsWith("/addReceivedPurchaseOrder") ||
-                  location.pathname.startsWith("/updateReceivedPurchaseOrder/") ||
-                  location.pathname.startsWith("/addReleaseOrder") ||
-                  location.pathname.startsWith("/updateReleaseOrder/") ||
-                  location.pathname.startsWith("/addDeliveryNote") ||
-                  location.pathname.startsWith("/updateDeliveryNote/") ||
-                  location.pathname.startsWith("/addInvoice") ||
-                  location.pathname.startsWith("/updateInvoice/") ||
-                  location.pathname.startsWith("/release-order/")
-                : location.pathname.startsWith(item.path);
+        {visibleMenuItems.length === 0 ? (
+          <div className="p-3 text-center text-xs font-semibold text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg my-2">
+            {!isShrunk ? 'Nothing allowed to user' : 'No Access'}
+          </div>
+        ) : (
+          visibleMenuItems.map((item) => {
+            const isActive =
+              item.id === "dashboard"
+                ? location.pathname === "/dashboard" ||
+                  location.pathname.startsWith("/trade/") ||
+                  location.pathname === "/addRfq" ||
+                  location.pathname.startsWith("/updateRfq/") ||
+                  location.pathname === "/addQuotation" ||
+                  location.pathname.startsWith("/updateQuotation/") ||
+                  location.pathname === "/addReceivedQuotation" ||
+                  location.pathname.startsWith("/updateReceivedQuotation/")
+                : item.id === "purchase-order"
+                  ? location.pathname.startsWith("/order") ||
+                    location.pathname.startsWith("/addPurchaseOrder") ||
+                    location.pathname.startsWith("/updatePurchaseOrder/") ||
+                    location.pathname.startsWith("/addReceivedPurchaseOrder") ||
+                    location.pathname.startsWith("/updateReceivedPurchaseOrder/") ||
+                    location.pathname.startsWith("/addReleaseOrder") ||
+                    location.pathname.startsWith("/updateReleaseOrder/") ||
+                    location.pathname.startsWith("/addDeliveryNote") ||
+                    location.pathname.startsWith("/updateDeliveryNote/") ||
+                    location.pathname.startsWith("/addInvoice") ||
+                    location.pathname.startsWith("/updateInvoice/") ||
+                    location.pathname.startsWith("/release-order/")
+                  : location.pathname.startsWith(item.path);
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                navigate(item.path);
-                setIsOpen(false);
-              }}
-              className={`group w-full flex items-center ${isShrunk ? 'justify-center gap-0 px-1 py-2' : 'gap-3 px-3 py-1.5'} mb-1 rounded-lg font-semibold text-sm transition-all duration-150 text-left cursor-pointer ${isActive ? "text-white shadow-md" : "text-slate-300 hover:text-white hover:bg-slate-800/60"}`}
-              style={
-                isActive ? { backgroundColor: "var(--theme-secondary)" } : undefined
-              }
-              title={isShrunk ? item.label : undefined}
-            >
-              {(() => {
-                const Icon = item.icon;
-                return (
-                  <div className={`p-1.5 rounded-md transition-all duration-200 flex items-center justify-center shrink-0 ${
-                    isActive 
-                      ? "bg-white/20 text-white shadow-sm" 
-                      : "bg-slate-800/80 text-slate-400 group-hover:bg-slate-700/60 group-hover:text-white"
-                  }`}>
-                    <Icon
-                      size={16}
-                      strokeWidth={isActive ? 2.25 : 1.75}
-                      className="transition-transform duration-200 group-hover:scale-110"
-                    />
-                  </div>
-                );
-              })()}
-              {!isShrunk && <span className="truncate">{item.label}</span>}
-            </button>
-          );
-        })}
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  navigate(item.path);
+                  setIsOpen(false);
+                }}
+                className={`group w-full flex items-center ${isShrunk ? 'justify-center gap-0 px-1 py-2' : 'gap-3 px-3 py-1.5'} mb-1 rounded-lg font-semibold text-sm transition-all duration-150 text-left cursor-pointer ${isActive ? "text-white shadow-md" : "text-slate-300 hover:text-white hover:bg-slate-800/60"}`}
+                style={
+                  isActive ? { backgroundColor: "var(--theme-secondary)" } : undefined
+                }
+                title={isShrunk ? item.label : undefined}
+              >
+                {(() => {
+                  const Icon = item.icon;
+                  return (
+                    <div className={`p-1.5 rounded-md transition-all duration-200 flex items-center justify-center shrink-0 ${
+                      isActive 
+                        ? "bg-white/20 text-white shadow-sm" 
+                        : "bg-slate-800/80 text-slate-400 group-hover:bg-slate-700/60 group-hover:text-white"
+                    }`}>
+                      <Icon
+                        size={16}
+                        strokeWidth={isActive ? 2.25 : 1.75}
+                        className="transition-transform duration-200 group-hover:scale-110"
+                      />
+                    </div>
+                  );
+                })()}
+                {!isShrunk && <span className="truncate">{item.label}</span>}
+              </button>
+            );
+          })
+        )}
       </nav>
 
       {/* User / Sign Out — always visible at bottom */}

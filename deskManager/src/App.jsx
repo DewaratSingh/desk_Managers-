@@ -38,7 +38,7 @@ function App() {
       
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<HomeView />} />
+        <Route path="/" element={<LoginView />} />
         <Route path="/login" element={<LoginView />} />
         <Route path="/signup" element={<SignupView />} />
         

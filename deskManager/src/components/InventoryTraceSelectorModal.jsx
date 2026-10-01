@@ -7,7 +7,10 @@ export default function InventoryTraceSelectorModal({
   onClose,
   onApply,
   initialSelections = {},
-  sourceItemCode = ''
+  sourceItemCode = '',
+  allowedItemCodes = null,
+  rqId = null,
+  apiEndpoint = ''
 }) {
   const [traceItems, setTraceItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -31,16 +34,34 @@ export default function InventoryTraceSelectorModal({
       setSelectedSelections(selMap);
       fetchTraceItems();
     }
-  }, [isOpen, sourceItemCode]);
+  }, [isOpen, sourceItemCode, JSON.stringify(allowedItemCodes), rqId]);
 
   const fetchTraceItems = async () => {
     setLoading(true);
     try {
-      const url = sourceItemCode && sourceItemCode.trim()
-        ? `/api/manufacture/trace-items?item_code=${encodeURIComponent(sourceItemCode.trim())}`
-        : '/api/manufacture/trace-items';
+      let baseUrl = apiEndpoint || '/api/process-po/trace-items';
+      const params = new URLSearchParams();
 
-      const res = await fetch(url);
+      if (sourceItemCode && sourceItemCode.trim()) {
+        params.append('item_code', sourceItemCode.trim());
+      } else if (allowedItemCodes) {
+        const codesStr = Array.isArray(allowedItemCodes) ? allowedItemCodes.join(',') : String(allowedItemCodes);
+        if (codesStr.trim()) params.append('allowed_item_codes', codesStr.trim());
+      }
+      
+      if (rqId) {
+        params.append('rq_id', String(rqId).trim());
+      }
+
+      const queryString = params.toString();
+      const url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
+
+      let res = await fetch(url);
+      if (!res.ok && baseUrl.includes('/api/process-po/trace-items')) {
+        const fallbackUrl = queryString ? `/api/manufacture/trace-items?${queryString}` : '/api/manufacture/trace-items';
+        res = await fetch(fallbackUrl);
+      }
+
       if (res.ok) {
         const data = await res.json();
         setTraceItems(data);
@@ -134,11 +155,21 @@ export default function InventoryTraceSelectorModal({
               <Layers size={20} />
             </div>
             <div>
-              <h3 className="text-base font-black text-amber-950 flex items-center gap-2">
+              <h3 className="text-base font-black text-amber-950 flex flex-wrap items-center gap-2">
                 Select Inventory Trace Stock
                 {sourceItemCode && (
                   <span className="text-xs font-mono font-bold bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-md">
                     Filter: {sourceItemCode}
+                  </span>
+                )}
+                {!sourceItemCode && allowedItemCodes && (
+                  <span className="text-xs font-mono font-bold bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-md">
+                    RQ Source Items: {Array.isArray(allowedItemCodes) ? allowedItemCodes.join(', ') : allowedItemCodes}
+                  </span>
+                )}
+                {rqId && !sourceItemCode && !allowedItemCodes && (
+                  <span className="text-xs font-mono font-bold bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-md">
+                    Linked RQ: {rqId}
                   </span>
                 )}
               </h3>

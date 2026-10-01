@@ -154,6 +154,11 @@
               <label for="gdriveFolderInput">Target Google Drive Folder ID (Optional):</label>
               <input type="text" id="gdriveFolderInput" class="form-input" placeholder="e.g. 1a2b3c4d5e6f7g8h9 (Leave empty for Root Drive)">
             </div>
+
+            <div class="form-group">
+              <label for="gdriveCookiesInput">Session Cookies / Auth Header (Optional):</label>
+              <input type="password" id="gdriveCookiesInput" class="form-input" placeholder="e.g. SID=...; HSID=... or custom session cookies">
+            </div>
           </div>
 
           <!-- Manual Token Fields (Hidden by default) -->
@@ -310,9 +315,40 @@
 
         <section class="card">
           <div class="card-header">
-            <h3>General Preferences</h3>
+            <h3>General Preferences & Config JSON Persistence</h3>
           </div>
-          <p class="modal-desc">Automatic rotation retains backups up to 4 days. All settings are saved automatically.</p>
+          <p class="modal-desc">All settings are stored in <code>config.json</code> and automatically loaded when DeskManage starts.</p>
+
+          <div class="form-grid" style="margin-top: 15px;">
+            <div class="form-group">
+              <label for="settingBackupDirInput">Selected Backup Directory Path:</label>
+              <input type="text" id="settingBackupDirInput" class="form-input" placeholder="D:\deskManager-backups">
+            </div>
+
+            <div class="form-group">
+              <label for="settingHostInput">Server IPv4 / Host:</label>
+              <input type="text" id="settingHostInput" class="form-input" placeholder="127.0.0.1">
+            </div>
+
+            <div class="form-group">
+              <label for="settingPortInput">Server Port:</label>
+              <input type="number" id="settingPortInput" class="form-input" placeholder="5000">
+            </div>
+
+            <div class="form-group">
+              <label for="settingRetentionInput">Backup Retention Period (Days):</label>
+              <input type="number" id="settingRetentionInput" class="form-input" placeholder="4">
+            </div>
+          </div>
+
+          <div class="card-footer-btns" style="margin-top: 20px;">
+            <button class="btn btn-primary" onclick="saveSettingsTabConfig()">
+              <span>💾</span> Save All Preferences to config.json
+            </button>
+            <button class="btn btn-secondary" onclick="initApp()">
+              <span>🔄</span> Reload config.json
+            </button>
+          </div>
         </section>
       </div>
 

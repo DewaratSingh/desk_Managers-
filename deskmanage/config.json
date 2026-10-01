@@ -1,0 +1,33 @@
+{
+    "app_info": {
+        "name": "DeskManage",
+        "version": "2.3.0",
+        "description": "Desktop Control Center & Backup Manager",
+        "environment": "production"
+    },
+    "selected_location": {
+        "backup_dir": "D:\\deskManager-backups",
+        "description": "Primary local directory storing all database and system backup dumps"
+    },
+    "server_settings": {
+        "host": "127.0.0.1",
+        "port": 5000,
+        "auto_start": true
+    },
+    "gdrive": {
+        "client_id": "",
+        "client_secret": "",
+        "refresh_token": "",
+        "access_token": "",
+        "folder_id": "",
+        "auth_mode": "oauth",
+        "cookies": ""
+    },
+    "app_settings": {
+        "theme": "dark",
+        "auto_backup": false,
+        "backup_retention_days": 4
+    },
+    "backup_dir": "D:\\deskManager-backups",
+    "cloud_backups": []
+}

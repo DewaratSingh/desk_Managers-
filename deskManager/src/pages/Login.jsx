@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { getFirstAllowedPath } from '../components/ProtectedRoute'
+import { toast } from 'react-toastify'
 // Inline SVGs are used for icons to avoid adding peer-dependent packages
 import logoImg from '../assets/image.jpeg'
 
@@ -41,11 +43,18 @@ export default function LoginView({ onLogin = () => {} }) {
         throw new Error(data.error || 'Failed to sign in')
       }
       
+      const targetPath = getFirstAllowedPath(data.user)
+      if (!targetPath) {
+        toast.error('Access Denied: Nothing allowed to user. Please contact system administrator.')
+        setApiError('Access Denied: Nothing allowed to user.')
+        return
+      }
+
       sessionStorage.setItem('user', JSON.stringify(data.user))
       sessionStorage.setItem('token', data.token)
       
       onLogin(data.user)
-      navigate('/dashboard')
+      navigate(targetPath)
     } catch (err) {
       setApiError(err.message)
     } finally {

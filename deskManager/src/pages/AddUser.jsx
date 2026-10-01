@@ -8,7 +8,9 @@ import {
   ArrowLeft,
   ListFilter,
   Trash2,
-  ShieldAlert
+  ShieldAlert,
+  Check,
+  X
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -18,13 +20,20 @@ const EMPTY_FORM = {
 };
 
 const AVAILABLE_PERMISSIONS = [
+  { value: 'view_dashboard', label: 'View Main Dashboard & Trades' },
+  { value: 'manage_orders', label: 'Manage Orders (PO/RO)' },
   { value: 'manage_rfqs', label: 'Manage RFQs' },
   { value: 'manage_quotations', label: 'Manage Quotations' },
-  { value: 'manage_orders', label: 'Manage Orders (PO/RO)' },
-  { value: 'manage_inventory', label: 'Manage Inventory' },
+  { value: 'manage_inventory', label: 'Manage Inventory Stock' },
+  { value: 'manage_items', label: 'Manage Catalog Items' },
+  { value: 'manage_manufacture', label: 'Manage Manufacturing & Processing' },
+  { value: 'manage_parties', label: 'Manage Parties (Customers)' },
+  { value: 'manage_contacts', label: 'Manage Contacts (Buyers)' },
+  { value: 'manage_arc', label: 'Manage ARC Contracts' },
+  { value: 'manage_gst', label: 'Manage GST Categories' },
   { value: 'view_history', label: 'View Item Quote & Stock History' },
   { value: 'view_pricing', label: 'View Pricing & Financial Details' },
-  { value: 'manage_users', label: 'Manage Users' }
+  { value: 'manage_users', label: 'Manage Users & System Settings' }
 ];
 
 export default function AddUserView() {
@@ -188,11 +197,12 @@ export default function AddUserView() {
   );
 
   const renderPermissionsBadge = (u) => {
-    if (u.role === 'admin' || !u.permissions || u.permissions.length === 0) {
+    const r = (u.role || '').toLowerCase();
+    if (r === 'admin' || r === 'owner' || !u.permissions || u.permissions.length === 0) {
       return (
-        <span className="px-2 py-0.5 text-[10px] font-black text-red-700 bg-red-50 border border-red-200 rounded-full inline-flex items-center gap-1 shadow-sm">
-          <ShieldAlert size={10} />
-          Full Permissions
+        <span className="px-2.5 py-0.5 text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-full inline-flex items-center gap-1 shadow-sm">
+          <ShieldAlert size={10} className="text-emerald-600" />
+          Full Permissions (Owner / Admin)
         </span>
       );
     }
@@ -360,29 +370,62 @@ export default function AddUserView() {
                 />
               </div>
 
-              {/* Permissions Checklist */}
+              {/* Permissions Scope (Allow / Not Allow Buttons) */}
               <div className="pt-2">
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
                   Access Permissions Scope
                 </label>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
-                  <p className="text-[11px] text-slate-400 font-semibold mb-2">Select files and features this operator can manage:</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <p className="text-[11px] text-slate-500 font-semibold mb-1">
+                    Toggle <span className="text-emerald-600 font-bold">ALLOW</span> or <span className="text-red-600 font-bold">NOT ALLOW</span> for each system module:
+                  </p>
+                  <div className="space-y-2.5">
                     {AVAILABLE_PERMISSIONS.map((perm) => {
-                      const isChecked = formData.permissions.includes(perm.value);
+                      const isAllowed = formData.permissions.includes(perm.value);
                       return (
-                        <label
+                        <div
                           key={perm.value}
-                          className="flex items-center gap-2.5 p-2 bg-white rounded-lg border border-slate-200 hover:border-slate-300 cursor-pointer text-xs font-semibold text-slate-700 transition-colors select-none"
+                          className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-white rounded-xl border border-slate-200 gap-3 transition-all hover:border-slate-300 shadow-2xs"
                         >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => togglePermission(perm.value)}
-                            className="w-4 h-4 accent-red-600 rounded cursor-pointer"
-                          />
-                          <span>{perm.label}</span>
-                        </label>
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">{perm.label}</p>
+                            <p className="text-[10px] text-slate-400 font-medium">Grant or restrict access to {perm.label.toLowerCase()}</p>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                            {/* ALLOW Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!isAllowed) togglePermission(perm.value);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 border ${
+                                isAllowed
+                                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs scale-[1.02]"
+                                  : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200"
+                              }`}
+                            >
+                              <Check size={13} strokeWidth={2.5} />
+                              <span>ALLOW</span>
+                            </button>
+
+                            {/* NOT ALLOW Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isAllowed) togglePermission(perm.value);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 border ${
+                                !isAllowed
+                                  ? "bg-red-600 text-white border-red-600 shadow-xs scale-[1.02]"
+                                  : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200"
+                              }`}
+                            >
+                              <X size={13} strokeWidth={2.5} />
+                              <span>NOT ALLOW</span>
+                            </button>
+                          </div>
+                        </div>
                       );
                     })}
                   </div>

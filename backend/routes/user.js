@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { pool } = require('../db');
+const { requirePermission } = require('../middleware/auth');
 
 // GET /api/users - Get all users belonging to the company of the logged in user
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('manage_users'), async (req, res) => {
   const companyId = req.user.company_id;
   if (!companyId) {
     return res.status(400).json({ error: 'Company ID not found in session.' });
@@ -23,7 +24,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/users - Create a new user or link an existing one to the company
-router.post('/', async (req, res) => {
+router.post('/', requirePermission('manage_users'), async (req, res) => {
   const companyId = req.user.company_id;
   if (!companyId) {
     return res.status(400).json({ error: 'Company ID not found in session.' });
@@ -83,7 +84,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/users/:username - Update user details
-router.put('/:username', async (req, res) => {
+router.put('/:username', requirePermission('manage_users'), async (req, res) => {
   const companyId = req.user.company_id;
   const targetUsername = req.params.username;
 
@@ -118,7 +119,7 @@ router.put('/:username', async (req, res) => {
 });
 
 // DELETE /api/users/:username - Delete user from company
-router.delete('/:username', async (req, res) => {
+router.delete('/:username', requirePermission('manage_users'), async (req, res) => {
   const companyId = req.user.company_id;
   const targetUsername = req.params.username;
 

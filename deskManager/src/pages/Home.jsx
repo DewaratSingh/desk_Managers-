@@ -5,21 +5,22 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 gsap.registerPlugin(ScrollTrigger);
 
 const styles = `
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,450;9..144,600;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 .pds-root{
-  --ink:#12181f;
-  --ink-2:#1b2430;
-  --ink-3:#242f3d;
-  --ink-4:#2d3a49;
-  --paper:#f4eedb;
-  --paper-2:#ece2c4;
-  --paper-line:#dcd0ac;
-  --rust:#b24a1c;
-  --rust-dark:#8a3814;
-  --gold:#bd9435;
-  --muted-ink:#6d6555;
-  --muted-paper:#a9a08a;
+  --ink:#181b3a;
+  --ink-2:#20244a;
+  --ink-3:#272c58;
+  --ink-4:#2f3568;
+  --paper:#ffffff;
+  --paper-2:#f4f4fd;
+  --paper-line:#e4e3f5;
+  --rust:#4f46e5;
+  --rust-dark:#3c33c4;
+  --violet:#8b5cf6;
+  --gold:#f59e0b;
+  --muted-ink:#5b5f7e;
+  --muted-paper:#a7abcf;
 
   background:var(--paper);
   color:var(--ink);
@@ -37,7 +38,7 @@ html{scroll-behavior:smooth;}
 }
 
 .pds-root h1,.pds-root h2,.pds-root h3{
-  font-family:'Fraunces',serif;
+  font-family:'Space Grotesk',sans-serif;
   font-weight:600;
   letter-spacing:-0.01em;
 }
@@ -83,18 +84,12 @@ html{scroll-behavior:smooth;}
 
 .brand{display:flex;align-items:center;gap:10px;}
 
-.seal{
-  width:34px;height:34px;
-  border-radius:50%;
-  border:1.5px solid var(--ink);
-  display:flex;align-items:center;justify-content:center;
-  font-family:'Fraunces',serif;
-  font-weight:700;
-  font-size:13px;
-  flex-shrink:0;
+.brand-logo{
+  height:24px;
+  width:auto;
+  color:var(--ink);
+  display:block;
 }
-
-.brand-name{font-family:'Fraunces',serif;font-weight:600;font-size:19px;}
 
 .menu{display:flex;gap:34px;align-items:center;}
 
@@ -150,7 +145,7 @@ html{scroll-behavior:smooth;}
 
 .btn-primary:hover{
   transform:translateY(-3px);
-  box-shadow:0 14px 26px rgba(178,74,28,.35);
+  box-shadow:0 14px 26px rgba(79,70,229,.35);
 }
 
 .btn-secondary{
@@ -390,7 +385,7 @@ html{scroll-behavior:smooth;}
   content:"";
   width:clamp(28px,4vw,64px);
   height:1px;
-  background:rgba(178,74,28,.5);
+  background:rgba(79,70,229,.5);
 }
 
 .feature-card h2{
@@ -403,7 +398,7 @@ html{scroll-behavior:smooth;}
 
 .feature-card p.feature-body{
   font-size:clamp(1rem,1.15vw,1.15rem);
-  color:#b9b3a4;
+  color:#b7bbdd;
   line-height:1.7;
   max-width:46ch;
 }
@@ -420,7 +415,7 @@ html{scroll-behavior:smooth;}
 
 .feature-points li{
   font-size:13.5px;
-  color:#cfc9b8;
+  color:#c7cbe8;
   display:flex;
   align-items:center;
   gap:9px;
@@ -460,7 +455,7 @@ html{scroll-behavior:smooth;}
   right:-14%;
   bottom:-20%;
   border-radius:50%;
-  background:rgba(178,74,28,.22);
+  background:rgba(79,70,229,.22);
   filter:blur(90px);
 }
 
@@ -484,8 +479,8 @@ html{scroll-behavior:smooth;}
 .feature-card:nth-child(2){background:var(--ink-2);}
 .feature-card:nth-child(3){background:var(--ink-3);}
 .feature-card:nth-child(4){background:var(--ink-4);}
-.feature-card:nth-child(5){background:#2d231e;}
-.feature-card:nth-child(6){background:#1f2b26;}
+.feature-card:nth-child(5){background:#241f52;}
+.feature-card:nth-child(6){background:#1c2050;}
 
 /* pinned HUD: section name, counter, progress rail */
 .features-hud{
@@ -619,7 +614,7 @@ html{scroll-behavior:smooth;}
   border-radius:50%;
   background:var(--rust);
   transform:translate(-50%,-50%);
-  box-shadow:0 0 0 5px rgba(178,74,28,.18);
+  box-shadow:0 0 0 5px rgba(79,70,229,.18);
 }
 
 .steps-row{
@@ -667,7 +662,7 @@ html{scroll-behavior:smooth;}
 }
 
 .step h3{font-size:1.1rem;font-weight:600;margin-bottom:6px;}
-.step p{font-size:13px;color:#b9b3a4;line-height:1.5;}
+.step p{font-size:13px;color:#b7bbdd;line-height:1.5;}
 
 /* ---------- SHOWCASE ---------- */
 
@@ -716,7 +711,7 @@ html{scroll-behavior:smooth;}
 }
 
 .desk-topbar{display:flex;gap:6px;margin-bottom:18px;}
-.desk-topbar span{width:9px;height:9px;border-radius:50%;background:#3a4351;}
+.desk-topbar span{width:9px;height:9px;border-radius:50%;background:#3d4373;}
 
 .desk-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:16px;}
 
@@ -725,7 +720,7 @@ html{scroll-behavior:smooth;}
 .desk-panel h4{
   font-family:'Inter',sans-serif;
   font-size:11.5px;
-  color:#8a93a3;
+  color:#9aa0c9;
   font-weight:600;
   margin-bottom:12px;
 }
@@ -734,9 +729,9 @@ html{scroll-behavior:smooth;}
   display:flex;
   justify-content:space-between;
   font-size:12.5px;
-  color:#cfd3da;
+  color:#d6d8ee;
   padding:7px 0;
-  border-bottom:1px solid #2a3341;
+  border-bottom:1px solid #2c3363;
 }
 .desk-row:last-child{border-bottom:none;}
 .desk-row .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--rust);}
@@ -755,14 +750,14 @@ html{scroll-behavior:smooth;}
 
 .stat-tile{background:var(--ink-2);border-radius:10px;padding:14px;}
 .stat-tile .v{font-family:'IBM Plex Mono',monospace;font-size:1.2rem;color:var(--paper);}
-.stat-tile .l{font-size:11px;color:#8a93a3;margin-top:2px;}
+.stat-tile .l{font-size:11px;color:#9aa0c9;margin-top:2px;}
 
 /* ---------- TESTIMONIAL ---------- */
 
 .testimonial-section{padding:130px 0;background:var(--paper);text-align:center;}
 
 .testimonial-section blockquote{
-  font-family:'Fraunces',serif;
+  font-family:'Space Grotesk',sans-serif;
   font-weight:450;
   font-style:italic;
   font-size:clamp(1.6rem,3.4vw,2.6rem);
@@ -782,7 +777,7 @@ html{scroll-behavior:smooth;}
 .try-now-card{
   max-width:1200px;
   margin:0 auto;
-  background:linear-gradient(150deg,var(--ink),#1e2a1f 60%,var(--ink));
+  background:linear-gradient(150deg,var(--ink),#2a1f5c 60%,var(--ink));
   color:var(--paper);
   border-radius:24px;
   padding:100px 70px;
@@ -796,7 +791,7 @@ html{scroll-behavior:smooth;}
   position:absolute;
   width:460px;height:460px;
   border-radius:50%;
-  background:rgba(178,74,28,.18);
+  background:rgba(79,70,229,.18);
   filter:blur(110px);
   top:-140px;right:-120px;
 }
@@ -813,7 +808,7 @@ html{scroll-behavior:smooth;}
 .try-description{
   max-width:620px;
   margin:0 auto;
-  color:#b9b3a4;
+  color:#b7bbdd;
   font-size:1.08rem;
   line-height:1.75;
   position:relative;
@@ -843,7 +838,7 @@ html{scroll-behavior:smooth;}
   color:var(--paper);
   font-weight:500;
 }
-.stat span{color:#8f9aa8;font-size:13px;}
+.stat span{color:#a2a6cf;font-size:13px;}
 
 /* ---------- FOOTER ---------- */
 
@@ -855,24 +850,24 @@ html{scroll-behavior:smooth;}
   gap:80px;
   flex-wrap:wrap;
   padding-bottom:70px;
-  border-bottom:1px solid #2a3341;
+  border-bottom:1px solid #2c3363;
 }
 
-.footer-brand .brand-name{color:var(--paper);}
-.footer-brand .seal{border-color:var(--paper);color:var(--paper);}
-.footer-brand p{color:#8a93a3;font-size:14px;margin-top:16px;max-width:280px;line-height:1.6;}
+.footer-brand p{color:#9aa0c9;font-size:14px;margin-top:16px;max-width:280px;line-height:1.6;}
+
+.footer-logo{color:var(--paper);height:22px;}
 
 .footer-links{display:flex;gap:80px;flex-wrap:wrap;}
 .footer-links div{display:flex;flex-direction:column;}
-.footer-links h4{font-size:13px;color:#8a93a3;font-weight:600;margin-bottom:18px;}
-.footer-links a{color:#cfd3da;text-decoration:none;margin-bottom:12px;font-size:14.5px;}
+.footer-links h4{font-size:13px;color:#9aa0c9;font-weight:600;margin-bottom:18px;}
+.footer-links a{color:#d6d8ee;text-decoration:none;margin-bottom:12px;font-size:14.5px;}
 .footer-links a:hover{color:var(--paper);}
 
 .footer-bottom{
   display:flex;
   justify-content:space-between;
   padding-top:28px;
-  color:#6a7382;
+  color:#7d81ab;
   font-size:13px;
   flex-wrap:wrap;
   gap:10px;
@@ -917,6 +912,23 @@ html{scroll-behavior:smooth;}
 }
 `;
 
+/* Wordmark logo — traced from the uploaded artwork, recolored with
+   currentColor so it can sit on both light (navbar) and dark (footer)
+   backgrounds just by setting the parent's `color`. */
+const Logo = ({ className }) => (
+  <svg
+    className={className}
+    viewBox="0 0 209 117"
+    xmlns="http://www.w3.org/2000/svg"
+    role="img"
+    aria-label="Desk Manager"
+  >
+    <path d="M31.632 82.0956H22.512V78.6396L18.048 82.1916C17.024 82.4476 15.792 82.5756 14.352 82.5756C12.24 82.5756 10.336 82.0316 8.64 80.9436C6.976 79.8236 5.664 78.3196 4.704 76.4316C3.776 74.5436 3.312 72.4636 3.312 70.1916C3.312 67.7276 4.064 65.4236 5.568 63.2796C7.072 61.1036 8.944 59.3756 11.184 58.0956C13.456 56.7836 15.648 56.1276 17.76 56.1276C19.52 56.1276 21.12 56.6236 22.56 57.6156V47.7276L18.288 44.7516V43.2636L26.496 40.1916H28.32V78.4956L32.592 80.1756L31.632 82.0956ZM16.8 78.4956C17.76 78.4956 18.672 78.3676 19.536 78.1116C20.432 77.8236 21.424 77.2956 22.512 76.5276V65.5836C22.32 63.9836 21.568 62.6876 20.256 61.6956C18.976 60.6716 17.216 60.1596 14.976 60.1596C11.36 60.1596 9.552 62.7356 9.552 67.8876C9.552 70.8956 10.176 73.4236 11.424 75.4716C12.672 77.4876 14.464 78.4956 16.8 78.4956ZM52.8518 82.1916C51.5718 82.4476 50.0358 82.5756 48.2438 82.5756C46.1318 82.5756 44.2278 82.0316 42.5318 80.9436C40.8678 79.8236 39.5558 78.3196 38.5958 76.4316C37.6678 74.5436 37.2038 72.4636 37.2038 70.1916C37.2038 67.7276 37.9558 65.4236 39.4598 63.2796C40.9638 61.1036 42.8358 59.3756 45.0758 58.0956C47.3478 56.7836 49.5398 56.1276 51.6518 56.1276C54.6918 56.1276 57.0438 57.3276 58.7078 59.7276C60.4038 62.1276 61.2518 65.2956 61.2518 69.2316H43.4918C43.6838 71.9516 44.4198 74.1756 45.6998 75.9036C47.0118 77.6316 48.7878 78.4956 51.0278 78.4956C53.1078 78.4956 56.0678 76.8796 59.9078 73.6476L61.3478 75.4716L52.8518 82.1916ZM48.8678 60.1596C45.4118 60.1596 43.6038 62.5276 43.4438 67.2636H54.6758C54.3878 65.5356 54.0838 64.2236 53.7638 63.3276C53.4758 62.3996 52.9478 61.6476 52.1798 61.0716C51.4438 60.4636 50.3398 60.1596 48.8678 60.1596ZM92.6715 58.0956L80.5275 82.0956H76.8795L69.3915 63.8076L64.9275 61.2156V59.7276L73.1355 55.6956L74.9595 62.9436L80.8155 77.2476L87.5835 63.1836L81.1995 58.5276L82.1595 56.6076H92.6715V58.0956Z" fill="currentColor" />
+    <path d="M84.5 81.5956H80.5L87.5 69.0956L89 74.0956L84.5 81.5956Z" fill="currentColor" stroke="currentColor" />
+    <path d="M117.472 82.096H108.544L97.9838 65.056L95.7278 63.424L96.4478 61.984H99.1358C101.312 61.984 103.024 61.44 104.272 60.352C105.552 59.232 106.192 57.712 106.192 55.792C106.192 53.264 105.488 51.168 104.08 49.504C102.672 47.808 100.624 46.96 97.9358 46.96C96.1438 46.96 94.4958 47.488 92.9918 48.544V78.448L98.0318 80.176L97.0718 82.096H82.4798V80.608L86.9918 77.056V47.872L81.9998 46.24L82.9598 44.32H88.5278C91.4398 44.32 94.3038 44.224 97.1198 44.032C99.1678 43.904 100.688 43.84 101.68 43.84C103.824 43.84 105.728 44.272 107.392 45.136C109.088 46 110.384 47.168 111.28 48.64C112.208 50.112 112.672 51.728 112.672 53.488C112.672 55.088 112.176 56.624 111.184 58.096C110.192 59.536 108.88 60.8 107.248 61.888C105.648 62.944 103.952 63.744 102.16 64.288L105.28 65.344L112.72 77.344L118.432 80.176L117.472 82.096ZM146.012 82H136.892V77.824L131.468 82.096C130.828 82.352 130.028 82.48 129.068 82.48C126.316 82.48 124.316 81.792 123.068 80.416C121.852 79.04 121.244 77.392 121.244 75.472C121.244 74.32 121.66 73.184 122.492 72.064C123.324 70.944 124.508 69.888 126.044 68.896H136.892V65.824C136.892 63.744 136.332 62.272 135.212 61.408C134.124 60.544 132.62 60.112 130.7 60.112C128.716 60.112 126.284 61.312 123.404 63.712L121.964 61.888L128.876 56.416C130.156 56.16 131.692 56.032 133.484 56.032C136.396 56.032 138.652 56.752 140.252 58.192C141.852 59.6 142.652 61.664 142.652 64.384V78.4L146.972 80.08L146.012 82ZM130.604 78.4C132.556 78.4 134.652 77.504 136.892 75.712V70.864H128.396C127.98 71.376 127.676 71.888 127.484 72.4C127.324 72.912 127.244 73.472 127.244 74.08C127.244 75.264 127.548 76.288 128.156 77.152C128.764 77.984 129.58 78.4 130.604 78.4ZM164.497 82.096C163.761 82.352 162.865 82.48 161.809 82.48C159.153 82.48 157.201 81.792 155.953 80.416C154.737 79.008 154.129 76.848 154.129 73.936V59.92H148.945V57.952L158.065 47.344H159.889V57.952H168.529V59.92H159.889V74.512C159.889 77.104 161.137 78.4 163.633 78.4C164.305 78.4 164.945 78.256 165.553 77.968C166.193 77.68 166.977 77.168 167.905 76.432L169.345 78.256L164.497 82.096ZM201.459 82H192.339V65.824C192.339 64.064 192.067 62.832 191.523 62.128C190.979 61.424 190.003 61.072 188.595 61.072C187.539 61.072 186.483 61.264 185.427 61.648C184.403 62.032 183.187 62.768 181.779 63.856V78.4L186.099 80.08L185.139 82H171.747V80.512L176.019 77.152V47.632L171.747 44.656V43.168L179.955 40.096H181.779V61.6L188.355 56.416C189.027 56.16 189.907 56.032 190.995 56.032C193.171 56.032 194.899 56.704 196.179 58.048C197.459 59.36 198.099 61.152 198.099 63.424V78.4L202.419 80.08L201.459 82Z" fill="currentColor" />
+  </svg>
+);
+
 const FEATURES = [
   {
     label: 'Stock control',
@@ -925,12 +937,16 @@ const FEATURES = [
     points: ['Live quantity per SKU', 'Batch and serial tracking', 'Low-stock alerts'],
     caption: 'Stock ledger',
     icon: (
-      <svg className="feature-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-        <rect x="15" y="55" width="14" height="30" rx="2" fill="#b24a1c" />
-        <rect x="35" y="35" width="14" height="50" rx="2" fill="#bd9435" />
-        <rect x="55" y="45" width="14" height="40" rx="2" fill="#b24a1c" />
-        <rect x="75" y="20" width="14" height="65" rx="2" fill="#f4eedb" />
-        <line x1="10" y1="90" x2="94" y2="90" stroke="#f4eedb" strokeOpacity=".35" strokeWidth="2" />
+      <svg className="feature-icon" viewBox="0 0 100 100" aria-hidden="true">
+        <ellipse cx="50" cy="88" rx="34" ry="5" fill="#ffffff" opacity="0.08" />
+        <rect x="16" y="52" width="24" height="34" rx="4" fill="#4f46e5" />
+        <rect x="16" y="52" width="24" height="8" rx="4" fill="#ffffff" opacity="0.25" />
+        <rect x="42" y="34" width="24" height="52" rx="4" fill="#8b5cf6" />
+        <rect x="42" y="34" width="24" height="8" rx="4" fill="#ffffff" opacity="0.25" />
+        <rect x="68" y="44" width="20" height="42" rx="4" fill="#f59e0b" />
+        <rect x="68" y="44" width="20" height="8" rx="4" fill="#ffffff" opacity="0.3" />
+        <circle cx="78" cy="20" r="12" fill="#ffffff" />
+        <path d="M72 20 L77 25 L85 15" fill="none" stroke="#4f46e5" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     )
   },
@@ -941,11 +957,13 @@ const FEATURES = [
     points: ['Margin by department', 'Store-wise performance', 'Per-product profit'],
     caption: 'Margin view',
     icon: (
-      <svg className="feature-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-        <circle cx="50" cy="50" r="38" stroke="#bd9435" strokeWidth="3" fill="none" />
-        <circle cx="50" cy="50" r="24" stroke="#b24a1c" strokeWidth="3" fill="none" />
-        <circle cx="50" cy="50" r="10" fill="#f4eedb" />
-        <path d="M50 12 A38 38 0 0 1 88 50" stroke="#f4eedb" strokeWidth="3" fill="none" strokeLinecap="round" />
+      <svg className="feature-icon" viewBox="0 0 100 100" aria-hidden="true">
+        <ellipse cx="48" cy="90" rx="32" ry="5" fill="#ffffff" opacity="0.08" />
+        <path d="M48 50 L48 14 A36 36 0 0 1 79 68 Z" fill="#4f46e5" />
+        <path d="M48 50 L79 68 A36 36 0 0 1 22 74 Z" fill="#8b5cf6" />
+        <path d="M48 50 L22 74 A36 36 0 0 1 48 14 Z" fill="#f59e0b" />
+        <circle cx="48" cy="50" r="15" fill="#ffffff" />
+        <path d="M42 50 L47 55 L56 44" fill="none" stroke="#4f46e5" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     )
   },
@@ -956,11 +974,14 @@ const FEATURES = [
     points: ['Auto-linked documents', 'Full audit trail', 'No re-entry'],
     caption: 'Paper trail',
     icon: (
-      <svg className="feature-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-        <rect x="14" y="14" width="46" height="58" rx="4" fill="#f4eedb" />
-        <rect x="36" y="26" width="46" height="58" rx="4" fill="#bd9435" />
-        <path d="M22 80 L72 80" stroke="#b24a1c" strokeWidth="4" strokeLinecap="round" />
-        <polyline points="62,72 72,80 62,88" stroke="#b24a1c" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <svg className="feature-icon" viewBox="0 0 100 100" aria-hidden="true">
+        <ellipse cx="50" cy="90" rx="34" ry="5" fill="#ffffff" opacity="0.08" />
+        <rect x="14" y="18" width="46" height="58" rx="6" fill="#8b5cf6" />
+        <path d="M24 32 L50 32 M24 42 L46 42 M24 52 L40 52" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" opacity="0.85" />
+        <rect x="40" y="34" width="46" height="58" rx="6" fill="#4f46e5" />
+        <path d="M50 48 L76 48 M50 58 L72 58 M50 68 L64 68" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" opacity="0.85" />
+        <circle cx="80" cy="26" r="10" fill="#f59e0b" />
+        <path d="M75 26 L79 30 L86 22" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     )
   },
@@ -971,11 +992,12 @@ const FEATURES = [
     points: ['Search across all records', 'Keyboard shortcut', 'Recent results kept'],
     caption: 'Global search',
     icon: (
-      <svg className="feature-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-        <circle cx="42" cy="42" r="28" stroke="#f4eedb" strokeWidth="5" fill="none" />
-        <line x1="62" y1="62" x2="86" y2="86" stroke="#b24a1c" strokeWidth="8" strokeLinecap="round" />
-        <line x1="30" y1="36" x2="54" y2="36" stroke="#bd9435" strokeWidth="3" strokeLinecap="round" />
-        <line x1="30" y1="48" x2="46" y2="48" stroke="#bd9435" strokeWidth="3" strokeLinecap="round" />
+      <svg className="feature-icon" viewBox="0 0 100 100" aria-hidden="true">
+        <ellipse cx="45" cy="90" rx="32" ry="5" fill="#ffffff" opacity="0.08" />
+        <circle cx="42" cy="42" r="26" fill="#4f46e5" />
+        <circle cx="42" cy="42" r="17" fill="#ffffff" />
+        <rect x="60" y="60" width="34" height="12" rx="6" fill="#f59e0b" transform="rotate(45 60 60)" />
+        <circle cx="42" cy="42" r="6" fill="#8b5cf6" />
       </svg>
     )
   },
@@ -986,10 +1008,14 @@ const FEATURES = [
     points: ['Past purchase cost', 'Previous customer quotes', 'Selling-price trend'],
     caption: 'Price trend',
     icon: (
-      <svg className="feature-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-        <rect x="16" y="16" width="68" height="68" rx="8" fill="#f4eedb" />
-        <polyline points="28,68 46,46 60,54 74,28" fill="none" stroke="#b24a1c" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="74" cy="28" r="5" fill="#bd9435" />
+      <svg className="feature-icon" viewBox="0 0 100 100" aria-hidden="true">
+        <ellipse cx="50" cy="90" rx="34" ry="5" fill="#ffffff" opacity="0.08" />
+        <rect x="12" y="12" width="76" height="70" rx="10" fill="#ffffff" opacity="0.95" />
+        <rect x="26" y="52" width="10" height="20" rx="3" fill="#8b5cf6" opacity="0.5" />
+        <rect x="42" y="40" width="10" height="32" rx="3" fill="#8b5cf6" opacity="0.5" />
+        <rect x="58" y="30" width="10" height="42" rx="3" fill="#8b5cf6" opacity="0.5" />
+        <path d="M22 62 L40 42 L54 50 L76 22" fill="none" stroke="#4f46e5" strokeWidth="4.4" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="76" cy="22" r="6" fill="#f59e0b" />
       </svg>
     )
   },
@@ -1000,11 +1026,14 @@ const FEATURES = [
     points: ['No record locks', 'Role-based access', 'Live updates'],
     caption: 'Shared desk',
     icon: (
-      <svg className="feature-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-        <circle cx="32" cy="35" r="12" fill="#bd9435" />
-        <path d="M12 75 C12 57 22 50 32 50 C42 50 52 57 52 75" fill="#b24a1c" />
-        <circle cx="68" cy="35" r="12" fill="#f4eedb" />
-        <path d="M48 75 C48 57 58 50 68 50 C78 50 88 57 88 75" fill="#bd9435" opacity="0.8" />
+      <svg className="feature-icon" viewBox="0 0 100 100" aria-hidden="true">
+        <ellipse cx="50" cy="90" rx="34" ry="5" fill="#ffffff" opacity="0.08" />
+        <path d="M12 82 C12 58 22 48 36 48 C50 48 60 58 60 82 Z" fill="#8b5cf6" />
+        <circle cx="36" cy="30" r="16" fill="#8b5cf6" />
+        <path d="M40 82 C40 60 50 50 64 50 C78 50 88 60 88 82 Z" fill="#4f46e5" />
+        <circle cx="64" cy="32" r="15" fill="#4f46e5" />
+        <circle cx="70" cy="16" r="9" fill="#f59e0b" />
+        <path d="M67 16 L69.5 18.5 L74 13" fill="none" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     )
   }
@@ -1220,8 +1249,7 @@ export default function HomeView() {
       <div className="navbar-wrapper">
         <nav className="navbar">
           <div className="brand">
-            <div className="seal">PDS</div>
-            <div className="brand-name">Desk Manager</div>
+            <Logo className="brand-logo" /> 
           </div>
           <div className="menu">
             <a href="#features">Features</a>
@@ -1242,6 +1270,8 @@ export default function HomeView() {
             <h1 className="hero-title">
               <span className="line">Every quotation, order</span>
               <span className="line">and invoice on <em>one desk.</em></span>
+
+              
             </h1>
 
             <p className="hero-subtitle">
@@ -1262,42 +1292,37 @@ export default function HomeView() {
 
           <div className="hero-art">
             <svg viewBox="0 0 480 460" xmlns="http://www.w3.org/2000/svg">
-              <ellipse cx="240" cy="400" rx="200" ry="26" fill="#e3d6ab" opacity="0.5" />
+              <ellipse cx="240" cy="410" rx="180" ry="22" fill="#4f46e5" opacity="0.06" />
 
-              <g className="doc doc-a" style={{ '--r': '-8deg' }} transform="translate(90,230) rotate(-8)">
-                <rect width="150" height="190" rx="6" fill="#efe6cd" stroke="#d8cfb5" strokeWidth="1.5" />
-                <line x1="20" y1="34" x2="120" y2="34" stroke="#c9bd97" strokeWidth="4" />
-                <line x1="20" y1="54" x2="100" y2="54" stroke="#d8cfb5" strokeWidth="3" />
-                <line x1="20" y1="70" x2="110" y2="70" stroke="#d8cfb5" strokeWidth="3" />
-                <line x1="20" y1="86" x2="90" y2="86" stroke="#d8cfb5" strokeWidth="3" />
+              <g className="doc doc-c" style={{ '--r': '-3deg' }} transform="translate(150,140) rotate(-3)">
+                <rect width="150" height="190" rx="14" fill="#f4f4fd" />
               </g>
 
-              <g className="doc doc-b" style={{ '--r': '6deg' }} transform="translate(230,205) rotate(6)">
-                <rect width="150" height="190" rx="6" fill="#f7f1de" stroke="#d8cfb5" strokeWidth="1.5" />
-                <line x1="20" y1="34" x2="120" y2="34" stroke="#b24a1c" strokeWidth="4" />
-                <line x1="20" y1="56" x2="105" y2="56" stroke="#d8cfb5" strokeWidth="3" />
-                <line x1="20" y1="72" x2="95" y2="72" stroke="#d8cfb5" strokeWidth="3" />
-                <line x1="20" y1="88" x2="112" y2="88" stroke="#d8cfb5" strokeWidth="3" />
-                <line x1="20" y1="104" x2="80" y2="104" stroke="#d8cfb5" strokeWidth="3" />
-                <text x="20" y="150" fontFamily="IBM Plex Mono, monospace" fontSize="12" fill="#8a3814">INV-2291</text>
+              <g className="doc doc-a" style={{ '--r': '-8deg' }} transform="translate(80,225) rotate(-8)">
+                <rect width="150" height="190" rx="14" fill="#8b5cf6" />
+                <rect x="20" y="26" width="80" height="10" rx="5" fill="#ffffff" opacity="0.9" />
+                <rect x="20" y="50" width="100" height="7" rx="3.5" fill="#ffffff" opacity="0.55" />
+                <rect x="20" y="66" width="90" height="7" rx="3.5" fill="#ffffff" opacity="0.55" />
+                <rect x="20" y="82" width="70" height="7" rx="3.5" fill="#ffffff" opacity="0.55" />
+                <rect x="20" y="140" width="46" height="24" rx="8" fill="#ffffff" opacity="0.2" />
               </g>
 
-              <g className="doc doc-c" style={{ '--r': '-3deg' }} transform="translate(165,150) rotate(-3)">
-                <rect width="150" height="190" rx="6" fill="#efe6cd" stroke="#d8cfb5" strokeWidth="1.5" />
-                <line x1="20" y1="34" x2="120" y2="34" stroke="#c9bd97" strokeWidth="4" />
-                <line x1="20" y1="54" x2="100" y2="54" stroke="#d8cfb5" strokeWidth="3" />
-                <line x1="20" y1="70" x2="110" y2="70" stroke="#d8cfb5" strokeWidth="3" />
+              <g className="doc doc-b" style={{ '--r': '6deg' }} transform="translate(225,200) rotate(6)">
+                <rect width="150" height="190" rx="14" fill="#4f46e5" />
+                <rect x="20" y="26" width="70" height="10" rx="5" fill="#ffffff" />
+                <rect x="20" y="50" width="105" height="7" rx="3.5" fill="#ffffff" opacity="0.6" />
+                <rect x="20" y="66" width="95" height="7" rx="3.5" fill="#ffffff" opacity="0.6" />
+                <rect x="20" y="82" width="112" height="7" rx="3.5" fill="#ffffff" opacity="0.6" />
+                <text x="20" y="150" fontFamily="IBM Plex Mono, monospace" fontSize="13" fill="#ffffff" opacity="0.85">INV-2291</text>
               </g>
 
-              <g className="stamp" transform="translate(280,220)">
-                <circle r="46" fill="none" stroke="#b24a1c" strokeWidth="4" />
-                <circle r="36" fill="none" stroke="#b24a1c" strokeWidth="1.5" />
-                <text x="0" y="-6" textAnchor="middle" fontFamily="IBM Plex Mono, monospace" fontSize="12" fill="#b24a1c" fontWeight="600">APPROVED</text>
-                <text x="0" y="12" textAnchor="middle" fontFamily="IBM Plex Mono, monospace" fontSize="10" fill="#b24a1c">PDS · DESK</text>
+              <g className="stamp" transform="translate(300,215)">
+                <circle r="44" fill="#f59e0b" />
+                <path d="M-16 0 L-5 12 L20 -16" fill="none" stroke="#ffffff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
               </g>
 
-              <path className="growth-line" d="M60 400 C 140 380, 160 320, 220 330 S 320 260, 400 200" fill="none" stroke="#b24a1c" strokeWidth="3" strokeLinecap="round" />
-              <circle className="pulse-dot" cx="400" cy="200" r="6" fill="#b24a1c" />
+              <path className="growth-line" d="M60 400 C 140 380, 160 320, 220 330 S 320 260, 400 200" fill="none" stroke="#4f46e5" strokeWidth="4" strokeLinecap="round" />
+              <circle className="pulse-dot" cx="400" cy="200" r="7" fill="#f59e0b" />
             </svg>
           </div>
 
@@ -1310,7 +1335,9 @@ export default function HomeView() {
           <span>Quotations</span><span>Purchase orders</span><span>Delivery notes</span><span>Goods receipt</span><span>Invoices</span><span>Payment collection</span><span>Stock ledgers</span>
         </div>
       </div>
-
+ <div className="marquee-section">
+        Feature
+      </div>
       <section className="features-section" id="features">
         <div className="features-wrapper">
           {FEATURES.map((f) => (
@@ -1469,7 +1496,7 @@ export default function HomeView() {
       <footer className="footer">
         <div className="footer-top">
           <div className="footer-brand">
-            <div className="brand"><div className="seal">PDS</div><div className="brand-name">Desk Manager</div></div>
+            <div className="brand"><Logo className="brand-logo footer-logo" /></div>
             <p>Business management for trading and distribution teams — from the first quotation to the last rupee collected.</p>
           </div>
 

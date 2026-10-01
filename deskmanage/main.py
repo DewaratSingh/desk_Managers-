@@ -15,7 +15,14 @@ import tkinter as tk
 from tkinter import filedialog
 import webview
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+def get_config_file_path():
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "config.json")
+
+CONFIG_FILE = get_config_file_path()
 DEFAULT_BACKUP_DIR = r"D:\deskManager-backups"
 
 def get_resource_path(relative_path):
@@ -24,21 +31,57 @@ def get_resource_path(relative_path):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
 
 def load_config():
-    if os.path.exists(CONFIG_FILE):
+    config_path = get_config_file_path()
+    if os.path.exists(config_path):
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                backup_path = data.get("backup_dir") or data.get("selected_location", {}).get("backup_dir", DEFAULT_BACKUP_DIR)
+                data["backup_dir"] = backup_path
+                if "selected_location" not in data or not isinstance(data["selected_location"], dict):
+                    data["selected_location"] = {}
+                data["selected_location"]["backup_dir"] = backup_path
+                return data
+        except Exception as e:
+            print(f"Error loading config: {e}")
     return {
+        "app_info": {
+            "name": "DeskManage",
+            "version": "2.3.0",
+            "description": "Desktop Control Center & Backup Manager",
+            "environment": "production"
+        },
+        "selected_location": {
+            "backup_dir": DEFAULT_BACKUP_DIR,
+            "description": "Primary local directory storing all database and system backup dumps"
+        },
+        "server_settings": {
+            "host": "127.0.0.1",
+            "port": 5000,
+            "auto_start": True
+        },
+        "gdrive": {
+            "client_id": "",
+            "client_secret": "",
+            "refresh_token": "",
+            "access_token": "",
+            "folder_id": "",
+            "auth_mode": "oauth",
+            "cookies": ""
+        },
+        "app_settings": {
+            "theme": "dark",
+            "auto_backup": False,
+            "backup_retention_days": 4
+        },
         "backup_dir": DEFAULT_BACKUP_DIR,
-        "gdrive": {"client_id": "", "client_secret": "", "refresh_token": "", "access_token": "", "folder_id": ""},
         "cloud_backups": []
     }
 
 def save_config(config):
+    config_path = get_config_file_path()
     try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=4)
     except Exception as e:
         print(f"Error saving config: {e}")
@@ -70,19 +113,41 @@ class Api:
         }
 
     def get_backup_config(self):
+        self.config = load_config()
+        self.backup_dir = self.config.get("backup_dir", DEFAULT_BACKUP_DIR)
         return {"backup_dir": self.backup_dir}
 
     def get_gdrive_config(self):
+        self.config = load_config()
         return self.config.get("gdrive", {})
 
+    def get_full_config(self):
+        self.config = load_config()
+        return self.config
+
     def save_gdrive_config(self, gdata):
+        self.config = load_config()
         if "gdrive" not in self.config:
             self.config["gdrive"] = {}
-        for key in ["client_id", "client_secret", "access_token", "folder_id"]:
+        for key in ["client_id", "client_secret", "access_token", "folder_id", "cookies", "refresh_token"]:
             if key in gdata:
-                self.config["gdrive"][key] = gdata[key].strip()
+                val = gdata[key]
+                self.config["gdrive"][key] = val.strip() if isinstance(val, str) else val
         save_config(self.config)
         return {"success": True}
+
+    def save_full_config(self, new_config):
+        if isinstance(new_config, dict):
+            self.config = load_config()
+            self.config.update(new_config)
+            if "backup_dir" in new_config:
+                self.backup_dir = new_config["backup_dir"]
+                if "selected_location" not in self.config or not isinstance(self.config["selected_location"], dict):
+                    self.config["selected_location"] = {}
+                self.config["selected_location"]["backup_dir"] = self.backup_dir
+            save_config(self.config)
+            return {"success": True}
+        return {"success": False, "error": "Invalid configuration data"}
 
     def get_valid_access_token(self):
         gconfig = self.config.get("gdrive", {})
@@ -333,6 +398,9 @@ class Api:
             self.backup_dir = os.path.abspath(new_dir)
             os.makedirs(self.backup_dir, exist_ok=True)
             self.config["backup_dir"] = self.backup_dir
+            if "selected_location" not in self.config or not isinstance(self.config["selected_location"], dict):
+                self.config["selected_location"] = {}
+            self.config["selected_location"]["backup_dir"] = self.backup_dir
             save_config(self.config)
             return {"success": True, "backup_dir": self.backup_dir}
         return {"success": False}

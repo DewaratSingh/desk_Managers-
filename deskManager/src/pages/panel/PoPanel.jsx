@@ -102,11 +102,31 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
               className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
             >
               <Truck size={13} />
-              Process Delivery
+              Create Delivery Note
             </Link>
           </div>
         </div>
+
         <div className="p-6 space-y-5">
+          {/* Next Step Banner */}
+          <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+            <div>
+              <p className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                <Truck size={14} className="text-indigo-600" /> Next Step: Delivery Note (DN)
+              </p>
+              <p className="text-[11px] font-semibold text-indigo-700 mt-0.5">
+                Process PO is saved and registered. Proceed to dispatch finished goods by creating a Delivery Note.
+              </p>
+            </div>
+            <Link
+              to={`/addDeliveryNote?trade_id=${encodeURIComponent(tradeId)}`}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer shrink-0"
+            >
+              <Truck size={14} />
+              Create Delivery Note
+            </Link>
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-slate-100">
             {[
               { label: 'PO Date',     value: fmtDate(purchaseOrder.date) },

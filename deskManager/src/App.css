@@ -6,7 +6,7 @@
 :root {
 	/* 2-Color Theme System for whole system (except home page) */
 	--theme-primary: #0f172a;           /* Primary Theme: Onyx Dark (#0f172a / #000000) */
-	--theme-primary-hover: #1e293b;
+	--theme-primary-hover: #e8eaec;
 	--theme-primary-light: #283d53;
 	--theme-primary-border: #334155;
 	--theme-primary-text: #ffffff;

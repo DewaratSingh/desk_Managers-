@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const { requirePermission, sanitizePrices } = require('../middleware/auth');
 
 // Get inventory items (with optional search, limit & offset)
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('manage_inventory'), async (req, res) => {
   const { q } = req.query || {};
   const limit = req.query.limit ? parseInt(req.query.limit) : null;
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
@@ -66,7 +67,7 @@ router.get('/', async (req, res) => {
     }
 
     const result = await pool.query(queryText, params);
-    res.json(result.rows);
+    res.json(sanitizePrices(result.rows, req.user));
   } catch (err) {
     console.error('Error fetching inventory:', err.message);
     res.status(500).json({ error: 'Failed to fetch inventory' });

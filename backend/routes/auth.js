@@ -53,6 +53,35 @@ router.post('/login', async (req, res) => {
   }
 });
 
+const { authMiddleware, computeAllowedNavigation } = require('../middleware/auth');
+
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const userRes = await pool.query(
+      'SELECT username, role, name, surname, email, phone, permissions, company_id FROM users WHERE username = $1',
+      [req.user.username]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const user = userRes.rows[0];
+    if (user.company_id) {
+      const companyResult = await pool.query('SELECT name FROM companies WHERE id = $1', [user.company_id]);
+      if (companyResult.rows.length > 0) {
+        user.company_name = companyResult.rows[0].name;
+      }
+    }
+
+    const allowedNavigation = computeAllowedNavigation(user);
+    res.json({ user, allowedNavigation });
+  } catch (err) {
+    console.error('Auth /me error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 router.post('/logout', (req, res) => {
   res.clearCookie('token', { path: '/' });
   res.json({ message: 'Logged out successfully.' });
