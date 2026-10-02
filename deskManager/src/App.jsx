@@ -22,6 +22,7 @@ import InvoiceForm from './form/InvoiceForm'
 import PurchaseOrderView from './pages/PurchaseOrderView'
 import ReleaseOrderView from './pages/ReleaseOrderView'
 import ProtectedRoute from './components/ProtectedRoute'
+import TraceHistory from './pages/TraceHistory'
 import Layout from './components/Layout'
 import AddCustomerView from './pages/AddCustomer'
 import AddBuyerView from './pages/AddBuyer'
@@ -63,6 +64,7 @@ function App() {
             <Route path="/buyer" element={<AddBuyerView />} />
             <Route path="/item" element={<AddItemView />} />
             <Route path="/inventory" element={<InventoryView />} />
+            <Route path="/inventory/trace-history/:id" element={<TraceHistory />} />
             <Route path="/inventory/sell" element={<SellStockForm />} />
             <Route path="/manufacture" element={<ManufactureList />} />
             <Route path="/manufactures" element={<ManufactureList />} />

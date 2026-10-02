@@ -368,7 +368,7 @@ const initializeDatabase = async () => {
 
     await client.query(`
       ALTER TABLE delivery_note_items
-      ADD COLUMN IF NOT EXISTS process_target_trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL;
+      ADD COLUMN IF NOT EXISTS process_target_trace_item_id INTEGER REFERENCES trace(id) ON DELETE SET NULL;
     `);
 
     // Migrate CHECK constraint to allow quantity >= 0
@@ -490,101 +490,80 @@ const initializeDatabase = async () => {
       );
     `);
 
-    // 27. Trace_item Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS trace_item (
-        id SERIAL PRIMARY KEY,
-        item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        process JSONB DEFAULT '[]'::jsonb,
-        message TEXT,
-        quantity NUMERIC(12, 3) DEFAULT 0,
-        price DECIMAL(12, 2) DEFAULT 0.00,
-        status VARCHAR(50) DEFAULT 'In Inventory',
-        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    await client.query(`
-      ALTER TABLE trace_item 
-      ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'In Inventory';
-    `);
-
-    // 28. Inventory Table (Updated to match trace-item style + position columns + trade_id)
+    // 27. Inventory Table (id, location)
     await client.query(`
       CREATE TABLE IF NOT EXISTS inventory (
-        id SERIAL PRIMARY KEY,
-        item_code INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        message TEXT,
-        rack VARCHAR(255),
-        shelf_number VARCHAR(255),
-        location VARCHAR(255),
-        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
-        quantity NUMERIC(12, 3) DEFAULT 0,
-        price DECIMAL(12, 2) DEFAULT 0.00,
+        id         SERIAL PRIMARY KEY,
+        location   VARCHAR(255),
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // Dynamic column addition to inventory table
+    // 28. Trace Item Table (id, item_code, qty, cost_price, inventory_id, history[], status)
     await client.query(`
-      ALTER TABLE inventory 
-      ADD COLUMN IF NOT EXISTS trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL;
+      CREATE TABLE IF NOT EXISTS trace (
+        id           SERIAL PRIMARY KEY,
+        item_code    INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        qty          NUMERIC(12, 3) DEFAULT 0,
+        cost_price   DECIMAL(12, 2) DEFAULT 0.00,
+        inventory_id INTEGER REFERENCES inventory(id) ON DELETE SET NULL,
+        history      JSONB DEFAULT '[]'::jsonb,
+        status       VARCHAR(50) DEFAULT 'In Inventory',
+        company_id   INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
-    // 29. Manufacture Table
+    // 29. Job Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS job (
+        id            SERIAL PRIMARY KEY,
+        process_name  VARCHAR(255),
+        date_of_start DATE,
+        date_of_end   DATE,
+        message       TEXT,
+        company_id    INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 30. Manufacture Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS manufacture (
-        id SERIAL PRIMARY KEY,
-        process_name VARCHAR(255),
-        date_of_start DATE,
-        date_of_end DATE,
-        message TEXT,
-        status VARCHAR(50) DEFAULT 'in_progress',
+        id         SERIAL PRIMARY KEY,
+        status     VARCHAR(50) DEFAULT 'in_progress',
+        job_id     INTEGER REFERENCES job(id) ON DELETE SET NULL,
+        loss_qty   JSONB DEFAULT '[]'::jsonb,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    await client.query(`
-      ALTER TABLE manufacture ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'in_progress';
-    `);
-
-    // 30. Source Item Table
+    // 31. Source Item Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS source_item (
-        id SERIAL PRIMARY KEY,
-        manufacture_id INTEGER REFERENCES manufacture(id) ON DELETE CASCADE,
-        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
-        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
-        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
+        id         SERIAL PRIMARY KEY,
+        job_id     INTEGER REFERENCES job(id) ON DELETE CASCADE,
+        items      JSONB DEFAULT '[]'::jsonb,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // 30b. Target Item Table
+    // 32. Target Item Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS target_item (
-        id SERIAL PRIMARY KEY,
-        manufacture_id INTEGER REFERENCES manufacture(id) ON DELETE CASCADE,
-        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
-        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
-        delivered_qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
-        price DECIMAL(12, 2) DEFAULT 0.00,
+        id         SERIAL PRIMARY KEY,
+        job_id     INTEGER REFERENCES job(id) ON DELETE CASCADE,
+        items      JSONB DEFAULT '[]'::jsonb,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    await client.query(`
-      ALTER TABLE target_item ADD COLUMN IF NOT EXISTS delivered_qty NUMERIC(12, 3) NOT NULL DEFAULT 0;
-    `);
+    // 33. RQ Process Table
 
-    // 31. RQ Process Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS rq_process (
         id SERIAL PRIMARY KEY,
@@ -620,7 +599,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE CASCADE,
         item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
-        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
+        trace_item_id INTEGER REFERENCES trace(id) ON DELETE SET NULL,
         qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -649,7 +628,7 @@ const initializeDatabase = async () => {
       ['release_order_items', 'quantity'],
       ['delivery_note_items', 'quantity'],
       ['invoice_items', 'quantity'],
-      ['trace_item', 'quantity'],
+      ['trace', 'quantity'],
       ['inventory', 'quantity'],
       ['process_item', 'source_item_quantity'],
       ['process_item', 'target_item_quantity']
@@ -720,7 +699,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         process_po_id INTEGER REFERENCES process_po(id) ON DELETE CASCADE,
         item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
-        trace_item_id INTEGER REFERENCES trace_item(id) ON DELETE SET NULL,
+        trace_item_id INTEGER REFERENCES trace(id) ON DELETE SET NULL,
         qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

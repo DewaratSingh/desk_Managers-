@@ -64,7 +64,14 @@ export default function InventoryTraceSelectorModal({
 
       if (res.ok) {
         const data = await res.json();
-        setTraceItems(data);
+        // Map new schema fields if needed
+        const mappedData = data.map(item => ({
+          ...item,
+          trace_id: item.trace_id || item.trace_item_id || item.id,
+          available_qty: item.available_qty !== undefined ? item.available_qty : item.qty,
+          price: item.price !== undefined ? item.price : item.cost_price,
+        }));
+        setTraceItems(mappedData);
       } else {
         toast.error('Failed to load inventory trace items');
       }

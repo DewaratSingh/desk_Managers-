@@ -60,19 +60,16 @@ router.get('/trace-items', async (req, res) => {
     let queryText = `
       SELECT 
          inv.id AS inventory_id,
-         inv.trace_item_id,
-         COALESCE(ti.id, inv.trace_item_id) AS trace_id,
+         t.id AS trace_id,
          it.item_code,
          it.description,
-         inv.quantity AS available_qty,
-         inv.price,
-         inv.location,
-         inv.rack,
-         inv.shelf_number
-       FROM inventory inv
-       JOIN items it ON inv.item_code = it.id
-       LEFT JOIN trace_item ti ON inv.trace_item_id = ti.id
-       WHERE inv.company_id = $1 AND inv.quantity > 0
+         t.qty AS available_qty,
+         t.cost_price AS price,
+         inv.location
+       FROM trace t
+       JOIN inventory inv ON t.inventory_id = inv.id
+       JOIN items it ON t.item_code = it.id
+       WHERE t.company_id = $1 AND t.qty > 0
     `;
     const params = [req.user.company_id];
 

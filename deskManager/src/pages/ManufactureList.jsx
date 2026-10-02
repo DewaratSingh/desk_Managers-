@@ -96,7 +96,7 @@ export default function ManufactureList() {
       if (manufactureList.length > 0) {
         updateJobAndItems(manufactureList);
       } else {
-        fetch('/api/manufacture')
+        fetch('/api/manufacture/jobs')
           .then(res => res.json())
           .then(data => {
             setManufactureList(data);
@@ -112,7 +112,7 @@ export default function ManufactureList() {
   const fetchManufactures = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/manufacture');
+      const res = await fetch('/api/manufacture/jobs');
       if (res.ok) {
         const data = await res.json();
         setManufactureList(data);
@@ -267,8 +267,6 @@ export default function ManufactureList() {
           actionType: 'inventory',
           existingDetails: {
             location: item.inventoryDetails?.location || 'Warehouse A',
-            rack: item.inventoryDetails?.rack || '',
-            shelf_number: item.inventoryDetails?.shelf_number || '',
             message: `Manufactured Stock via Job #${viewingJob.id} (${viewingJob.process_name})`
           },
           returnUrl: '/manufacture',
@@ -306,15 +304,13 @@ export default function ManufactureList() {
       item_code: item.item_code,
       completed_qty: parseFloat(item.completion_qty) || 0,
       location: item.inventoryDetails?.location || 'Warehouse A',
-      rack: item.inventoryDetails?.rack || null,
-      shelf_number: item.inventoryDetails?.shelf_number || null,
       target_status: item.inventoryDetails?.status || 'In Inventory',
-      price: parseFloat(item.price) || 0
+      cost_price: parseFloat(item.price) || 0
     }));
 
     setIsProcessingComplete(true);
     try {
-      const res = await fetch(`/api/manufacture/${viewingJob.id}/complete-production`, {
+      const res = await fetch(`/api/manufacture/jobs/${viewingJob.id}/complete-production`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -376,7 +372,7 @@ export default function ManufactureList() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/manufacture', {
+      const res = await fetch('/api/manufacture/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -1110,6 +1106,7 @@ export default function ManufactureList() {
         onClose={() => setIsSourceModalOpen(false)}
         onApply={handleApplySourceSelections}
         initialSelections={formData.source_items}
+        apiEndpoint={'/api/inventory'}
       />
 
       {/* TARGET ITEM SELECTOR MODAL */}

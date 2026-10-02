@@ -3,67 +3,41 @@ const router = express.Router();
 const { pool } = require('../db');
 const { requirePermission, sanitizePrices } = require('../middleware/auth');
 
-// Get inventory items (with optional search, limit & offset)
+// GET inventory items (joined from trace and inventory)
 router.get('/', requirePermission('manage_inventory'), async (req, res) => {
   const { q } = req.query || {};
   const limit = req.query.limit ? parseInt(req.query.limit) : null;
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+  
   try {
-    await pool.query('DELETE FROM inventory WHERE quantity <= 0 AND company_id = $1', [req.user.company_id]);
-
     let queryText = `
-      SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-             inv.location, t.trade_id, inv.message, inv.trace_item_id,
-             p.status AS trace_status, p.process AS trace_process,
-             COALESCE((
-               SELECT SUM((elem->>'unit_price')::numeric)
-               FROM jsonb_array_elements(
-                 CASE 
-                   WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
-                   ELSE '[]'::jsonb 
-                 END
-               ) elem
-               WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
-             ), inv.price) AS calculated_price,
-             inv.company_id, inv.created_at, inv.updated_at,
-             it.description, it.drawing_number,
-             (
-               SELECT COALESCE(SUM(dni.quantity), 0)
-               FROM delivery_note_items dni
-               JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
-               WHERE dni.company_id = inv.company_id
-                 AND (
-                   dni.process_target_trace_item_id = inv.trace_item_id
-                   OR (inv.trade_id IS NOT NULL AND dn.trade_id = inv.trade_id AND dni.item_id = inv.item_code)
-                 )
-             ) AS process_completed_qty
-      FROM inventory inv
-      LEFT JOIN items it ON inv.item_code = it.id
-      LEFT JOIN trades t ON inv.trade_id = t.id
-      LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-      WHERE inv.company_id = $1 AND inv.quantity > 0
+      SELECT t.id, t.qty, t.cost_price, t.history, t.status, t.created_at,
+             inv.location, inv.id AS inventory_id,
+             it.item_code, it.drawing_number,
+             t.company_id
+      FROM trace t
+      JOIN inventory inv ON t.inventory_id = inv.id
+      JOIN items it ON t.item_code = it.id
+      WHERE t.company_id = $1 AND t.qty > 0
     `;
     const params = [req.user.company_id];
+
     if (q) {
       queryText += `
         AND (it.item_code ILIKE $2 
            OR inv.location ILIKE $2 
-           OR inv.rack ILIKE $2 
-           OR inv.shelf_number ILIKE $2
-           OR it.description ILIKE $2
-           OR t.trade_id ILIKE $2)
+           OR it.description ILIKE $2)
       `;
       params.push(`%${q}%`);
     }
-    queryText += ` ORDER BY inv.created_at DESC`;
+    
+    queryText += ` ORDER BY t.created_at DESC`;
 
     if (limit !== null) {
-      const limitParamIdx = params.length + 1;
-      const offsetParamIdx = params.length + 2;
-      queryText += ` LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}`;
+      queryText += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
       params.push(limit, offset);
     } else if (q) {
-      queryText += ` LIMIT 5`; // Default to 5 when searching
+      queryText += ` LIMIT 5`; 
     }
 
     const result = await pool.query(queryText, params);
@@ -77,9 +51,7 @@ router.get('/', requirePermission('manage_inventory'), async (req, res) => {
 // GET inventory positions for a specific item code
 router.get('/locations-by-item', async (req, res) => {
   const { item_code } = req.query || {};
-  if (!item_code) {
-    return res.status(400).json({ error: 'item_code is required' });
-  }
+  if (!item_code) return res.status(400).json({ error: 'item_code is required' });
 
   try {
     const itemRes = await pool.query(
@@ -87,267 +59,64 @@ router.get('/locations-by-item', async (req, res) => {
       [item_code.trim(), req.user.company_id]
     );
 
-    if (itemRes.rows.length === 0) {
-      return res.json([]);
-    }
-
+    if (itemRes.rows.length === 0) return res.json([]);
     const itemDbId = itemRes.rows[0].id;
-    const invRes = await pool.query(
-      `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-              inv.location, t.trade_id, inv.message, inv.trace_item_id,
-              p.status AS trace_status, p.process AS trace_process,
-              COALESCE((
-                SELECT SUM((elem->>'unit_price')::numeric)
-                FROM jsonb_array_elements(
-                  CASE 
-                    WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
-                    ELSE '[]'::jsonb 
-                  END
-                ) elem
-                WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
-              ), inv.price) AS calculated_price
-       FROM inventory inv
-       LEFT JOIN items it ON inv.item_code = it.id
-       LEFT JOIN trades t ON inv.trade_id = t.id
-       LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-       WHERE inv.item_code = $1 AND inv.company_id = $2 AND inv.quantity > 0
-       ORDER BY inv.created_at DESC`,
+
+    const result = await pool.query(
+      `SELECT t.id, t.qty, t.cost_price, t.history, t.status, t.created_at,
+              inv.location, inv.id AS inventory_id,
+              it.item_code, it.drawing_number
+       FROM trace t
+       JOIN inventory inv ON t.inventory_id = inv.id
+       JOIN items it ON t.item_code = it.id
+       WHERE t.item_code = $1 AND t.company_id = $2 AND t.qty > 0
+       ORDER BY t.created_at DESC`,
       [itemDbId, req.user.company_id]
     );
 
-    res.json(invRes.rows);
+    res.json(result.rows);
   } catch (err) {
-    console.error('Error fetching locations by item code:', err.message);
-    res.status(500).json({ error: 'Failed to fetch positions for item' });
+    console.error('Error fetching locations:', err.message);
+    res.status(500).json({ error: 'Failed to fetch locations' });
   }
 });
 
-// Create or merge inventory entry
-router.post('/', async (req, res) => {
-  const {
-    item_code,
-    quantity,
-    price,
-    rack,
-    shelf_number,
-    location,
-    trade_id,
-    message,
-    status,
-    trace_item_id,
-    selected_inventory_id
-  } = req.body || {};
-
-  if (!item_code) {
-    return res.status(400).json({ error: 'item_code is required' });
-  }
+// GET stock for item (specifically 'In Inventory' status for selling)
+router.get('/stock-by-item', async (req, res) => {
+  const { item_code } = req.query || {};
+  if (!item_code) return res.status(400).json({ error: 'item_code is required' });
 
   try {
-    // Resolve itemDbId
-    const itemRes = await pool.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item_code, req.user.company_id]);
-    if (itemRes.rows.length === 0) {
-      return res.status(400).json({ error: `Item ${item_code} not found` });
-    }
+    const itemRes = await pool.query(
+      'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
+      [item_code.trim(), req.user.company_id]
+    );
+    if (itemRes.rows.length === 0) return res.json([]);
+    
     const itemDbId = itemRes.rows[0].id;
+    const result = await pool.query(
+      `SELECT t.id, t.qty, t.cost_price, t.history, t.status, t.created_at,
+              inv.location, inv.id AS inventory_id,
+              it.item_code
+       FROM trace t
+       JOIN inventory inv ON t.inventory_id = inv.id
+       JOIN items it ON t.item_code = it.id
+       WHERE t.item_code = $1 AND t.company_id = $2 AND t.qty > 0 AND LOWER(t.status) = 'in inventory'
+       ORDER BY t.created_at ASC`,
+      [itemDbId, req.user.company_id]
+    );
 
-    // Resolve tradeDbId
-    let tradeDbId = null;
-    if (trade_id) {
-      const tradeRes = await pool.query('SELECT id FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_id, req.user.company_id]);
-      if (tradeRes.rows.length > 0) {
-        tradeDbId = tradeRes.rows[0].id;
-      }
-    }
-
-    const targetStatus = status || 'In Inventory';
-    const addedQty = parseFloat(quantity) || 0;
-    const addedPrice = parseFloat(price) || 0.00;
-
-    // Check if an existing inventory position was selected or matches location
-    let targetInvId = selected_inventory_id ? parseInt(selected_inventory_id) : null;
-    if (!targetInvId && location) {
-      // Check if there's an existing stock record with identical item_code, location, rack, shelf
-      const checkInv = await pool.query(
-        `SELECT id FROM inventory 
-         WHERE item_code = $1 AND company_id = $2 
-           AND LOWER(COALESCE(location, '')) = LOWER($3)
-           AND LOWER(COALESCE(rack, '')) = LOWER($4)
-           AND LOWER(COALESCE(shelf_number, '')) = LOWER($5)`,
-        [itemDbId, req.user.company_id, location || '', rack || '', shelf_number || '']
-      );
-      if (checkInv.rows.length > 0) {
-        targetInvId = checkInv.rows[0].id;
-      }
-    }
-
-    if (targetInvId) {
-      // --- EXISTING LOCATION MERGE CASE ---
-      const existingInv = await pool.query(
-        'SELECT * FROM inventory WHERE id = $1 AND company_id = $2',
-        [targetInvId, req.user.company_id]
-      );
-
-      if (existingInv.rows.length === 0) {
-        return res.status(404).json({ error: 'Selected inventory position not found' });
-      }
-
-      const invRow = existingInv.rows[0];
-      const existingQty = parseFloat(invRow.quantity) || 0;
-      const existingPrice = parseFloat(invRow.price) || 0.00;
-
-      const newQty = existingQty + addedQty;
-      // Weighted average unit price calculation
-      const newPrice = newQty > 0
-        ? parseFloat(((existingQty * existingPrice + addedQty * addedPrice) / newQty).toFixed(2))
-        : addedPrice;
-
-      // Update inventory record
-      await pool.query(
-        `UPDATE inventory 
-         SET quantity = $1,
-             price = $2,
-             rack = COALESCE($3, rack),
-             shelf_number = COALESCE($4, shelf_number),
-             location = COALESCE($5, location),
-             message = COALESCE($6, message),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $7 AND company_id = $8`,
-        [
-          newQty,
-          newPrice,
-          rack || null,
-          shelf_number || null,
-          location || null,
-          message || null,
-          targetInvId,
-          req.user.company_id
-        ]
-      );
-
-      // Update linked trace_item if present
-      const targetTraceId = invRow.trace_item_id || (trace_item_id ? parseInt(trace_item_id) : null);
-      if (targetTraceId) {
-        await pool.query(
-          `UPDATE trace_item
-           SET quantity = $1,
-               price = $2,
-               status = $3
-           WHERE id = $4 AND company_id = $5`,
-          [newQty, newPrice, targetStatus, targetTraceId, req.user.company_id]
-        );
-      }
-
-      // Fetch the updated inventory record with joined details
-      const joinedRes = await pool.query(
-        `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-               inv.location, t.trade_id, inv.message, inv.trace_item_id,
-               p.status AS trace_status, p.process AS trace_process,
-               COALESCE((
-                 SELECT SUM((elem->>'unit_price')::numeric)
-                 FROM jsonb_array_elements(
-                   CASE 
-                     WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
-                     ELSE '[]'::jsonb 
-                   END
-                 ) elem
-                 WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
-               ), inv.price) AS calculated_price,
-               inv.company_id, inv.created_at, inv.updated_at,
-               it.description, it.drawing_number
-        FROM inventory inv
-        LEFT JOIN items it ON inv.item_code = it.id
-        LEFT JOIN trades t ON inv.trade_id = t.id
-        LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-        WHERE inv.id = $1 AND inv.company_id = $2`,
-        [targetInvId, req.user.company_id]
-      );
-
-      return res.status(200).json(joinedRes.rows[0]);
-
-    } else {
-      // --- NEW LOCATION CREATION CASE ---
-      let finalTraceItemId = trace_item_id ? parseInt(trace_item_id) : null;
-
-      if (!finalTraceItemId) {
-        const processList = trade_id ? [{ type: 'BUY', id: trade_id, unit_price: addedPrice }] : [];
-        const traceRes = await pool.query(
-          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-           VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7) RETURNING id`,
-          [
-            itemDbId,
-            JSON.stringify(processList),
-            message || null,
-            addedQty,
-            addedPrice,
-            targetStatus,
-            req.user.company_id
-          ]
-        );
-        finalTraceItemId = traceRes.rows[0].id;
-      } else {
-        await pool.query(
-          `UPDATE trace_item SET status = $1 WHERE id = $2 AND company_id = $3`,
-          [targetStatus, finalTraceItemId, req.user.company_id]
-        );
-      }
-
-      const result = await pool.query(
-        `INSERT INTO inventory (
-          item_code, quantity, price, rack, shelf_number, location, trade_id, message, company_id, trace_item_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-        [
-          itemDbId,
-          addedQty,
-          addedPrice,
-          rack || null,
-          shelf_number || null,
-          location || null,
-          tradeDbId,
-          message || null,
-          req.user.company_id,
-          finalTraceItemId
-        ]
-      );
-
-      // Fetch the inserted record with joined details
-      const joinedRes = await pool.query(
-        `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-               inv.location, t.trade_id, inv.message, inv.trace_item_id,
-               p.status AS trace_status, p.process AS trace_process,
-               COALESCE((
-                 SELECT SUM((elem->>'unit_price')::numeric)
-                 FROM jsonb_array_elements(
-                   CASE 
-                     WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
-                     ELSE '[]'::jsonb 
-                   END
-                 ) elem
-                 WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
-               ), inv.price) AS calculated_price,
-               inv.company_id, inv.created_at, inv.updated_at,
-               it.description, it.drawing_number
-        FROM inventory inv
-        LEFT JOIN items it ON inv.item_code = it.id
-        LEFT JOIN trades t ON inv.trade_id = t.id
-        LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-        WHERE inv.id = $1 AND inv.company_id = $2`,
-        [result.rows[0].id, req.user.company_id]
-      );
-
-      return res.status(201).json(joinedRes.rows[0]);
-    }
+    res.json(result.rows);
   } catch (err) {
-    console.error('Error creating/updating inventory entry:', err.message);
-    res.status(500).json({ error: 'Failed to save inventory entry' });
+    console.error('Error fetching stock:', err.message);
+    res.status(500).json({ error: 'Failed to fetch stock' });
   }
 });
 
-// GET eligible trades for sell
+// GET eligible trades for sell (legacy route preserved for Delivery Note usage)
 router.get('/sell/eligible-trades', async (req, res) => {
   const { item_code, q } = req.query || {};
-  if (!item_code) {
-    return res.status(400).json({ error: 'item_code is required' });
-  }
+  if (!item_code) return res.status(400).json({ error: 'item_code is required' });
 
   try {
     let queryText = `
@@ -363,7 +132,6 @@ router.get('/sell/eligible-trades', async (req, res) => {
         COALESCE(poi.shipping_address, roi.shipping_address) AS shipping_address,
         COALESCE(poi.delivery_date, roi.delivery_date) AS delivery_date,
         COALESCE(poi.item_id, roi.item_id) AS item_id,
-        -- Calculate delivered quantity
         COALESCE((
           SELECT SUM(dni.quantity)
           FROM delivery_note_items dni
@@ -387,30 +155,24 @@ router.get('/sell/eligible-trades', async (req, res) => {
           WHERE dn.trade_id = t.id AND dni.item_id = COALESCE(poi.item_id, roi.item_id) AND dn.company_id = t.company_id
         ), 0)
     `;
-
     const params = [item_code.trim(), req.user.company_id];
     if (q) {
       queryText += ` AND t.trade_id ILIKE $3`;
       params.push(`%${q}%`);
     }
-
     queryText += ` ORDER BY t.created_at DESC LIMIT 10`;
 
     const result = await pool.query(queryText, params);
-    
-    // Map items to calculate remaining_qty
     const mapped = result.rows.map(row => {
       const orderQty = parseInt(row.order_qty) || 0;
       const deliveredQty = parseInt(row.delivered_qty) || 0;
-      const remainingQty = Math.max(0, orderQty - deliveredQty);
       return {
         ...row,
         order_qty: orderQty,
         delivered_qty: deliveredQty,
-        remaining_qty: remainingQty
+        remaining_qty: Math.max(0, orderQty - deliveredQty)
       };
     });
-
     res.json(mapped);
   } catch (err) {
     console.error('Error fetching eligible trades:', err.message);
@@ -423,156 +185,251 @@ router.get('/item/:item_code/availability', async (req, res) => {
   const { item_code } = req.params;
   try {
     const itemRes = await pool.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item_code, req.user.company_id]);
-    if (itemRes.rows.length === 0) {
-      return res.json({ available_qty: 0, price: 0 });
-    }
+    if (itemRes.rows.length === 0) return res.json({ available_qty: 0, price: 0 });
+    
     const itemDbId = itemRes.rows[0].id;
-    const invRes = await pool.query(
-      `SELECT COALESCE(SUM(quantity), 0) AS total_qty, 
-              COALESCE(AVG(price), 0.00) AS avg_price 
-       FROM inventory 
+    const result = await pool.query(
+      `SELECT COALESCE(SUM(qty), 0) AS total_qty, 
+              COALESCE(AVG(cost_price), 0.00) AS avg_price 
+       FROM trace 
        WHERE item_code = $1 AND company_id = $2`,
       [itemDbId, req.user.company_id]
     );
     res.json({
-      available_qty: parseInt(invRes.rows[0].total_qty) || 0,
-      price: parseFloat(invRes.rows[0].avg_price) || 0.00
+      available_qty: parseInt(result.rows[0].total_qty) || 0,
+      price: parseFloat(result.rows[0].avg_price) || 0.00
     });
   } catch (err) {
-    console.error('Error fetching inventory availability:', err.message);
-    res.status(500).json({ error: 'Failed to fetch inventory availability' });
+    console.error('Error fetching availability:', err.message);
+    res.status(500).json({ error: 'Failed to fetch availability' });
   }
 });
 
-// Update inventory entry
-router.put('/:id', async (req, res) => {
-  const { id } = req.params;
+// POST Create or merge inventory entry
+router.post('/', async (req, res) => {
   const {
     item_code,
-    quantity,
-    price,
-    rack,
-    shelf_number,
+    qty,
+    cost_price,
     location,
-    trade_id,
-    message,
     status,
-    trace_item_id
+    history,
+    selected_inventory_id // if merging into existing bin
   } = req.body || {};
 
-  if (!item_code) {
-    return res.status(400).json({ error: 'item_code is required' });
-  }
+  if (!item_code) return res.status(400).json({ error: 'item_code is required' });
 
+  const client = await pool.connect();
   try {
-    // Resolve itemDbId
-    const itemRes = await pool.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item_code, req.user.company_id]);
-    if (itemRes.rows.length === 0) {
-      return res.status(400).json({ error: `Item ${item_code} not found` });
-    }
+    await client.query('BEGIN');
+    const companyId = req.user.company_id;
+
+    const itemRes = await client.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item_code, companyId]);
+    if (itemRes.rows.length === 0) throw new Error(`Item ${item_code} not found`);
     const itemDbId = itemRes.rows[0].id;
 
-    // Resolve tradeDbId
-    let tradeDbId = null;
-    if (trade_id) {
-      const tradeRes = await pool.query('SELECT id FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_id, req.user.company_id]);
-      if (tradeRes.rows.length > 0) {
-        tradeDbId = tradeRes.rows[0].id;
+    let targetInvId = selected_inventory_id ? parseInt(selected_inventory_id) : null;
+    const targetLocation = location || 'Default Location';
+    
+    // Find or create inventory bin
+    if (!targetInvId) {
+      const invCheck = await client.query(
+        'SELECT id FROM inventory WHERE LOWER(location) = LOWER($1) AND company_id = $2',
+        [targetLocation, companyId]
+      );
+      if (invCheck.rows.length > 0) {
+        targetInvId = invCheck.rows[0].id;
+      } else {
+        const invInsert = await client.query(
+          'INSERT INTO inventory (location, company_id) VALUES ($1, $2) RETURNING id',
+          [targetLocation, companyId]
+        );
+        targetInvId = invInsert.rows[0].id;
       }
     }
 
-    const result = await pool.query(
-      `UPDATE inventory 
-       SET item_code = $1, 
-           quantity = $2, 
-           price = $3,
-           rack = $4, 
-           shelf_number = $5, 
-           location = $6, 
-           trade_id = $7, 
-           message = $8,
-           trace_item_id = $9,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $10 AND company_id = $11 
-       RETURNING id`,
-      [
-        itemDbId,
-        parseInt(quantity) || 0,
-        parseFloat(price) || 0.00,
-        rack || null,
-        shelf_number || null,
-        location || null,
-        tradeDbId,
-        message || null,
-        trace_item_id ? parseInt(trace_item_id) : null,
-        id,
-        req.user.company_id
-      ]
+    const addedQty = parseFloat(qty) || 0;
+    const addedPrice = parseFloat(cost_price) || 0.00;
+    const targetStatus = status || 'In Inventory';
+    const traceHistory = history || [];
+
+    // Check if we can merge into an existing trace row in that bin
+    const traceCheck = await client.query(
+      `SELECT id, qty, cost_price FROM trace 
+       WHERE item_code = $1 AND inventory_id = $2 AND LOWER(status) = LOWER($3) AND company_id = $4`,
+      [itemDbId, targetInvId, targetStatus, companyId]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Inventory record not found' });
-    }
+    let finalTraceId = null;
+    if (traceCheck.rows.length > 0) {
+      // Merge
+      const exRow = traceCheck.rows[0];
+      const exQty = parseFloat(exRow.qty) || 0;
+      const exPrice = parseFloat(exRow.cost_price) || 0;
+      const newQty = exQty + addedQty;
+      const newPrice = newQty > 0 ? ((exQty * exPrice) + (addedQty * addedPrice)) / newQty : addedPrice;
 
-    // Update status in trace_item if provided
-    let targetTraceId = trace_item_id ? parseInt(trace_item_id) : null;
-    if (!targetTraceId) {
-      const invRow = await pool.query('SELECT trace_item_id FROM inventory WHERE id = $1 AND company_id = $2', [id, req.user.company_id]);
-      if (invRow.rows.length > 0 && invRow.rows[0].trace_item_id) {
-        targetTraceId = invRow.rows[0].trace_item_id;
-      }
-    }
-    if (targetTraceId && status) {
-      await pool.query(
-        'UPDATE trace_item SET status = $1 WHERE id = $2 AND company_id = $3',
-        [status, targetTraceId, req.user.company_id]
+      await client.query(
+        `UPDATE trace 
+         SET qty = $1, cost_price = $2 
+         WHERE id = $3 AND company_id = $4`,
+        [newQty, newPrice, exRow.id, companyId]
       );
+      finalTraceId = exRow.id;
+    } else {
+      // Insert new trace row
+      const traceInsert = await client.query(
+        `INSERT INTO trace (item_code, qty, cost_price, inventory_id, history, status, company_id)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7) RETURNING id`,
+        [itemDbId, addedQty, addedPrice, targetInvId, JSON.stringify(traceHistory), targetStatus, companyId]
+      );
+      finalTraceId = traceInsert.rows[0].id;
     }
 
-    // Fetch updated record with joined details
+    await client.query('COMMIT');
+    
+    // Fetch result
     const joinedRes = await pool.query(
-      `SELECT inv.id, it.item_code, inv.quantity, inv.price, inv.rack, inv.shelf_number,
-             inv.location, t.trade_id, inv.message, inv.trace_item_id,
-             p.status AS trace_status, p.process AS trace_process,
-             COALESCE((
-               SELECT SUM((elem->>'unit_price')::numeric)
-               FROM jsonb_array_elements(
-                 CASE 
-                   WHEN jsonb_typeof(p.process) = 'array' THEN p.process 
-                   ELSE '[]'::jsonb 
-                 END
-               ) elem
-               WHERE elem->>'unit_price' IS NOT NULL AND (elem->>'unit_price')::numeric > 0
-             ), inv.price) AS calculated_price,
-             inv.company_id, inv.created_at, inv.updated_at,
-             it.description, it.drawing_number
-      FROM inventory inv
-      LEFT JOIN items it ON inv.item_code = it.id
-      LEFT JOIN trades t ON inv.trade_id = t.id
-      LEFT JOIN trace_item p ON inv.trace_item_id = p.id
-       WHERE inv.id = $1 AND inv.company_id = $2`,
+      `SELECT t.id, t.qty, t.cost_price, t.history, t.status, t.created_at,
+              inv.location, inv.id AS inventory_id,
+              it.item_code, it.description, it.drawing_number
+       FROM trace t
+       JOIN inventory inv ON t.inventory_id = inv.id
+       JOIN items it ON t.item_code = it.id
+       WHERE t.id = $1 AND t.company_id = $2`,
+      [finalTraceId, companyId]
+    );
+    res.status(201).json(joinedRes.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error creating inventory:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to save inventory entry' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET single trace entry with full joined info and history
+router.get('/trace/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT t.id, t.qty, t.cost_price, t.history, t.status, t.created_at,
+              inv.location, inv.id AS inventory_id,
+              it.item_code, it.drawing_number,
+              t.company_id
+       FROM trace t
+       JOIN inventory inv ON t.inventory_id = inv.id
+       JOIN items it ON t.item_code = it.id
+       WHERE t.id = $1 AND t.company_id = $2`,
       [id, req.user.company_id]
     );
 
-    res.json(joinedRes.rows[0]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Trace entry not found' });
+    }
+
+    res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error updating inventory entry:', err.message);
-    res.status(500).json({ error: 'Failed to update inventory entry' });
+    console.error('Error fetching trace history:', err.message);
+    res.status(500).json({ error: 'Failed to fetch trace history' });
   }
 });
 
-// Delete inventory entry
+// PUT Update inventory (updates trace row, might move to new inventory bin)
+router.put('/:id', async (req, res) => {
+  const { id } = req.params; // Trace ID
+  const {
+    item_code,
+    qty,
+    cost_price,
+    location,
+    status,
+    history
+  } = req.body || {};
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const companyId = req.user.company_id;
+
+    const traceRes = await client.query('SELECT * FROM trace WHERE id = $1 AND company_id = $2', [id, companyId]);
+    if (traceRes.rows.length === 0) throw new Error('Record not found');
+    const oldTrace = traceRes.rows[0];
+
+    // Find or create inventory bin for the location
+    const targetLocation = location || 'Default Location';
+    let targetInvId = oldTrace.inventory_id;
+    
+    const invCheck = await client.query(
+      'SELECT id FROM inventory WHERE LOWER(location) = LOWER($1) AND company_id = $2',
+      [targetLocation, companyId]
+    );
+    if (invCheck.rows.length > 0) {
+      targetInvId = invCheck.rows[0].id;
+    } else {
+      const invInsert = await client.query(
+        'INSERT INTO inventory (location, company_id) VALUES ($1, $2) RETURNING id',
+        [targetLocation, companyId]
+      );
+      targetInvId = invInsert.rows[0].id;
+    }
+
+    let itemDbId = oldTrace.item_code;
+    if (item_code) {
+      const itemRes = await client.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item_code, companyId]);
+      if (itemRes.rows.length > 0) itemDbId = itemRes.rows[0].id;
+    }
+
+    await client.query(
+      `UPDATE trace 
+       SET item_code = $1, qty = $2, cost_price = $3, inventory_id = $4, status = $5,
+           history = COALESCE($6::jsonb, history)
+       WHERE id = $7 AND company_id = $8`,
+      [
+        itemDbId,
+        parseFloat(qty) || 0,
+        parseFloat(cost_price) || 0,
+        targetInvId,
+        status || oldTrace.status,
+        history ? JSON.stringify(history) : null,
+        id,
+        companyId
+      ]
+    );
+
+    await client.query('COMMIT');
+    
+    const joinedRes = await pool.query(
+      `SELECT t.id, t.qty, t.cost_price, t.history, t.status, t.created_at,
+              inv.location, inv.id AS inventory_id,
+              it.item_code, it.description, it.drawing_number
+       FROM trace t
+       JOIN inventory inv ON t.inventory_id = inv.id
+       JOIN items it ON t.item_code = it.id
+       WHERE t.id = $1 AND t.company_id = $2`,
+      [id, companyId]
+    );
+    res.json(joinedRes.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error updating inventory:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to update inventory entry' });
+  } finally {
+    client.release();
+  }
+});
+
+// DELETE trace entry
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query('DELETE FROM inventory WHERE id = $1 AND company_id = $2 RETURNING id', [id, req.user.company_id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Inventory record not found' });
-    }
-    res.json({ message: 'Inventory record deleted successfully', id });
+    const result = await pool.query('DELETE FROM trace WHERE id = $1 AND company_id = $2 RETURNING id', [id, req.user.company_id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Record not found' });
+    res.json({ message: 'Record deleted successfully', id });
   } catch (err) {
     console.error('Error deleting inventory entry:', err.message);
-    res.status(500).json({ error: 'Failed to delete inventory entry' });
+    res.status(500).json({ error: 'Failed to delete entry' });
   }
 });
 

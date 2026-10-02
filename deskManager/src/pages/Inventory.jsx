@@ -13,22 +13,19 @@ import {
   AlertCircle,
   CheckCircle2,
   Layers,
-  Building2
+  Building2,
+  GitCommit
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const EMPTY_FORM = {
   item_code: '',
-  quantity: '',
-  price: '',
+  qty: '',
+  cost_price: '',
   location: '',
-  rack: '',
-  shelf_number: '',
   trade_id: '',
   message: '',
-  status: '',
-  trace_item_id: '',
-  trace_process: []
+  status: ''
 };
 
 const fmtQty = (val) => {
@@ -46,6 +43,7 @@ export default function InventoryView() {
   const [items, setItems] = useState([]);
   const [trades, setTrades] = useState([]);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,6 +61,7 @@ export default function InventoryView() {
 
   const itemDropdownRef = useRef(null);
   const tradeDropdownRef = useRef(null);
+  const locationDropdownRef = useRef(null);
 
   useEffect(() => {
     if (isFormRoute) {
@@ -73,11 +72,9 @@ export default function InventoryView() {
         const processList = fill.trade_id ? [{ type: 'BUY', id: fill.trade_id, unit_price: parseFloat(fill.price) || 0.00 }] : [];
         setFormData({
           item_code: fill.item_code || '',
-          quantity: fill.quantity || '',
-          price: fill.price || '',
+          qty: fill.qty || fill.quantity || '',
+          cost_price: fill.cost_price || fill.price || '',
           location: fill.existingDetails?.location || '',
-          rack: fill.existingDetails?.rack || '',
-          shelf_number: fill.existingDetails?.shelf_number || '',
           trade_id: fill.trade_id || '',
           message: fill.existingDetails?.message || '',
           status: fill.status || '',
@@ -89,17 +86,12 @@ export default function InventoryView() {
         setEditingId(item.id);
         setFormData({
           item_code: item.item_code || '',
-          quantity: item.quantity || '',
-          price: item.price || '',
-          calculated_price: item.calculated_price || item.price || '',
+          qty: item.qty || item.quantity || '',
+          cost_price: item.cost_price || item.calculated_price || item.price || '',
           location: item.location || '',
-          rack: item.rack || '',
-          shelf_number: item.shelf_number || '',
           trade_id: item.trade_id || '',
           message: item.message || '',
-          status: item.trace_status || item.status || 'active',
-          trace_item_id: item.trace_item_id || item.p_item_id || '',
-          trace_process: item.trace_process || []
+          status: item.status || 'In Inventory'
         });
         setLinkMetadata(null);
       } else {
@@ -120,6 +112,9 @@ export default function InventoryView() {
       }
       if (tradeDropdownRef.current && !tradeDropdownRef.current.contains(event.target)) {
         setShowTradeDropdown(false);
+      }
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target)) {
+        setShowLocationDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -208,18 +203,13 @@ export default function InventoryView() {
       setSelectedPositionId(pos.id);
       setFormData(prev => ({
         ...prev,
-        location: pos.location || '',
-        rack: pos.rack || '',
-        shelf_number: pos.shelf_number || '',
-        trace_item_id: pos.trace_item_id || prev.trace_item_id
+        location: pos.location || ''
       }));
     } else {
       setSelectedPositionId(null);
       setFormData(prev => ({
         ...prev,
-        location: '',
-        rack: '',
-        shelf_number: ''
+        location: ''
       }));
     }
   };
@@ -280,9 +270,7 @@ export default function InventoryView() {
     setFormData(prev => ({
       ...prev,
       item_code: item.item_code,
-      location: '',
-      rack: '',
-      shelf_number: ''
+      location: ''
     }));
     setSelectedPositionId(null);
     setShowItemDropdown(false);
@@ -319,7 +307,7 @@ export default function InventoryView() {
       toast.warn('Please select an item');
       return;
     }
-    if (formData.quantity === '' || isNaN(parseFloat(formData.quantity))) {
+    if (formData.qty === '' || isNaN(parseFloat(formData.qty))) {
       toast.warn('Please enter a valid quantity');
       return;
     }
@@ -343,15 +331,13 @@ export default function InventoryView() {
         navigate(linkMetadata.returnUrl, {
           state: {
             returnState: updatedReturnState,
-            updatedQty: parseFloat(formData.quantity) || 0,
+            updatedQty: parseFloat(formData.qty) || 0,
             actionType: linkMetadata.actionType,
             status: targetStatus,
             inventoryDetails: {
               inventory_id: selectedPositionId || null,
-              trace_item_id: selectedPos?.trace_item_id || formData.trace_item_id || null,
-              price: parseFloat(formData.price) || 0.00,
-              rack: formData.rack,
-              shelf_number: formData.shelf_number,
+              trace_id: selectedPos?.id || null,
+              cost_price: parseFloat(formData.cost_price) || 0.00,
               location: formData.location,
               message: formData.message || null,
               status: targetStatus,
@@ -472,9 +458,8 @@ export default function InventoryView() {
                         <th className="px-5 py-3">Location Details</th>
                         <th className="px-5 py-3 text-right">Quantity</th>
                         <th className="px-5 py-3 text-right">Price</th>
-                        <th className="px-5 py-3">Trace Item ID</th>
                         <th className="px-5 py-3">Status</th>
-                        <th className="px-5 py-3">Message</th>
+                        <th className="px-5 py-3">Trace</th>
                         <th className="px-5 py-3 text-center">Actions</th>
                       </tr>
                     </thead>
@@ -486,9 +471,6 @@ export default function InventoryView() {
                             <div className="font-bold text-slate-900 flex items-center gap-1.5">
                               <Package size={14} className="text-slate-400 shrink-0" />
                               {item.item_code}
-                            </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5 truncate max-w-[250px]" title={item.description}>
-                              {item.description || '—'}
                             </div>
                             {item.drawing_number && (
                               <span className="inline-block bg-slate-100 text-slate-600 text-[10px] px-1.5 py-0.5 rounded border border-slate-200 font-semibold mt-1">
@@ -503,64 +485,27 @@ export default function InventoryView() {
                               <MapPin size={12} className="text-slate-400 shrink-0" />
                               {item.location || '—'}
                             </div>
-                            {(item.rack || item.shelf_number) && (
-                              <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                                {item.rack && `Rack: ${item.rack}`}
-                                {item.rack && item.shelf_number && ' | '}
-                                {item.shelf_number && `Shelf: ${item.shelf_number}`}
-                              </div>
-                            )}
                           </td>
 
                           {/* Quantity */}
                           <td className="px-5 py-4 text-right font-mono font-black text-slate-900">
-                            {(item.trace_status || item.status) === 'in process' && (parseFloat(item.process_completed_qty) || 0) < (parseFloat(item.quantity) || 0) ? (
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs">
-                                  {fmtQty(item.process_completed_qty)} / {fmtQty(item.quantity)}
-                                </span>
-                                <span className="text-[9px] text-indigo-700 font-bold bg-indigo-50 px-1 py-0.2 rounded border border-indigo-200 mt-0.5 font-sans">
-                                  Completed / Total
-                                </span>
-                              </div>
-                            ) : (
-                              fmtQty(item.quantity)
-                            )}
+                            {fmtQty(item.qty)}
                           </td>
 
                           {/* Price */}
                           <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                            ₹{parseFloat(item.calculated_price || item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-
-                          {/* Trace Item ID */}
-                          <td className="px-5 py-4 font-mono font-bold text-slate-800">
-                            {(item.trace_item_id || item.p_item_id) ? (
-                              <div className="flex flex-col gap-1 items-start">
-                                <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] shadow-sm">
-                                  TR-{item.trace_item_id || item.p_item_id}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-300">—</span>
-                            )}
+                            ₹{parseFloat(item.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </td>
 
                           {/* Status */}
                           <td className="px-5 py-4">
                             {(() => {
-                              let st = item.trace_status || item.status || 'active';
-                              if (st === 'in process' && (parseFloat(item.process_completed_qty) || 0) >= (parseFloat(item.quantity) || 0) && (parseFloat(item.quantity) || 0) > 0) {
-                                st = 'In Inventory';
-                              }
-
+                              let st = item.status || 'In Inventory';
                               let badgeCls = "bg-slate-100 border-slate-200 text-slate-700";
                               if (st === 'For process') badgeCls = "bg-amber-50 border-amber-300 text-amber-800";
                               else if (st === 'For Sell') badgeCls = "bg-emerald-50 border-emerald-300 text-emerald-800";
                               else if (st === 'In Inventory') badgeCls = "bg-indigo-50 border-indigo-300 text-indigo-800";
-                              else if (st === 'manufacturing') badgeCls = "bg-amber-100 border-amber-300 text-amber-800";
-                              else if (st === 'in process') badgeCls = "bg-indigo-50 border-indigo-300 text-indigo-800";
-
+                              
                               return (
                                 <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border shadow-xs ${badgeCls}`}>
                                   {st}
@@ -569,9 +514,19 @@ export default function InventoryView() {
                             })()}
                           </td>
 
-                          {/* Message */}
-                          <td className="px-5 py-4 text-slate-500 max-w-[200px] truncate" title={item.message}>
-                            {item.message || '—'}
+                          {/* Trace Info (Last History Step) */}
+                          <td className="px-5 py-4">
+                            {(() => {
+                              const hist = Array.isArray(item.history) ? item.history : [];
+                              if (hist.length === 0) return <span className="text-slate-400 text-xs italic">—</span>;
+                              const lastStep = hist[hist.length - 1];
+                              const displayVal = lastStep.trace || lastStep.action || lastStep.type || 'Created';
+                              return (
+                                <span className="inline-flex items-center bg-purple-50 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded border border-purple-200 shadow-sm truncate max-w-[120px]" title={displayVal}>
+                                  {displayVal}
+                                </span>
+                              );
+                            })()}
                           </td>
 
                           {/* Actions */}
@@ -583,6 +538,13 @@ export default function InventoryView() {
                                 title="Edit Stock"
                               >
                                 <Edit2 size={12} />
+                              </button>
+                              <button
+                                onClick={() => navigate(`/inventory/trace-history/${item.id}`)}
+                                className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-purple-600 hover:border-purple-600 bg-white transition-colors cursor-pointer"
+                                title="View Trace History"
+                              >
+                                <GitCommit size={12} />
                               </button>
                             </div>
                           </td>
@@ -746,8 +708,8 @@ export default function InventoryView() {
                     step="any"
                     required
                     placeholder="e.g. 500"
-                    value={formData.quantity}
-                    onChange={set('quantity')}
+                    value={formData.qty}
+                    onChange={set('qty')}
                     disabled={!!editingId}
                     className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
@@ -768,19 +730,14 @@ export default function InventoryView() {
                     step="0.01"
                     required
                     placeholder="e.g. 15.50"
-                    value={(() => {
-                      const sumProcess = Array.isArray(formData.trace_process) && formData.trace_process.length > 0
-                        ? formData.trace_process.reduce((sum, step) => sum + (parseFloat(step.unit_price) || 0), 0)
-                        : 0;
-                      return sumProcess > 0 ? sumProcess : (formData.calculated_price || formData.price || '');
-                    })()}
-                    onChange={set('price')}
+                    value={formData.cost_price || ''}
+                    onChange={set('cost_price')}
                     disabled={!!editingId || !!linkMetadata}
                     className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                   {(editingId || linkMetadata) && (
                     <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
-                      Price is calculated from trace process steps & stock configuration.
+                      Price is based on stock configuration.
                     </p>
                   )}
                 </div>
@@ -903,22 +860,22 @@ export default function InventoryView() {
                                   )}
                                 </div>
                               </div>
-                              {pos.trace_item_id && (
+                              {pos.id && (
                                 <span
                                   className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 border"
                                   style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(0,0,0,0.03)' }}
                                 >
-                                  TR-{pos.trace_item_id}
+                                  TR-{pos.id}
                                 </span>
                               )}
                             </div>
 
                             <div className="mt-2 pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-mono">
                               <span className="text-slate-600 font-semibold">
-                                Stock: <strong className="text-slate-900">{fmtQty(pos.quantity)} pcs</strong>
+                                Stock: <strong className="text-slate-900">{fmtQty(pos.qty)} pcs</strong>
                               </span>
                               <span className="text-slate-700 font-bold">
-                                ₹{parseFloat(pos.calculated_price || pos.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} / pc
+                                ₹{parseFloat(pos.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} / pc
                               </span>
                             </div>
                           </div>
@@ -928,50 +885,52 @@ export default function InventoryView() {
                   </div>
                 )}
 
-                {/* Input Fields for Location, Rack, Shelf */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
-                      Warehouse Location <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Warehouse A"
-                      value={formData.location}
-                      onChange={(e) => {
-                        setSelectedPositionId(null);
-                        set('location')(e);
-                      }}
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
-                      Rack Number / Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Rack-03"
-                      value={formData.rack}
-                      onChange={set('rack')}
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
-                      Shelf Number
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Shelf-12"
-                      value={formData.shelf_number}
-                      onChange={set('shelf_number')}
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
-                    />
-                  </div>
+                {/* Single Searchable Location Input */}
+                <div ref={locationDropdownRef} className="relative">
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
+                    Warehouse Location <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Search or type a location..."
+                    value={formData.location}
+                    onChange={(e) => {
+                      setSelectedPositionId(null);
+                      set('location')(e);
+                      setShowLocationDropdown(true);
+                    }}
+                    onFocus={() => setShowLocationDropdown(true)}
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
+                  />
+                  {showLocationDropdown && existingPositions.length > 0 && (() => {
+                    const filtered = existingPositions.filter(pos =>
+                      !formData.location || (pos.location || '').toLowerCase().includes(formData.location.toLowerCase())
+                    );
+                    return filtered.length > 0 ? (
+                      <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto animate-fade-in divide-y divide-slate-100">
+                        {filtered.map((pos) => (
+                          <button
+                            key={pos.id}
+                            type="button"
+                            onClick={() => {
+                              handleSelectPosition(pos);
+                              setShowLocationDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors text-xs cursor-pointer flex items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <MapPin size={12} style={{ color: 'var(--theme-color)' }} />
+                              <span className="font-bold text-slate-800">{pos.location || 'Default Location'}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {fmtQty(pos.qty)} pcs @ ₹{parseFloat(pos.cost_price || 0).toFixed(2)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Weighted Average Unit Price Preview Card */}
@@ -980,10 +939,10 @@ export default function InventoryView() {
                   const selectedPos = existingPositions.find(p => p.id === selectedPositionId);
                   if (!selectedPos) return null;
 
-                  const existingQty = parseFloat(selectedPos.quantity) || 0;
-                  const existingPrice = parseFloat(selectedPos.calculated_price || selectedPos.price) || 0;
-                  const addedQty = parseFloat(formData.quantity) || 0;
-                  const addedPrice = parseFloat(formData.price) || 0;
+                  const existingQty = parseFloat(selectedPos.qty) || 0;
+                  const existingPrice = parseFloat(selectedPos.cost_price) || 0;
+                  const addedQty = parseFloat(formData.qty) || 0;
+                  const addedPrice = parseFloat(formData.cost_price) || 0;
 
                   const finalQty = existingQty + addedQty;
                   const avgPrice = finalQty > 0
@@ -1001,7 +960,7 @@ export default function InventoryView() {
                           className="text-[10px] font-mono font-bold bg-white border px-2 py-0.5 rounded shadow-2xs"
                           style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
                         >
-                          Merging into TR-{selectedPos.trace_item_id || selectedPos.id}
+                          Merging into TR-{selectedPos.id}
                         </span>
                       </div>
 

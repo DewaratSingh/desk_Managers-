@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, RefreshCw, Tag, ShoppingCart, Cpu, Package, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, RefreshCw, Tag, Package, X } from 'lucide-react';
 
 const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider";
 const inputCls = "w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs placeholder:text-slate-400 font-semibold focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
@@ -231,11 +231,10 @@ export default function DeliveryNoteForm() {
     setStockAllocations(initAllocations);
 
     try {
-      const res = await fetch(`/api/inventory?q=${encodeURIComponent(item.item_code)}&limit=50`);
+      const res = await fetch(`/api/inventory/stock-by-item?item_code=${encodeURIComponent(item.item_code)}`);
       if (res.ok) {
         const data = await res.json();
-        const filtered = data.filter(inv => inv.item_code === item.item_code && inv.quantity > 0);
-        setStockList(filtered.length > 0 ? filtered : data);
+        setStockList(data);
       }
     } catch (err) {
       console.error('Error fetching stock for item:', err);
@@ -253,20 +252,18 @@ export default function DeliveryNoteForm() {
     for (const invRow of stockList) {
       const qty = parseFloat(stockAllocations[invRow.id]) || 0;
       if (qty > 0) {
-        if (qty > invRow.quantity) {
-          alert(`Cannot allocate ${qty} from batch TR-${invRow.trace_item_id || 'Stock'} as only ${invRow.quantity} is available.`);
+        if (qty > invRow.qty) {
+          alert(`Cannot allocate ${qty} from batch TR-${invRow.id || 'Stock'} as only ${invRow.qty} is available.`);
           return;
         }
         totalAlloc += qty;
         selectedAllocations.push({
-          inventory_id: invRow.id,
-          trace_item_id: invRow.trace_item_id || invRow.p_item_id || null,
-          quantity: qty,
-          price: invRow.calculated_price || invRow.price || 0,
+          trace_id: invRow.id,
+          inventory_id: invRow.inventory_id,
+          qty: qty,
+          cost_price: invRow.cost_price || 0,
           location: invRow.location,
-          rack: invRow.rack,
-          shelf_number: invRow.shelf_number,
-          status: invRow.trace_status || invRow.status
+          status: invRow.status
         });
       }
     }
@@ -291,14 +288,13 @@ export default function DeliveryNoteForm() {
           delivery_qty: totalAlloc,
           stock_allocations: selectedAllocations,
           linked_inventory_id: firstAlloc.inventory_id,
-          linked_trace_item_id: firstAlloc.trace_item_id,
-          linked_p_item_id: firstAlloc.trace_item_id,
+          linked_trace_item_id: firstAlloc.trace_id,
+          linked_p_item_id: firstAlloc.trace_id,
           inv_details: {
             location: firstAlloc.location,
-            rack: firstAlloc.rack,
-            shelf_number: firstAlloc.shelf_number,
-            price: firstAlloc.price,
-            trace_item_id: firstAlloc.trace_item_id,
+            cost_price: firstAlloc.cost_price,
+            trace_id: firstAlloc.trace_id,
+            inventory_id: firstAlloc.inventory_id,
             status: firstAlloc.status
           }
         };
@@ -355,8 +351,8 @@ export default function DeliveryNoteForm() {
       state: {
         autofill: {
           item_code: item.item_code,
-          quantity: item.inv_qty || item.delivery_qty || item.remaining_qty,
-          price: item.inv_details?.price || item.rate_per_piece,
+          qty: item.inv_qty || item.delivery_qty || item.remaining_qty,
+          cost_price: item.inv_details?.cost_price || item.rate_per_piece,
           trade_id: tradeId,
           status: 'In Inventory',
           actionType: 'inventory',
@@ -374,57 +370,6 @@ export default function DeliveryNoteForm() {
       }
     });
   };
-
-  const handleSellClick = (item, idx) => {
-    navigate('/inventory/form', {
-      state: {
-        autofill: {
-          item_code: item.item_code,
-          quantity: item.sell_qty || item.remaining_qty,
-          price: item.rate_per_piece,
-          trade_id: tradeId,
-          status: 'For Sell',
-          actionType: 'sell',
-          existingDetails: item.sell_details || item.inv_details,
-          returnUrl: editingNo ? `/updateDeliveryNote/${encodeURIComponent(editingNo)}` : '/addDeliveryNote',
-          returnState: {
-            formData,
-            tradeId,
-            tradeType,
-            editingNo,
-            items,
-            selectedItemCode: item.item_code
-          }
-        }
-      }
-    });
-  };
-
-  const handleProcessClick = (item, idx) => {
-    navigate('/inventory/form', {
-      state: {
-        autofill: {
-          item_code: item.item_code,
-          quantity: item.process_qty || item.remaining_qty,
-          price: item.rate_per_piece,
-          trade_id: tradeId,
-          status: 'For process',
-          actionType: 'process',
-          existingDetails: item.process_details || item.inv_details,
-          returnUrl: editingNo ? `/updateDeliveryNote/${encodeURIComponent(editingNo)}` : '/addDeliveryNote',
-          returnState: {
-            formData,
-            tradeId,
-            tradeType,
-            editingNo,
-            items,
-            selectedItemCode: item.item_code
-          }
-        }
-      }
-    });
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -483,15 +428,8 @@ export default function DeliveryNoteForm() {
           shipping_address: item.shipping_address,
           delivery_date: item.delivery_date,
           inv_qty: item.inv_qty || 0,
-          sell_qty: item.sell_qty || 0,
-          process_qty: item.process_qty || 0,
           inv_details: item.inv_details || null,
-          sell_details: item.sell_details || null,
-          process_details: item.process_details || null,
-          linked_process_trades: item.linked_process_trades || [],
-          linked_inventory_id: item.linked_inventory_id || item.inv_details?.inventory_id || null,
-          linked_trace_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null,
-          linked_p_item_id: item.linked_trace_item_id || item.linked_p_item_id || item.inv_details?.trace_item_id || null,
+          process_target_trace_item_id: item.process_target_trace_item_id || null,
           stock_allocations: (tradeType === 'sell' || tradeType === 'ARC') && Array.isArray(item.stock_allocations)
             ? item.stock_allocations
             : []
@@ -771,16 +709,7 @@ export default function DeliveryNoteForm() {
                               <Tag size={8} /> In Inventory: {item.inv_qty}
                             </span>
                           )}
-                          {item.sell_qty > 0 && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-700 shadow-sm animate-fade-in">
-                              <ShoppingCart size={8} /> Sell: {item.sell_qty}
-                            </span>
-                          )}
-                          {item.process_qty > 0 && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-50 border border-amber-200 text-amber-700 shadow-sm animate-fade-in">
-                              <Cpu size={8} /> Process: {item.process_qty}
-                            </span>
-                          )}
+
                         </div>
                       </td>
                       <td className="px-3 py-1.5 text-right text-slate-500 font-bold">{item.original_qty}</td>
@@ -823,20 +752,7 @@ export default function DeliveryNoteForm() {
                             >
                               {item.inv_qty > 0 ? 'Update Inventory' : 'Add in inventory'}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleProcessClick(item, idx)}
-                              className="px-2 py-0.5 text-[9px] font-extrabold rounded text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
-                            >
-                              {item.process_qty > 0 ? 'Update Process' : 'Process'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSellClick(item, idx)}
-                              className="px-2 py-0.5 text-[9px] font-extrabold rounded text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
-                            >
-                              {item.sell_qty > 0 ? 'Update Sell' : 'Sell'}
-                            </button>
+
                           </div>
                         </td>
                       )}
@@ -951,20 +867,15 @@ export default function DeliveryNoteForm() {
                           </td>
                           <td className="px-3.5 py-3">
                             <div className="font-bold text-slate-900">{inv.location || '—'}</div>
-                            {(inv.rack || inv.shelf_number) && (
-                              <div className="text-[10px] text-slate-500">
-                                {inv.rack && `Rack: ${inv.rack}`} {inv.rack && inv.shelf_number && '|'} {inv.shelf_number && `Shelf: ${inv.shelf_number}`}
-                              </div>
-                            )}
                           </td>
                           <td className="px-3.5 py-3 text-right font-mono font-black text-slate-900">
-                            {inv.quantity || 0}
+                            {inv.qty || 0}
                           </td>
                           <td className="px-3.5 py-3">
                             <div className="flex flex-col gap-0.5 items-start">
-                              {inv.trace_item_id && (
+                              {inv.id && (
                                 <span className="font-mono text-[9px] text-indigo-700 font-bold bg-indigo-50 border border-indigo-200 px-1 py-0.2 rounded">
-                                  TR-{inv.trace_item_id}
+                                  TR-{inv.id}
                                 </span>
                               )}
                               <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${badgeCls}`}>
@@ -973,13 +884,13 @@ export default function DeliveryNoteForm() {
                             </div>
                           </td>
                           <td className="px-3.5 py-3 text-right font-mono font-bold">
-                            ₹{parseFloat(inv.calculated_price || inv.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹{parseFloat(inv.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </td>
                           <td className="px-3.5 py-3 text-right">
                             <input
                               type="number"
                               step="any"
-                              max={inv.quantity}
+                              max={inv.qty}
                               value={allocQty}
                               onChange={(e) => {
                                 const val = parseFloat(e.target.value) || 0;
@@ -994,7 +905,7 @@ export default function DeliveryNoteForm() {
                               onClick={() => {
                                 const currentOtherAlloc = stockList.reduce((sum, item) => item.id === inv.id ? sum : sum + (parseFloat(stockAllocations[item.id]) || 0), 0);
                                 const needed = Math.max(0, openStockPickerItem.remaining_qty - currentOtherAlloc);
-                                const maxFill = Math.min(inv.quantity, needed);
+                                const maxFill = Math.min(inv.qty, needed);
                                 setStockAllocations(prev => ({ ...prev, [inv.id]: maxFill }));
                               }}
                               className="px-2 py-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded transition-colors cursor-pointer"
