@@ -300,61 +300,71 @@ router.put('/jobs/:id/complete-production', async (req, res) => {
       const { item_code, completed_qty, location, target_status, cost_price } = tgt;
       if (!item_code || !completed_qty || completed_qty <= 0) continue;
 
-      // 1. Find or create inventory bin
-      let invId = null;
-      if (location) {
-        const invRes = await client.query(
-          'SELECT id FROM inventory WHERE location = $1 AND company_id = $2',
-          [location.trim(), companyId]
-        );
-        if (invRes.rows.length > 0) {
-          invId = invRes.rows[0].id;
-        } else {
-          const newInvRes = await client.query(
-            'INSERT INTO inventory (location, company_id) VALUES ($1, $2) RETURNING id',
+      if (target_status === 'Scrapped') {
+        const mRes = await client.query('SELECT loss_qty FROM manufacture WHERE job_id = $1 AND company_id = $2 FOR UPDATE', [id, companyId]);
+        let currentLoss = [];
+        if (mRes.rows.length > 0 && mRes.rows[0].loss_qty) {
+          currentLoss = typeof mRes.rows[0].loss_qty === 'string' ? JSON.parse(mRes.rows[0].loss_qty) : mRes.rows[0].loss_qty;
+        }
+        currentLoss.push({ itemCode: item_code, Qty: completed_qty });
+        await client.query('UPDATE manufacture SET loss_qty = $1::jsonb WHERE job_id = $2 AND company_id = $3', [JSON.stringify(currentLoss), id, companyId]);
+      } else {
+        // 1. Find or create inventory bin
+        let invId = null;
+        if (location) {
+          const invRes = await client.query(
+            'SELECT id FROM inventory WHERE location = $1 AND company_id = $2',
             [location.trim(), companyId]
           );
-          invId = newInvRes.rows[0].id;
+          if (invRes.rows.length > 0) {
+            invId = invRes.rows[0].id;
+          } else {
+            const newInvRes = await client.query(
+              'INSERT INTO inventory (location, company_id) VALUES ($1, $2) RETURNING id',
+              [location.trim(), companyId]
+            );
+            invId = newInvRes.rows[0].id;
+          }
         }
+
+        // 2. Fetch internal item db ID
+        const itRes = await client.query(
+          'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
+          [item_code, companyId]
+        );
+        if (itRes.rows.length === 0) continue; // skip if item doesn't exist
+        const itemDbId = itRes.rows[0].id;
+
+        // Fetch the process_name for the trace property
+        const jobInfoRes = await client.query('SELECT process_name FROM job WHERE id = $1 AND company_id = $2', [id, companyId]);
+        const jobProcessName = jobInfoRes.rows.length > 0 ? jobInfoRes.rows[0].process_name : 'Manufacturing';
+
+        // 3. Create trace row for the produced goods with merged history
+        const finalHistory = [
+          {
+            action: 'Manufacture Production',
+            trace: jobProcessName,
+            date: new Date().toISOString(),
+            job_id: id,
+            remarks: remarks,
+            sources: sourceHistories
+          }
+        ];
+
+        await client.query(
+          `INSERT INTO trace (item_code, qty, cost_price, inventory_id, status, history, company_id)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+          [
+            itemDbId,
+            completed_qty,
+            cost_price || 0,
+            invId,
+            target_status || 'In Inventory',
+            JSON.stringify(finalHistory),
+            companyId
+          ]
+        );
       }
-
-      // 2. Fetch internal item db ID
-      const itRes = await client.query(
-        'SELECT id FROM items WHERE item_code = $1 AND company_id = $2',
-        [item_code, companyId]
-      );
-      if (itRes.rows.length === 0) continue; // skip if item doesn't exist
-      const itemDbId = itRes.rows[0].id;
-
-      // Fetch the process_name for the trace property
-      const jobInfoRes = await client.query('SELECT process_name FROM job WHERE id = $1 AND company_id = $2', [id, companyId]);
-      const jobProcessName = jobInfoRes.rows.length > 0 ? jobInfoRes.rows[0].process_name : 'Manufacturing';
-
-      // 3. Create trace row for the produced goods with merged history
-      const finalHistory = [
-        {
-          action: 'Manufacture Production',
-          trace: jobProcessName,
-          date: new Date().toISOString(),
-          job_id: id,
-          remarks: remarks,
-          sources: sourceHistories
-        }
-      ];
-
-      await client.query(
-        `INSERT INTO trace (item_code, qty, cost_price, inventory_id, status, history, company_id)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
-        [
-          itemDbId,
-          completed_qty,
-          cost_price || 0,
-          invId,
-          target_status || 'In Inventory',
-          JSON.stringify(finalHistory),
-          companyId
-        ]
-      );
 
       // 4. Update the delivered_qty in the target_item array
       for (const dbItem of dbTargetItems) {

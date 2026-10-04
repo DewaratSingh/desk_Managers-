@@ -46,7 +46,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
             </p>
           </div>
           <Link
-            to={`/addProcessPurchaseOrder?rq_process_no=${processRq.rq_process_no}&trade_id=${tradeId}`}
+            to={`/addProcessPurchaseOrder?number=${processRq.number}&trade_id=${tradeId}`}
             className="inline-flex items-center gap-1.5 px-5 py-2.5 text-white font-bold text-xs rounded-lg cursor-pointer shadow-sm"
             style={{ backgroundColor: 'var(--theme-color)' }}
             onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(0.9)'}
@@ -107,7 +107,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
           </div>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-6 space-y-6">
           {/* Next Step Banner */}
           <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
             <div>
@@ -141,72 +141,148 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
             ))}
           </div>
 
-          {/* Items */}
-          <div className="space-y-4">
-            {(purchaseOrder.items || []).map((item, idx) => {
-              const srcAllocs = item.source_item_traceid_array || [];
-              const tgtAllocs = item.target_item_traceid_array || [];
-              return (
-                <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Row {idx + 1}</span>
-                    <span className="text-[10px] font-bold text-slate-500">Price: <span className="font-black text-slate-800">₹{fmt(item.price)}</span></span>
-                  </div>
-                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Source */}
-                    <div className="space-y-2">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Source Item</p>
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
-                        <p className="font-mono font-bold text-xs text-slate-900">{item.source_item_code}</p>
-                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">{item.source_description}</p>
-                        <p className="text-[10px] font-bold text-slate-600 mt-1">Qty: {item.source_item_quantity}</p>
-                      </div>
-                      {srcAllocs.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {srcAllocs.map((a, ai) => {
-                            const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
-                            const qty = a.Qty || a.quantity || a.qty || '';
-                            return (
-                              <span key={ai} className="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
-                                TR-{traceId}{qty ? ` × ${qty}` : ''}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                    {/* Target */}
-                    <div className="space-y-2">
-                      <p className="text-[9px] font-black text-indigo-400 uppercase tracking-wider">Target Item (Output)</p>
-                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
-                        <p className="font-mono font-bold text-xs text-indigo-900">{item.target_item_code}</p>
-                        <p className="text-[11px] text-indigo-600 font-medium mt-0.5">{item.target_description}</p>
-                        <p className="text-[10px] font-bold text-indigo-700 mt-1">Qty: {item.target_item_quantity}</p>
-                      </div>
-                      {tgtAllocs.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {tgtAllocs.map((a, ai) => {
-                            const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
-                            const qty = a.Qty || a.quantity || a.qty || item.target_item_quantity || '';
-                            const isDelivered = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'in inventory' || a.status === 'delivered' || a.status === 'completed';
-                            return (
-                              <span key={ai} className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
-                                isDelivered ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                              }`}>
-                                TR-{traceId}{qty ? ` × ${qty}` : ''} <span className={isDelivered ? "text-emerald-600 font-bold" : "text-indigo-400"}>
-                                  [{isDelivered ? 'In Inventory' : 'in process'}]
-                                </span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          {/* 1. Source Items Table */}
+          <div>
+            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1 mb-2">
+              <List size={11} /> Source Raw Materials (Consumed)
+            </p>
+            <div className="border border-amber-200 rounded-lg overflow-x-auto shadow-2xs">
+              <table className="w-full border-collapse text-left text-xs bg-amber-50/20">
+                <thead>
+                  <tr className="bg-amber-50/50 border-b border-amber-200 text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                    <th className="px-4 py-2.5">Item Code</th>
+                    <th className="px-4 py-2.5">Description</th>
+                    <th className="px-4 py-2.5">Allocated Trace IDs</th>
+                    <th className="px-4 py-2.5 text-right w-24">Required Qty</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-100 bg-white">
+                  {(purchaseOrder.items || []).map((item, idx) => {
+                    const srcAllocs = item.source_item_traceid_array || [];
+                    return (
+                      <tr key={`src-${idx}`} className="hover:bg-amber-50/50 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900">
+                            {item.source_item_code}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.source_description || '—'}</td>
+                        <td className="px-4 py-3">
+                          {srcAllocs.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {srcAllocs.map((a, ai) => {
+                                const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
+                                const qty = a.Qty || a.quantity || a.qty || '';
+                                return (
+                                  <span key={ai} className="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
+                                    TR-{traceId}{qty ? ` × ${qty}` : ''}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : <span className="text-slate-400 text-[10px] italic">Not assigned</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right font-black text-slate-800">{item.source_item_quantity}</td>
+                      </tr>
+                    );
+                  })}
+                  {(purchaseOrder.items || []).length === 0 && (
+                    <tr>
+                      <td colSpan="4" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No source items.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {/* 2. Target Items Table */}
+          <div>
+            <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1 mb-2 mt-6">
+              <List size={11} /> Target Output Products (Produced)
+            </p>
+            <div className="border border-indigo-200 rounded-lg overflow-x-auto shadow-2xs">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="bg-indigo-50/50 border-b border-indigo-200 text-[10px] font-bold text-indigo-800 uppercase tracking-wider">
+                    <th className="px-4 py-2.5">Item Code</th>
+                    <th className="px-4 py-2.5">Description</th>
+                    <th className="px-4 py-2.5 text-right w-20">Total Qty</th>
+                    <th className="px-4 py-2.5 text-right w-24">Pending Qty</th>
+                    <th className="px-4 py-2.5 text-right w-24">Unit Price</th>
+                    <th className="px-4 py-2.5 text-right w-24">Delivered Price</th>
+                    <th className="px-4 py-2.5 text-right w-24">Remaining Price</th>
+                    <th className="px-4 py-2.5 text-right w-24">Line Total</th>
+                    <th className="px-4 py-2.5 w-32">Trace / Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-indigo-100 bg-white">
+                  {(purchaseOrder.items || []).map((item, idx) => {
+                    const tgtAllocs = item.target_item_traceid_array || [];
+                    const lineTotal = (parseFloat(item.price) || 0) * (parseFloat(item.target_item_quantity) || 0);
+                    const deliveredQty = parseFloat(item.delivered_qty) || 0;
+                    
+                    const isFullyDelivered = (purchaseOrder.status || '').toLowerCase() === 'delivered' || (deliveredQty >= parseFloat(item.target_item_quantity));
+                    const displayDeliveredQty = isFullyDelivered ? item.target_item_quantity : deliveredQty;
+                    const pendingQty = Math.max(0, (parseFloat(item.target_item_quantity) || 0) - displayDeliveredQty);
+
+                    return (
+                      <tr key={`tgt-${idx}`} className="hover:bg-indigo-50/30 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-900">
+                            {item.target_item_code}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.target_description || '—'}</td>
+                        <td className="px-4 py-3 text-right font-bold text-slate-800">{item.target_item_quantity}</td>
+                        <td className="px-4 py-3 text-right font-black text-indigo-700">{pendingQty}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(item.price)}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-green-700">₹{fmt(item.delivered_price || (deliveredQty * (item.price || 0)))}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-orange-600">₹{fmt(item.remaining_price || ((parseFloat(item.target_item_quantity) - deliveredQty) * (item.price || 0)))}</td>
+                        <td className="px-4 py-3 text-right font-mono font-black text-slate-900">₹{fmt(lineTotal)}</td>
+                        <td className="px-4 py-3">
+                          {tgtAllocs.length > 0 ? (
+                            <div className="flex flex-col gap-1.5">
+                              {tgtAllocs.map((a, ai) => {
+                                const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
+                                const qty = a.Qty || a.quantity || a.qty || item.target_item_quantity || '';
+                                const isDeliv = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'in inventory' || a.status === 'delivered' || a.status === 'completed';
+                                return (
+                                  <span key={ai} className={`inline-flex w-fit items-center text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                    isDeliv ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                  }`}>
+                                    TR-{traceId}{qty ? ` × ${qty}` : ''}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColor(purchaseOrder.status)}`}>
+                              {purchaseOrder.status || 'under process'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(purchaseOrder.items || []).length === 0 && (
+                    <tr>
+                      <td colSpan="7" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No target items.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          {/* Summary / Total section for Process PO */}
+          <div className="flex justify-between items-center pt-4 border-t border-slate-200 mt-6">
+            <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Estimated Total Value (Target Items)</span>
+            <span className="text-xl font-black text-slate-900">
+              ₹{fmt((purchaseOrder.items || []).reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.target_item_quantity) || 0), 0))}
+            </span>
+          </div>
+
         </div>
       </div>
     );

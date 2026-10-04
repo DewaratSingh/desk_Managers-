@@ -11,7 +11,7 @@ export default function ProcessPoForm() {
   const [searchParams] = useSearchParams();
 
   const queryTradeId = searchParams.get('trade_id');
-  const queryRqId = searchParams.get('received_q_id') || searchParams.get('rq_id') || searchParams.get('rq_process_no') || searchParams.get('rq_process_id');
+  const queryRqId = searchParams.get('received_q_id') || searchParams.get('rq_id') || searchParams.get('number') || searchParams.get('rq_process_id');
   const queryRecQtnNo = searchParams.get('received_quotation_no') || searchParams.get('quotation_no');
 
   // Header State
@@ -76,35 +76,65 @@ export default function ProcessPoForm() {
   const populateFromProcessRq = (rq) => {
     if (!rq) return;
     if (rq.id) setReceivedQId(String(rq.id));
-    if (rq.rq_process_no) {
-      setLinkedRqLabel(rq.rq_process_no);
-      setRqSearchInput(rq.rq_process_no);
+    if (rq.number) {
+      setLinkedRqLabel(rq.number);
+      setRqSearchInput(rq.number);
     }
-    if (rq.seller) {
-      setSeller(rq.seller);
-      setSellerInput(rq.seller);
+    if (rq.seller || rq.party_name) {
+      const s = rq.seller || rq.party_name;
+      setSeller(s);
+      setSellerInput(s);
     }
-    if (rq.party) {
-      setParty(rq.party);
-      setPartyInput(rq.party);
+    if (rq.party || rq.customer_name) {
+      const p = rq.party || rq.customer_name;
+      setParty(p);
+      setPartyInput(p);
     }
-    // Record source item codes from RQ to restrict inventory picker (do NOT auto-copy sourceItems)
-    if (Array.isArray(rq.source_items) && rq.source_items.length > 0) {
-      const allowedCodes = rq.source_items.map(s => s.item_code).filter(Boolean);
-      setRqSourceItemCodes(allowedCodes);
-    } else if (Array.isArray(rq.items) && rq.items.length > 0) {
-      const allowedCodes = rq.items.map(s => s.source_item_code || s.item_code).filter(Boolean);
-      setRqSourceItemCodes(allowedCodes);
+    if (rq.message) {
+      setMessage(rq.message);
     }
-    setSourceItems([]);
+    // Collect all source and target items from all jobs
+    let allSourceItems = [];
+    let allTargetItems = [];
+    
+    if (Array.isArray(rq.jobs) && rq.jobs.length > 0) {
+      rq.jobs.forEach(job => {
+        if (Array.isArray(job.source_items)) {
+          allSourceItems = [...allSourceItems, ...job.source_items];
+        }
+        if (Array.isArray(job.target_items)) {
+          const targetItemsWithProcessName = job.target_items.map(t => ({ ...t, process_name: job.process_name || '' }));
+          allTargetItems = [...allTargetItems, ...targetItemsWithProcessName];
+        }
+      });
+    }
 
-    if (Array.isArray(rq.target_items) && rq.target_items.length > 0) {
-      setTargetItems(rq.target_items.map(t => ({
+    if (allSourceItems.length > 0) {
+      const allowedCodes = allSourceItems.map(s => s.item_code).filter(Boolean);
+      setRqSourceItemCodes(allowedCodes);
+      
+      // Auto-populate source items
+      setSourceItems(allSourceItems.map(s => ({
+        item_code: s.item_code || '',
+        description: s.description || '',
+        trace_item_id: s.trace_item_id || s.trace_id || null,
+        qty: String(s.qty || 1),
+        available_qty: s.available_qty || ''
+      })));
+    } else {
+      setSourceItems([]);
+    }
+
+    if (allTargetItems.length > 0) {
+      setTargetItems(allTargetItems.map(t => ({
         item_code: t.item_code,
         description: t.description || '',
         qty: String(t.qty || 1),
-        price: String(t.price || 0)
+        price: String(t.price || 0),
+        process_name: t.process_name || ''
       })));
+    } else {
+      setTargetItems([]);
     }
   };
 
@@ -133,7 +163,7 @@ export default function ProcessPoForm() {
     }
   };
 
-  // Initial Pre-fill Logic from Query Params (trade_id, received_q_id, rq_process_no, received_quotation_no)
+  // Initial Pre-fill Logic from Query Params (trade_id, received_q_id, number, received_quotation_no)
   useEffect(() => {
     if (queryRqId) {
       fetch(`/api/rq-process/${encodeURIComponent(queryRqId)}`)
@@ -201,10 +231,10 @@ export default function ProcessPoForm() {
         fetch(`/api/received-quotations?q=${encodeURIComponent(trimmed)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]).then(([rqList, recList]) => {
         const filteredRq = (Array.isArray(rqList) ? rqList : []).filter(r =>
-          (r.rq_process_no && r.rq_process_no.toLowerCase().includes(trimmed.toLowerCase())) ||
-          (r.seller && r.seller.toLowerCase().includes(trimmed.toLowerCase())) ||
-          (r.party && r.party.toLowerCase().includes(trimmed.toLowerCase()))
-        ).map(r => ({ ...r, _type: 'PROCESS_RQ', label: r.rq_process_no }));
+          (r.number && r.number.toLowerCase().includes(trimmed.toLowerCase())) ||
+          (r.party_name && r.party_name.toLowerCase().includes(trimmed.toLowerCase())) ||
+          (r.customer_name && r.customer_name.toLowerCase().includes(trimmed.toLowerCase()))
+        ).map(r => ({ ...r, _type: 'PROCESS_RQ', label: r.number, seller: r.party_name, party: r.customer_name }));
 
         const filteredRec = (Array.isArray(recList) ? recList : []).map(r => ({
           ...r,
@@ -364,26 +394,6 @@ export default function ProcessPoForm() {
     // Derive source and target items if modal arrays are empty
     let finalSourceItems = sourceItems;
     let finalTargetItems = targetItems;
-
-    if (finalSourceItems.length === 0 && Array.isArray(items) && items.length > 0) {
-      finalSourceItems = items.map(s => ({
-        item_code: s.source_item_code || s.target_item_code,
-        trace_item_id: s.trace_item_id || null,
-        qty: parseFloat(s.source_qty) || parseFloat(s.target_qty) || 1
-      }));
-    }
-
-    if (finalTargetItems.length === 0 && Array.isArray(items) && items.length > 0) {
-      finalTargetItems = items.map(t => ({
-        item_code: t.target_item_code,
-        qty: parseFloat(t.target_qty) || 1,
-        price: parseFloat(t.price) || 0,
-        gst_type: gstType,
-        gst_rate: parseFloat(gstRate) || 0,
-        shipping_address: shippingAddress || null,
-        delivery_date: dateOfEnd || null
-      }));
-    }
 
     if (finalSourceItems.length === 0) {
       toast.error('Please enter at least one source item or target item in the table');

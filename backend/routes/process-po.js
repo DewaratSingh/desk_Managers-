@@ -33,17 +33,9 @@ router.get('/trace-items', async (req, res) => {
     } else if (rq_id || rq_process_no) {
       const rqIdentifier = String(rq_id || rq_process_no).trim();
       const rqRes = await pool.query(
-        `SELECT rp.id, 
-                COALESCE(
-                  (SELECT json_agg(src.item_code)
-                   FROM rq_process_source_item rpsi
-                   JOIN items src ON rpsi.item_code = src.id
-                   WHERE rpsi.rq_process_id = rp.id AND rpsi.company_id = rp.company_id
-                  ), '[]'::json
-                ) AS source_codes,
-                (SELECT src.item_code FROM process_item pi JOIN items src ON pi.source_item_id = src.id WHERE pi.rq_process_id = rp.id AND pi.company_id = rp.company_id LIMIT 1) AS legacy_source_code
+        `SELECT rp.id, '[]'::json AS source_codes, NULL AS legacy_source_code
          FROM rq_process rp
-         WHERE (rp.rq_process_no = $1 OR rp.id::text = $1) AND rp.company_id = $2`,
+         WHERE (rp.number = $1 OR rp.id::text = $1) AND rp.company_id = $2`,
         [rqIdentifier, req.user.company_id]
       );
       if (rqRes.rows.length > 0) {
@@ -132,7 +124,12 @@ router.get('/', async (req, res) => {
               'item_code_id', pti.item_code,
               'item_code', tit.item_code,
               'qty', pti.qty,
-              'delivered_qty', pti.delivered_qty,
+              'delivered_qty', COALESCE((
+                 SELECT SUM(dni.quantity)
+                 FROM delivery_notes dn
+                 JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+                 WHERE dn.trade_id = ppo.trade_id AND dni.item_id = pti.item_code AND dn.company_id = ppo.company_id
+              ), 0),
               'price', pti.price,
               'gst_type', pti.gst_type,
               'gst_rate', pti.gst_rate,
@@ -233,7 +230,12 @@ router.get('/:id', async (req, res) => {
               'item_code_id', pti.item_code,
               'item_code', tit.item_code,
               'qty', pti.qty,
-              'delivered_qty', pti.delivered_qty,
+              'delivered_qty', COALESCE((
+                 SELECT SUM(dni.quantity)
+                 FROM delivery_notes dn
+                 JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+                 WHERE dn.trade_id = ppo.trade_id AND dni.item_id = pti.item_code AND dn.company_id = ppo.company_id
+              ), 0),
               'price', pti.price,
               'gst_type', pti.gst_type,
               'gst_rate', pti.gst_rate,
@@ -516,101 +518,6 @@ router.post('/', async (req, res) => {
       const cleanSourceTraceArray = Array.isArray(source_trace_id_array) ? source_trace_id_array : [];
       const targetTraceIdArray = [];
 
-      if (cleanSourceTraceArray.length > 0) {
-        const totalSourceQty = cleanSourceTraceArray.reduce((sum, st) => sum + (parseFloat(st.Qty) || 0), 0);
-        const sourceBaseQty = parsedSourceQty > 0 ? parsedSourceQty : totalSourceQty;
-        const ratio = sourceBaseQty > 0 ? (parsedTargetQty / sourceBaseQty) : 1;
-
-        for (const st of cleanSourceTraceArray) {
-          const traceId = st.trace_id || st.traceid;
-          const consumeQty = parseFloat(st.Qty) || 0;
-
-          if (consumeQty > 0) {
-            if (st.inventory_id) {
-              await client.query(
-                'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND company_id = $3',
-                [consumeQty, st.inventory_id, companyId]
-              );
-            } else if (traceId) {
-              await client.query(
-                'UPDATE inventory SET quantity = GREATEST(0, quantity - $1), updated_at = CURRENT_TIMESTAMP WHERE trace_item_id = $2 AND company_id = $3',
-                [consumeQty, traceId, companyId]
-              );
-            }
-            if (traceId) {
-              await client.query(
-                'UPDATE trace_item SET quantity = GREATEST(0, quantity - $1) WHERE id = $2 AND company_id = $3',
-                [consumeQty, traceId, companyId]
-              );
-            }
-          }
-
-          const targetQtyForSt = consumeQty * ratio;
-
-          if (targetDbId) {
-            const newTraceRes = await client.query(
-              `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-               VALUES ($1, $2::jsonb, $3, $4, $5, 'under Process PO', $6) RETURNING id`,
-              [
-                targetDbId,
-                JSON.stringify([{ type: 'PROCESS_PO', po_no, process_po_id: ppoId, unit_price: parsedPrice }]),
-                `Process PO: ${po_no}`,
-                targetQtyForSt,
-                parsedPrice,
-                companyId
-              ]
-            );
-            const newTraceId = newTraceRes.rows[0].id;
-
-            await client.query(
-              `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-              [
-                targetDbId,
-                targetQtyForSt,
-                parsedPrice,
-                'Process PO Store',
-                `Process PO Job #${ppoId} (${po_no})`,
-                companyId,
-                newTraceId
-              ]
-            );
-
-            targetTraceIdArray.push({ traceid: newTraceId, source_trace_id: traceId || null, Qty: targetQtyForSt });
-          }
-        }
-      } else if (targetDbId) {
-        const newTraceRes = await client.query(
-          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-           VALUES ($1, $2::jsonb, $3, $4, $5, 'under Process PO', $6) RETURNING id`,
-          [
-            targetDbId,
-            JSON.stringify([{ type: 'PROCESS_PO', po_no, process_po_id: ppoId, unit_price: parsedPrice }]),
-            `Process PO: ${po_no}`,
-            parsedTargetQty,
-            parsedPrice,
-            companyId
-          ]
-        );
-        const newTraceId = newTraceRes.rows[0].id;
-
-        await client.query(
-          `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            targetDbId,
-            parsedTargetQty,
-            parsedPrice,
-            'Process PO Store',
-            `Process PO Job #${ppoId} (${po_no})`,
-            companyId,
-            newTraceId
-          ]
-        );
-
-        targetTraceIdArray.push({ traceid: newTraceId, Qty: parsedTargetQty });
-      }
-
       await client.query(
         `INSERT INTO process_po_item (
            process_po_id, source_item_id, target_item_id,
@@ -706,13 +613,13 @@ router.put('/:id/complete-production', async (req, res) => {
       const tId = parseInt(tObj.traceid || tObj.trace_id);
       if (tId && !isNaN(tId)) {
         const tRes = await client.query(
-          'SELECT * FROM trace_item WHERE id = $1 AND company_id = $2',
+          'SELECT * FROM trace WHERE id = $1 AND company_id = $2',
           [tId, companyId]
         );
         if (tRes.rows.length > 0) {
           target_trace_item_array.push({
             traceId: tId,
-            Qty: parseFloat(tRes.rows[0].quantity) || 0,
+            Qty: parseFloat(tRes.rows[0].qty) || 0,
             traceRow: tRes.rows[0],
             rawObj: tObj
           });
@@ -726,31 +633,19 @@ router.put('/:id/complete-production', async (req, res) => {
       const targetPrice = parseFloat(poiRow.price) || 0;
 
       if (targetItemId) {
-        const newTraceRes = await client.query(
-          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-           VALUES ($1, $2::jsonb, $3, $4, $5, 'in inventory', $6) RETURNING id`,
-          [
-            targetItemId,
-            JSON.stringify([{ type: 'PROCESS_PO_COMPLETED', process_po_id: id }]),
-            `Process PO Production Completed - Job #${id}`,
-            inputMfgQty,
-            targetPrice,
-            companyId
-          ]
-        );
-        const newTraceId = newTraceRes.rows[0].id;
+        const invIns = await client.query('INSERT INTO inventory (location, company_id) VALUES ($1, $2) RETURNING id', ['Process PO Store', companyId]);
+        const targetInvId = invIns.rows[0].id;
 
-        await client.query(
-          `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        const newTraceRes = await client.query(
+          `INSERT INTO trace (item_code, history, qty, cost_price, status, inventory_id, company_id)
+           VALUES ($1, $2::jsonb, $3, $4, 'In Inventory', $5, $6) RETURNING id`,
           [
             targetItemId,
+            JSON.stringify([{ type: 'PROCESS_PO_COMPLETED', process_po_id: id, message: `Process PO Production Completed - Job #${id}` }]),
             inputMfgQty,
             targetPrice,
-            'Process PO Store',
-            `Process PO Stock Completed - Job #${id}`,
-            companyId,
-            newTraceId
+            targetInvId,
+            companyId
           ]
         );
       }
@@ -777,7 +672,7 @@ router.put('/:id/complete-production', async (req, res) => {
 
       if (manufacturedQty >= 0) {
         await client.query(
-          "UPDATE trace_item SET status = 'in inventory', quantity = 0 WHERE id = $1 AND company_id = $2",
+          "UPDATE trace SET status = 'In Inventory', qty = 0 WHERE id = $1 AND company_id = $2",
           [currentItem.traceId, companyId]
         );
 
@@ -789,45 +684,32 @@ router.put('/:id/complete-production', async (req, res) => {
       if (manufacturedQty < 0) {
         const producedQty = prevMfgQty;
         const traceRow = currentItem.traceRow;
-        const processJson = typeof traceRow.process === 'string' 
-          ? traceRow.process 
-          : JSON.stringify(traceRow.process || []);
+        const processJson = typeof traceRow.history === 'string' 
+          ? traceRow.history 
+          : JSON.stringify(traceRow.history || []);
+
+        let targetInvId = traceRow.inventory_id;
+        if (!targetInvId) {
+          const invIns = await client.query('INSERT INTO inventory (location, company_id) VALUES ($1, $2) RETURNING id', ['Process PO Store', companyId]);
+          targetInvId = invIns.rows[0].id;
+        }
 
         const newTraceRes = await client.query(
-          `INSERT INTO trace_item (item_code, process, message, quantity, price, status, company_id)
-           VALUES ($1, $2::jsonb, $3, $4, $5, 'in inventory', $6) RETURNING id`,
+          `INSERT INTO trace (item_code, history, qty, cost_price, status, inventory_id, company_id)
+           VALUES ($1, $2::jsonb, $3, $4, 'In Inventory', $5, $6) RETURNING id`,
           [
             traceRow.item_code,
             processJson,
-            traceRow.message || 'Process PO Item - Completed',
             producedQty,
-            traceRow.price,
+            traceRow.cost_price || traceRow.price || 0,
+            targetInvId,
             companyId
-          ]
-        );
-        const newTraceId = newTraceRes.rows[0].id;
-
-        await client.query(
-          `INSERT INTO inventory (item_code, quantity, price, location, message, company_id, trace_item_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            traceRow.item_code,
-            producedQty,
-            traceRow.price,
-            'Process PO Store',
-            `Process PO Stock Completed - Job #${id}`,
-            companyId,
-            newTraceId
           ]
         );
 
         const remainingTraceQty = manufacturedQty * -1;
         await client.query(
-          'UPDATE trace_item SET quantity = $1 WHERE id = $2 AND company_id = $3',
-          [remainingTraceQty, currentItem.traceId, companyId]
-        );
-        await client.query(
-          'UPDATE inventory SET quantity = $1 WHERE trace_item_id = $2 AND company_id = $3',
+          'UPDATE trace SET qty = $1 WHERE id = $2 AND company_id = $3',
           [remainingTraceQty, currentItem.traceId, companyId]
         );
       }

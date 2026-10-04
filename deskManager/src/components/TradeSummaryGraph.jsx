@@ -150,7 +150,7 @@ export default function TradeSummaryGraph({
       icon: FileText,
       panelKey: isProcessTrade ? 'process_rq' : 'rfq',
       status: (rfq || processRq) ? 'completed' : 'pending',
-      docId: rfq?.rfq_no || processRq?.rq_process_no || (docs.find(d => d.type === 'RFQ' || d.type === 'PR')?.id),
+      docId: rfq?.rfq_no || processRq?.number || (docs.find(d => d.type === 'RFQ' || d.type === 'PR')?.id),
       details: rfq?.buyer_name || processRq?.party || 'Request specs logged',
       meta: rfq?.items ? `${rfq.items.length} items requested` : null,
       date: rfq?.created_at || processRq?.created_at

@@ -19,13 +19,13 @@ export default function TargetItemSelectorModal({
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedItemCode(initialTargetItem.item_code || '');
-      setSelectedItemDesc(initialTargetItem.description || '');
-      setQty(initialTargetItem.qty !== undefined && initialTargetItem.qty !== null ? String(initialTargetItem.qty) : '');
-      setPrice(initialTargetItem.price !== undefined && initialTargetItem.price !== null ? String(initialTargetItem.price) : '');
+      setSelectedItemCode(initialTargetItem?.item_code || '');
+      setSelectedItemDesc(initialTargetItem?.description || '');
+      setQty(initialTargetItem?.qty !== undefined && initialTargetItem?.qty !== null ? String(initialTargetItem.qty) : '');
+      setPrice(initialTargetItem?.price !== undefined && initialTargetItem?.price !== null ? String(initialTargetItem.price) : '');
       fetchCatalogItems();
     }
-  }, [isOpen, initialTargetItem]);
+  }, [isOpen, initialTargetItem?.item_code]);
 
   const fetchCatalogItems = async () => {
     setLoading(true);
@@ -86,7 +86,7 @@ export default function TargetItemSelectorModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-fade-in">
       <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
@@ -182,11 +182,11 @@ export default function TargetItemSelectorModal({
                 No catalog items found.
               </div>
             ) : (
-              filteredItems.map(item => {
+              filteredItems.map((item, idx) => {
                 const isSelected = selectedItemCode === item.item_code;
                 return (
                   <div
-                    key={item.id || item.item_code}
+                    key={`${item.id || item.item_code}-${idx}`}
                     onClick={() => handleSelectItem(item)}
                     className={`p-3 text-xs cursor-pointer transition-colors flex items-center justify-between ${
                       isSelected ? 'bg-slate-100/80 font-bold' : 'hover:bg-slate-50 font-medium'

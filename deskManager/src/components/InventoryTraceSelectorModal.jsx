@@ -152,7 +152,7 @@ export default function InventoryTraceSelectorModal({
   const totalSelectedQty = Object.values(selectedSelections).reduce((sum, s) => sum + (parseFloat(s.Qty) || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
       <div className="bg-white border border-slate-300 rounded-3xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
         
         {/* Modal Header */}

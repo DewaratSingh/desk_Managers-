@@ -648,7 +648,7 @@ export default function DeliveryNoteForm() {
                     <th className="px-3 py-2 text-right w-16">Remaining</th>
                     <th className="px-3 py-2 text-right w-20">Delivery Qty</th>
                     <th className="px-3 py-2 text-right w-20">Price</th>
-                    {tradeType === 'buy' && <th className="px-3 py-2 text-center w-[320px]">Action</th>}
+                    {(tradeType === 'buy' || tradeType === 'process') && <th className="px-3 py-2 text-center w-[320px]">Action</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -722,7 +722,7 @@ export default function DeliveryNoteForm() {
                           value={item.delivery_qty}
                            
                           max={item.remaining_qty}
-                          disabled={tradeType === 'buy'}
+                          disabled={tradeType === 'buy' || tradeType === 'process'}
                           onChange={(e) => handleItemQtyChange(idx, e.target.value)}
                           className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                         />
@@ -742,7 +742,7 @@ export default function DeliveryNoteForm() {
                           </button>
                         </td>
                       )}
-                      {tradeType === 'buy' && (
+                      {(tradeType === 'buy' || tradeType === 'process') && (
                         <td className="px-3 py-1.5 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button
@@ -800,9 +800,9 @@ export default function DeliveryNoteForm() {
       {/* Stock Selection Modal for SELL / ARC Delivery */}
       {openStockPickerItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-300 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 animate-fade-in">
+          <div className="bg-white border border-slate-300 rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 animate-fade-in flex flex-col max-h-[90vh]">
             {/* Modal Header */}
-            <div className="flex justify-between items-start border-b border-slate-200 pb-3">
+            <div className="flex justify-between items-start border-b border-slate-200 pb-3 shrink-0">
               <div>
                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
                   <Package size={18} className="text-indigo-600" />
@@ -834,14 +834,15 @@ export default function DeliveryNoteForm() {
                 <p className="text-[11px] text-slate-400 font-normal">You can record stock in Inventory first or enter delivery quantity manually.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-xs">
+              <div className="overflow-y-auto overflow-x-auto border border-slate-200 rounded-xl shadow-xs flex-1">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10">
                     <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                       <th className="px-3.5 py-2.5">Item Code</th>
                       <th className="px-3.5 py-2.5">Location</th>
                       <th className="px-3.5 py-2.5 text-right">Available Qty</th>
-                      <th className="px-3.5 py-2.5">Status</th>
+                      <th className="px-3.5 py-2.5">Inv Status</th>
+                      <th className="px-3.5 py-2.5">Trace Status</th>
                       <th className="px-3.5 py-2.5 text-right">Price</th>
                       <th className="px-3.5 py-2.5 text-right w-32">Select Qty</th>
                       <th className="px-3.5 py-2.5 text-center w-24">Quick fill</th>
@@ -857,6 +858,13 @@ export default function DeliveryNoteForm() {
                       else if (st === 'manufacturing') badgeCls = "bg-amber-100 border-amber-300 text-amber-800";
 
                       const allocQty = stockAllocations[inv.id] !== undefined ? stockAllocations[inv.id] : 0;
+                      
+                      // Determine trace status from last history element (matches Inventory.jsx)
+                      let traceStr = "Created";
+                      if (inv.history && Array.isArray(inv.history) && inv.history.length > 0) {
+                        const lastStep = inv.history[inv.history.length - 1];
+                        traceStr = lastStep.trace || lastStep.action || lastStep.type || 'Created';
+                      }
 
                       return (
                         <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
@@ -882,6 +890,11 @@ export default function DeliveryNoteForm() {
                                 {st}
                               </span>
                             </div>
+                          </td>
+                          <td className="px-3.5 py-3 text-[10px] font-bold">
+                            <span className="inline-flex items-center bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 shadow-sm truncate max-w-[120px]" title={traceStr}>
+                              {traceStr}
+                            </span>
                           </td>
                           <td className="px-3.5 py-3 text-right font-mono font-bold">
                             ₹{parseFloat(inv.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -927,7 +940,7 @@ export default function DeliveryNoteForm() {
               const isOverLimit = currentTotalSelected > openStockPickerItem.remaining_qty;
 
               return (
-                <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
                   <div className="text-xs font-bold text-slate-700">
                     Total Selected Quantity: {' '}
                     <span className={`font-mono text-sm font-black ${

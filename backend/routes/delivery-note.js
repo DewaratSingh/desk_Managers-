@@ -238,7 +238,8 @@ router.post('/', async (req, res) => {
     const trade = tradeRes.rows[0];
     const tradeDbId = trade.id;
     const trade_code = trade.trade_id;
-    const isBuyTrade = (trade.trade_type || 'sell').toLowerCase() === 'buy';
+    const rawTradeType = (trade.trade_type || 'sell').toLowerCase();
+    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process';
 
     const docs = trade.documents || [];
     const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
@@ -248,25 +249,38 @@ router.post('/', async (req, res) => {
     const ro_no = roDoc ? roDoc.id : null;
 
     let poDbId = null, ppoDbId = null, roDbId = null;
+    let ppoMessage = null, ppoNo = null;
 
     if (po_no) {
       if (po_no.startsWith('PPO-')) {
-        const ppoRes = await client.query('SELECT id FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
-        if (ppoRes.rows.length > 0) ppoDbId = ppoRes.rows[0].id;
+        const ppoRes = await client.query('SELECT id, message, po_no FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
+        if (ppoRes.rows.length > 0) {
+          ppoDbId = ppoRes.rows[0].id;
+          ppoMessage = ppoRes.rows[0].message;
+          ppoNo = ppoRes.rows[0].po_no;
+        }
       } else {
         const poRes = await client.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
         if (poRes.rows.length > 0) {
           poDbId = poRes.rows[0].id;
         } else {
-          const ppoRes = await client.query('SELECT id FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
-          if (ppoRes.rows.length > 0) ppoDbId = ppoRes.rows[0].id;
+          const ppoRes = await client.query('SELECT id, message, po_no FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
+          if (ppoRes.rows.length > 0) {
+            ppoDbId = ppoRes.rows[0].id;
+            ppoMessage = ppoRes.rows[0].message;
+            ppoNo = ppoRes.rows[0].po_no;
+          }
         }
       }
     }
 
     if (!ppoDbId && tradeDbId) {
-      const ppoCheck = await client.query('SELECT id FROM process_po WHERE trade_id = $1 AND company_id = $2', [tradeDbId, companyId]);
-      if (ppoCheck.rows.length > 0) ppoDbId = ppoCheck.rows[0].id;
+      const ppoCheck = await client.query('SELECT id, message, po_no FROM process_po WHERE trade_id = $1 AND company_id = $2', [tradeDbId, companyId]);
+      if (ppoCheck.rows.length > 0) {
+        ppoDbId = ppoCheck.rows[0].id;
+        ppoMessage = ppoCheck.rows[0].message;
+        ppoNo = ppoCheck.rows[0].po_no;
+      }
     }
 
     if (ro_no) {
@@ -334,7 +348,73 @@ router.post('/', async (req, res) => {
 
           const targetStatus = item.inv_details.status || 'In Inventory';
           const buyUnitPrice = parseFloat(item.inv_details.cost_price || item.rate_per_piece) || 0;
-          const stepObj = { type: 'BUY', id: trade_code, DeliveryNoteID: dnDbId, BuyPrice: buyUnitPrice };
+          let stepObj = { type: 'BUY', id: trade_code, DeliveryNoteID: dnDbId, BuyPrice: buyUnitPrice };
+          let initialHistory = [stepObj];
+
+          if (ppoDbId) {
+             const sourceItemsRes = await client.query(
+               'SELECT id, source_trace_id_array, process_name FROM process_po_item WHERE process_po_id = $1 AND target_item_id = $2 AND company_id = $3',
+               [ppoDbId, itemDbId, companyId]
+             );
+             let ppoItemProcessName = null;
+             let ppoItemId = null;
+             
+             if (sourceItemsRes.rows.length > 0) {
+                ppoItemProcessName = sourceItemsRes.rows[0].process_name;
+                ppoItemId = sourceItemsRes.rows[0].id;
+             }
+             
+             stepObj = {
+               'trade id': trade_code,
+               'process price': buyUnitPrice,
+               'delivery note id': dnDbId,
+               'trace': ppoItemProcessName ? ppoItemProcessName : (ppoMessage ? ppoMessage : `Process ${ppoNo || ''}`.trim())
+             };
+             initialHistory = [stepObj];
+
+             if (ppoItemId) {
+                const deliveredQty = invQty;
+                const deliveredPrice = deliveredQty * buyUnitPrice;
+                await client.query(
+                  `UPDATE process_po_item 
+                   SET delivered_qty = COALESCE(delivered_qty, 0) + $1,
+                       delivered_price = COALESCE(delivered_price, 0) + $2,
+                       remaining_price = COALESCE(remaining_price, 0) - $2
+                   WHERE id = $3`,
+                  [deliveredQty, deliveredPrice, ppoItemId]
+                );
+             }
+
+             if (sourceItemsRes.rows.length > 0) {
+                const srcArray = sourceItemsRes.rows[0].source_trace_id_array || [];
+                const srcTraceIds = srcArray.map(s => s.trace_id || s.traceid).filter(Boolean);
+                
+                if (srcTraceIds.length > 0) {
+                   const tracesRes = await client.query(
+                     'SELECT history FROM trace WHERE id = ANY($1::int[]) AND company_id = $2',
+                     [srcTraceIds, companyId]
+                   );
+                   
+                   let mergedHistory = [];
+                   for (const r of tracesRes.rows) {
+                      if (Array.isArray(r.history)) {
+                         mergedHistory.push(...r.history);
+                      }
+                   }
+                   
+                   const uniqueHist = [];
+                   const seen = new Set();
+                   for (const h of mergedHistory) {
+                      const str = JSON.stringify(h);
+                      if (!seen.has(str)) {
+                         seen.add(str);
+                         uniqueHist.push(h);
+                      }
+                   }
+                   initialHistory = [...uniqueHist, stepObj];
+                }
+             }
+          }
 
           let targetTraceId = item.inv_details.trace_id ? parseInt(item.inv_details.trace_id) : null;
           
@@ -359,7 +439,7 @@ router.post('/', async (req, res) => {
               const newPrice = newQty > 0 ? ((exQty * exPrice) + (invQty * buyUnitPrice)) / newQty : buyUnitPrice;
               
               let histArray = Array.isArray(tr.rows[0].history) ? tr.rows[0].history : [];
-              histArray.push(stepObj);
+              histArray.push(stepObj); // Append just the step, ancestry is likely already present if it was merged before
 
               await client.query(
                 `UPDATE trace SET qty = $1, cost_price = $2, history = $3::jsonb WHERE id = $4 AND company_id = $5`,
@@ -371,7 +451,7 @@ router.post('/', async (req, res) => {
             const trIns = await client.query(
               `INSERT INTO trace (item_code, qty, cost_price, inventory_id, status, history, company_id) 
                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id`,
-              [itemDbId, invQty, buyUnitPrice, targetInvId, targetStatus, JSON.stringify([stepObj]), companyId]
+              [itemDbId, invQty, buyUnitPrice, targetInvId, targetStatus, JSON.stringify(initialHistory), companyId]
             );
             traceIdForNextActivity = trIns.rows[0].id;
           }
@@ -382,7 +462,8 @@ router.post('/', async (req, res) => {
         inventory: item.inv_qty > 0 ? { quantity: parseFloat(item.inv_qty), trace_id: traceIdForNextActivity } : null
       };
 
-      const targetTraceRef = item.process_target_trace_item_id || null;
+      const targetTraceRef = ppoDbId ? (traceIdForNextActivity || null) : null;
+      require('fs').appendFileSync('debug.txt', `\\nDEBUG DN POST item=${item.item_code}: ppoDbId=${ppoDbId}, process_target_trace_item_id=${item.process_target_trace_item_id}, traceIdForNextActivity=${traceIdForNextActivity}, targetTraceRef=${targetTraceRef}\\n`);
 
       await client.query(
         `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity, process_target_trace_item_id)
@@ -400,18 +481,32 @@ router.post('/', async (req, res) => {
         ]
       );
 
-      // Process PO delivery trace conversion if applicable
-      if (targetTraceRef) {
-        const sumRes = await client.query(
-          `SELECT COALESCE(SUM(quantity), 0) AS total_delivered
-           FROM delivery_note_items
-           WHERE process_target_trace_item_id = $1 AND company_id = $2`,
-          [targetTraceRef, companyId]
-        );
-        const delQty = parseFloat(sumRes.rows[0].total_delivered) || 0;
-        if (ppoDbId && delQty > 0) {
-          await processPoDeliveryTraceConversion(client, ppoDbId, itemDbId, delQty, companyId, delivery_note_no);
-        }
+      // Link trace into process_po_item target_trace_id_array if applicable so PO Panel sees delivered items
+      if (ppoDbId && traceIdForNextActivity) {
+         const poiRes = await client.query(
+           'SELECT id, target_trace_id_array FROM process_po_item WHERE process_po_id = $1 AND target_item_id = $2 AND company_id = $3',
+           [ppoDbId, itemDbId, companyId]
+         );
+         if (poiRes.rows.length > 0) {
+           const poiRow = poiRes.rows[0];
+           const currentArray = Array.isArray(poiRow.target_trace_id_array) ? poiRow.target_trace_id_array : [];
+           const existing = currentArray.find(x => parseInt(x.trace_id || x.traceid) === parseInt(traceIdForNextActivity));
+           if (existing) {
+              existing.qty = (parseFloat(existing.qty) || 0) + parseFloat(item.inv_qty || 0);
+              existing.Qty = existing.qty; // ensure Qty works for PoPanel backward compat
+           } else {
+              currentArray.push({
+                 trace_id: traceIdForNextActivity,
+                 qty: parseFloat(item.inv_qty || 0),
+                 Qty: parseFloat(item.inv_qty || 0),
+                 status: 'In Inventory'
+              });
+           }
+           await client.query(
+             'UPDATE process_po_item SET target_trace_id_array = $1::jsonb WHERE id = $2 AND company_id = $3',
+             [JSON.stringify(currentArray), poiRow.id, companyId]
+           );
+         }
       }
     }
 
@@ -425,6 +520,7 @@ router.post('/', async (req, res) => {
     res.status(201).json({ delivery_note_no, trade_id: trade_code });
   } catch (err) {
     await client.query('ROLLBACK');
+    require('fs').appendFileSync('debug.txt', `\nERROR in DN POST: ${err.message}\n`);
     console.error('Error creating Delivery Note:', err.message);
     res.status(500).json({ error: err.message || 'Failed to create Delivery Note' });
   } finally {
@@ -470,12 +566,21 @@ router.put('/:delivery_note_no', async (req, res) => {
     // 2. Resolve trade ID and trade code
     let tradeDbId = null;
     let trade_code = null;
+    let ppoDbId = null;
+    let ppoMessage = null, ppoNo = null;
     const tradeRes = await client.query('SELECT t.id, t.trade_id, t.trade_type FROM delivery_notes dn JOIN trades t ON dn.trade_id = t.id WHERE dn.delivery_note_no = $1 AND dn.company_id = $2', [delivery_note_no, companyId]);
     if (tradeRes.rows.length > 0) {
       tradeDbId = tradeRes.rows[0].id;
       trade_code = tradeRes.rows[0].trade_id;
+      const ppoRes = await client.query('SELECT pp.id, pp.message, pp.po_no FROM process_po pp WHERE pp.trade_id = $1 AND pp.company_id = $2', [tradeDbId, companyId]);
+      if (ppoRes.rows.length > 0) {
+        ppoDbId = ppoRes.rows[0].id;
+        ppoMessage = ppoRes.rows[0].message;
+        ppoNo = ppoRes.rows[0].po_no;
+      }
     }
-    const isBuyTrade = (tradeRes.rows[0]?.trade_type || 'sell').toLowerCase() === 'buy';
+    const rawTradeType = (tradeRes.rows[0]?.trade_type || 'sell').toLowerCase();
+    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process';
 
     // 3. Rewrite items
     await client.query('DELETE FROM delivery_note_items WHERE delivery_note_id = $1 AND company_id = $2', [dnDbId, companyId]);
@@ -528,7 +633,58 @@ router.put('/:delivery_note_no', async (req, res) => {
 
           const targetStatus = item.inv_details.status || 'In Inventory';
           const buyUnitPrice = parseFloat(item.inv_details.cost_price || item.rate_per_piece) || 0;
-          const stepObj = { type: 'BUY', id: trade_code, DeliveryNoteID: dnDbId, BuyPrice: buyUnitPrice };
+          let stepObj = { type: 'BUY', id: trade_code, DeliveryNoteID: dnDbId, BuyPrice: buyUnitPrice };
+          let initialHistory = [stepObj];
+
+          if (ppoDbId) {
+             const sourceItemsRes = await client.query(
+               'SELECT id, source_trace_id_array, process_name FROM process_po_item WHERE process_po_id = $1 AND target_item_id = $2 AND company_id = $3',
+               [ppoDbId, itemDbId, companyId]
+             );
+             let ppoItemProcessName = null;
+             
+             if (sourceItemsRes.rows.length > 0) {
+                ppoItemProcessName = sourceItemsRes.rows[0].process_name;
+             }
+             
+             stepObj = {
+               'trade id': trade_code,
+               'process price': buyUnitPrice,
+               'delivery note id': dnDbId,
+               'trace': ppoItemProcessName ? ppoItemProcessName : (ppoMessage ? ppoMessage : `Process ${ppoNo || ''}`.trim())
+             };
+             initialHistory = [stepObj];
+
+             if (sourceItemsRes.rows.length > 0) {
+                const srcArray = sourceItemsRes.rows[0].source_trace_id_array || [];
+                const srcTraceIds = srcArray.map(s => s.trace_id || s.traceid).filter(Boolean);
+                
+                if (srcTraceIds.length > 0) {
+                   const tracesRes = await client.query(
+                     'SELECT history FROM trace WHERE id = ANY($1::int[]) AND company_id = $2',
+                     [srcTraceIds, companyId]
+                   );
+                   
+                   let mergedHistory = [];
+                   for (const r of tracesRes.rows) {
+                      if (Array.isArray(r.history)) {
+                         mergedHistory.push(...r.history);
+                      }
+                   }
+                   
+                   const uniqueHist = [];
+                   const seen = new Set();
+                   for (const h of mergedHistory) {
+                      const str = JSON.stringify(h);
+                      if (!seen.has(str)) {
+                         seen.add(str);
+                         uniqueHist.push(h);
+                      }
+                   }
+                   initialHistory = [...uniqueHist, stepObj];
+                }
+             }
+          }
 
           let targetTraceId = item.inv_details.trace_id ? parseInt(item.inv_details.trace_id) : null;
           
@@ -551,7 +707,7 @@ router.put('/:delivery_note_no', async (req, res) => {
               
               let histArray = Array.isArray(tr.rows[0].history) ? tr.rows[0].history : [];
               if (!histArray.some(h => h.DeliveryNoteID === dnDbId && h.id === trade_code)) {
-                histArray.push(stepObj);
+                histArray.push(stepObj); // Ancestry history is already in there from original merge, just push the new step
               }
 
               await client.query(
@@ -564,7 +720,7 @@ router.put('/:delivery_note_no', async (req, res) => {
             const trIns = await client.query(
               `INSERT INTO trace (item_code, qty, cost_price, inventory_id, status, history, company_id) 
                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id`,
-              [itemDbId, invQty, buyUnitPrice, targetInvId, targetStatus, JSON.stringify([stepObj]), companyId]
+              [itemDbId, invQty, buyUnitPrice, targetInvId, targetStatus, JSON.stringify(initialHistory), companyId]
             );
             traceIdForNextActivity = trIns.rows[0].id;
           }
@@ -575,7 +731,7 @@ router.put('/:delivery_note_no', async (req, res) => {
         inventory: item.inv_qty > 0 ? { quantity: parseFloat(item.inv_qty), trace_id: traceIdForNextActivity } : null
       };
 
-      const targetTraceRef = item.process_target_trace_item_id || null;
+      const targetTraceRef = ppoDbId ? (traceIdForNextActivity || null) : null;
 
       await client.query(
         `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity, process_target_trace_item_id)
@@ -593,15 +749,34 @@ router.put('/:delivery_note_no', async (req, res) => {
         ]
       );
 
-      if (tradeDbId) {
-        const ppoRes = await client.query('SELECT pp.id FROM process_po pp WHERE pp.trade_id = $1 AND pp.company_id = $2', [tradeDbId, companyId]);
-        if (ppoRes.rows.length > 0) {
-          const ppoDbId = ppoRes.rows[0].id;
-          const delQty = parseFloat(item.quantity) || 0;
-          if (delQty > 0) {
-            await processPoDeliveryTraceConversion(client, ppoDbId, itemDbId, delQty, companyId, delivery_note_no);
-          }
-        }
+      // Link trace into process_po_item target_trace_id_array if applicable so PO Panel sees delivered items
+      if (ppoDbId && traceIdForNextActivity) {
+         const poiRes = await client.query(
+           'SELECT id, target_trace_id_array FROM process_po_item WHERE process_po_id = $1 AND target_item_id = $2 AND company_id = $3',
+           [ppoDbId, itemDbId, companyId]
+         );
+         if (poiRes.rows.length > 0) {
+           const poiRow = poiRes.rows[0];
+           const currentArray = Array.isArray(poiRow.target_trace_id_array) ? poiRow.target_trace_id_array : [];
+           const existing = currentArray.find(x => parseInt(x.trace_id || x.traceid) === parseInt(traceIdForNextActivity));
+           if (existing) {
+              // Wait, since PUT recalculates quantities, we shouldn't keep adding invQty over and over.
+              // In PUT, we probably just want to ensure it is in the array.
+              existing.qty = Math.max(parseFloat(existing.qty) || 0, parseFloat(item.inv_qty || 0));
+              existing.Qty = existing.qty; // ensure Qty works for PoPanel backward compat
+           } else {
+              currentArray.push({
+                 trace_id: traceIdForNextActivity,
+                 qty: parseFloat(item.inv_qty || 0),
+                 Qty: parseFloat(item.inv_qty || 0),
+                 status: 'In Inventory'
+              });
+           }
+           await client.query(
+             'UPDATE process_po_item SET target_trace_id_array = $1::jsonb WHERE id = $2 AND company_id = $3',
+             [JSON.stringify(currentArray), poiRow.id, companyId]
+           );
+         }
       }
     }
 
@@ -631,7 +806,7 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
         COALESCE(
           (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = $1 AND po.company_id = $2),
           (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = $1 AND ro.company_id = $2),
-          (SELECT SUM(ppi.target_item_quantity * ppi.price) FROM process_po pp JOIN po_process_item ppi ON pp.id = ppi.process_po_id WHERE pp.trade_id = $1 AND pp.company_id = $2),
+          (SELECT SUM(ppi.target_qty * ppi.price) FROM process_po pp JOIN process_po_item ppi ON pp.id = ppi.process_po_id WHERE pp.trade_id = $1 AND pp.company_id = $2),
           0
         )::numeric AS ordered_val,
         COALESCE(
@@ -700,8 +875,8 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
     [statusName, company_id]
   );
   await client.query(
-    "UPDATE trades SET status = $1 WHERE id = $2 AND company_id = $3",
-    [statusName, trade_id, company_id]
+    "UPDATE trades SET status = $1, delivery_percentage = $2 WHERE id = $3 AND company_id = $4",
+    [statusName, pct, trade_id, company_id]
   );
 }
 

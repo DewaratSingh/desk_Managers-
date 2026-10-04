@@ -117,6 +117,10 @@ const initializeDatabase = async () => {
       );
     `);
 
+    await client.query(`
+      ALTER TABLE trades ADD COLUMN IF NOT EXISTS delivery_percentage DECIMAL(5, 2) DEFAULT 0;
+    `);
+
     // 6. Items Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS items (
@@ -371,6 +375,12 @@ const initializeDatabase = async () => {
       ADD COLUMN IF NOT EXISTS process_target_trace_item_id INTEGER REFERENCES trace(id) ON DELETE SET NULL;
     `);
 
+    // Ensure the foreign key constraint points to trace instead of trace_item
+    await client.query(`
+      ALTER TABLE delivery_note_items DROP CONSTRAINT IF EXISTS delivery_note_items_process_target_trace_item_id_fkey;
+      ALTER TABLE delivery_note_items ADD CONSTRAINT delivery_note_items_process_target_trace_item_id_fkey FOREIGN KEY (process_target_trace_item_id) REFERENCES trace(id) ON DELETE SET NULL;
+    `);
+
     // Migrate CHECK constraint to allow quantity >= 0
     await client.query(`
       ALTER TABLE delivery_note_items DROP CONSTRAINT IF EXISTS delivery_note_items_quantity_check;
@@ -414,15 +424,29 @@ const initializeDatabase = async () => {
       );
     `);
 
-    // 22. ARC Items Table
+    // 22. Contracts and Contract Items
     await client.query(`
-      CREATE TABLE IF NOT EXISTS arc_items (
+      CREATE TABLE IF NOT EXISTS contracts (
         id SERIAL PRIMARY KEY,
+        company_name VARCHAR(255),
+        buyer_id INTEGER REFERENCES buyers(id) ON DELETE CASCADE,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS contract_items (
+        id SERIAL PRIMARY KEY,
+        contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE,
         item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
         price DECIMAL(12, 2) NOT NULL CHECK (price >= 0),
+        date DATE,
+        expiry_date DATE,
+        history JSONB DEFAULT '[]'::jsonb,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (item_id, company_id)
+        UNIQUE (contract_id, item_id, company_id)
       );
     `);
 
@@ -562,61 +586,49 @@ const initializeDatabase = async () => {
       );
     `);
 
-    // 33. RQ Process Table
+    // Drop old process tables to apply schema change if they exist
+    await client.query(`
+      DROP TABLE IF EXISTS process_item CASCADE;
+      DROP TABLE IF EXISTS rq_process_source_item CASCADE;
+      DROP TABLE IF EXISTS rq_process_target_item CASCADE;
+    `);
 
+    // 33. RQ Process Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS rq_process (
         id SERIAL PRIMARY KEY,
-        rq_process_no VARCHAR(100) NOT NULL,
-        date DATE NOT NULL,
-        seller VARCHAR(255),
-        party VARCHAR(255),
+        number VARCHAR(100) NOT NULL,
+        party_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        "dateOfStart" DATE NOT NULL,
+        "dateOfEnd" DATE,
         message TEXT,
+        job_ids JSONB DEFAULT '[]'::jsonb,
         trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (rq_process_no, company_id)
+        UNIQUE (number, company_id)
       );
     `);
 
-    // 31. Process Item Table (Legacy pair table)
+    // Auto-migrate if table already exists from previous schema
     await client.query(`
-      CREATE TABLE IF NOT EXISTS process_item (
-        id SERIAL PRIMARY KEY,
-        rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE CASCADE,
-        source_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        source_item_quantity NUMERIC(12, 3) NOT NULL CHECK (source_item_quantity > 0),
-        target_item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        target_item_quantity NUMERIC(12, 3) NOT NULL CHECK (target_item_quantity > 0),
-        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      DO $$ 
+      BEGIN 
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='rq_process' AND column_name='rq_process_no') THEN
+              ALTER TABLE rq_process RENAME COLUMN rq_process_no TO number;
+          END IF;
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='rq_process' AND column_name='date') THEN
+              ALTER TABLE rq_process RENAME COLUMN date TO "dateOfStart";
+          END IF;
+      END $$;
     `);
-
-    // 31b. RQ Process Source Item Table
+    
     await client.query(`
-      CREATE TABLE IF NOT EXISTS rq_process_source_item (
-        id SERIAL PRIMARY KEY,
-        rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE CASCADE,
-        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
-        trace_item_id INTEGER REFERENCES trace(id) ON DELETE SET NULL,
-        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
-        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // 31c. RQ Process Target Item Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS rq_process_target_item (
-        id SERIAL PRIMARY KEY,
-        rq_process_id INTEGER REFERENCES rq_process(id) ON DELETE CASCADE,
-        item_code INTEGER REFERENCES items(id) ON DELETE SET NULL,
-        qty NUMERIC(12, 3) NOT NULL DEFAULT 0,
-        price DECIMAL(12, 2) DEFAULT 0.00,
-        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      ALTER TABLE rq_process ADD COLUMN IF NOT EXISTS party_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL;
+      ALTER TABLE rq_process ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
+      ALTER TABLE rq_process ADD COLUMN IF NOT EXISTS "dateOfEnd" DATE;
+      ALTER TABLE rq_process ADD COLUMN IF NOT EXISTS job_ids JSONB DEFAULT '[]'::jsonb;
     `);
 
     // Auto-migrate existing quantity columns in PostgreSQL to NUMERIC(12, 3)
@@ -752,6 +764,10 @@ const initializeDatabase = async () => {
       ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS target_qty NUMERIC DEFAULT 0;
       ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS target_trace_id_array JSONB DEFAULT '[]'::jsonb;
       ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS company_id INTEGER;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS process_name VARCHAR(255);
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS delivered_qty NUMERIC(12, 3) DEFAULT 0;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS delivered_price DECIMAL(12, 2) DEFAULT 0;
+      ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS remaining_price DECIMAL(12, 2) DEFAULT 0;
     `);
 
     const defaultUnits = ['Piece', 'Set', 'Kg', 'Meter', 'Box', 'Litre'];

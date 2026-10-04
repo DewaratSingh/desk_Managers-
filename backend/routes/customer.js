@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : null;
     const offset = req.query.offset ? parseInt(req.query.offset) : 0;
     
-    let query = 'SELECT customer_code as id, name, address, created_at FROM customers WHERE company_id = $1';
+    let query = 'SELECT id as db_id, customer_code as id, name, address, created_at FROM customers WHERE company_id = $1';
     const params = [req.user.company_id];
     
     if (q) {

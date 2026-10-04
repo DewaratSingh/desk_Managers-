@@ -101,7 +101,7 @@ router.get('/stock-by-item', async (req, res) => {
        FROM trace t
        JOIN inventory inv ON t.inventory_id = inv.id
        JOIN items it ON t.item_code = it.id
-       WHERE t.item_code = $1 AND t.company_id = $2 AND t.qty > 0 AND LOWER(t.status) = 'in inventory'
+       WHERE t.item_code = $1 AND t.company_id = $2 AND t.qty > 0
        ORDER BY t.created_at ASC`,
       [itemDbId, req.user.company_id]
     );

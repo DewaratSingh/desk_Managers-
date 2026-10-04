@@ -81,6 +81,7 @@ export default function ManufactureList() {
             return {
               ...item,
               completion_qty: updatedQty !== undefined && updatedQty !== null ? updatedQty : item.completion_qty,
+              price: inventoryDetails.cost_price !== undefined ? inventoryDetails.cost_price : item.price,
               inventoryDetails: inventoryDetails,
               configured: true,
               selected: true
@@ -105,7 +106,7 @@ export default function ManufactureList() {
           .catch(err => console.error(err));
       }
 
-      window.history.replaceState({}, document.title);
+      navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.state, manufactureList]);
 
@@ -278,6 +279,23 @@ export default function ManufactureList() {
         }
       }
     });
+  };
+
+  const handleScrapRemaining = (index) => {
+    const item = targetCompletionItems[index];
+    if (window.confirm('This will delete all remaining Quantity. Are you sure?')) {
+      setTargetCompletionItems(prev => prev.map((it, idx) => {
+        if (idx !== index) return it;
+        return {
+          ...it,
+          completion_qty: it.remaining_qty,
+          inventoryDetails: { location: 'Scrap', status: 'Scrapped', cost_price: 0 },
+          price: 0,
+          configured: true,
+          selected: true
+        };
+      }));
+    }
   };
 
   // Submit Completed Qty for selected target items
@@ -506,9 +524,9 @@ export default function ManufactureList() {
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                     <th className="px-4 py-3">Job ID</th>
                     <th className="px-4 py-3">Process Name</th>
-                    <th className="px-4 py-3">Dates</th>
                     <th className="px-4 py-3">Source Items Consumed</th>
                     <th className="px-4 py-3">Target Items Produced</th>
+                    <th className="px-4 py-3">Scrap</th>
                     <th className="px-4 py-3 text-center">Status</th>
                     <th className="px-4 py-3 text-center">Action</th>
                   </tr>
@@ -550,19 +568,6 @@ export default function ManufactureList() {
                           {m.message && <div className="text-[10px] text-slate-400 font-normal truncate max-w-[150px]">{m.message}</div>}
                         </td>
 
-                        {/* Dates */}
-                        <td className="px-4 py-3.5 text-slate-700 align-top">
-                          <div className="flex items-center gap-1 font-semibold text-[11px]">
-                            <Calendar size={12} className="text-slate-400 shrink-0" />
-                            <span>Start: {m.date_of_start ? new Date(m.date_of_start).toLocaleDateString() : '—'}</span>
-                          </div>
-                          {m.date_of_end && (
-                            <div className="text-[10px] text-slate-500 mt-0.5 font-medium">
-                              End: {new Date(m.date_of_end).toLocaleDateString()}
-                            </div>
-                          )}
-                        </td>
-
                         {/* Source Items */}
                         <td className="px-4 py-3.5 align-top min-w-[200px]">
                           <div className="space-y-1.5">
@@ -598,6 +603,28 @@ export default function ManufactureList() {
                                 </div>
                               </div>
                             ))}
+                          </div>
+                        </td>
+
+                        {/* Scrap Items */}
+                        <td className="px-4 py-3.5 align-top min-w-[150px]">
+                          <div className="space-y-1.5">
+                            {(() => {
+                              let scrapList = [];
+                              if (m.manufacture && m.manufacture.loss_qty) {
+                                scrapList = Array.isArray(m.manufacture.loss_qty) ? m.manufacture.loss_qty : [];
+                              }
+                              if (scrapList.length === 0) return <span className="text-slate-400 text-xs italic">—</span>;
+                              
+                              return scrapList.map((scrapItem, i) => (
+                                <div key={i} className="bg-red-50/70 border border-red-200 rounded-lg p-2 text-[11px]">
+                                  <div className="font-bold text-slate-900">{scrapItem.itemCode || scrapItem.item_code || '—'}</div>
+                                  <div className="font-mono text-red-600 font-bold text-[10px] mt-0.5">
+                                    Qty: {scrapItem.Qty || scrapItem.qty || 0}
+                                  </div>
+                                </div>
+                              ));
+                            })()}
                           </div>
                         </td>
 
@@ -796,29 +823,42 @@ export default function ManufactureList() {
                             ₹{parseFloat(item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </td>
 
-                          {/* Action: Add in Inventory Button */}
+                          {/* Action: Add in Inventory & Scrap Button */}
                           <td className="px-3 py-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleAddInInventory(item)}
-                              className={`px-2.5 py-1 text-[10px] font-black rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs mx-auto ${
-                                item.configured || item.inventoryDetails
-                                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
-                                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
-                              }`}
-                            >
-                              {item.configured || item.inventoryDetails ? (
-                                <>
-                                  <CheckCircle2 size={11} className="text-emerald-600" />
-                                  <span>Location Set</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Package size={11} />
-                                  <span>Add in Inventory</span>
-                                </>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleAddInInventory(item)}
+                                className={`px-2.5 py-1 text-[10px] font-black rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs ${
+                                  item.configured || item.inventoryDetails
+                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                                }`}
+                              >
+                                {item.configured || item.inventoryDetails ? (
+                                  <>
+                                    <CheckCircle2 size={11} className="text-emerald-600" />
+                                    <span>Location Set</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Package size={11} />
+                                    <span>Add in Inventory</span>
+                                  </>
+                                )}
+                              </button>
+                              
+                              {item.remaining_qty > 0 && !(item.configured || item.inventoryDetails) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleScrapRemaining(idx)}
+                                  className="px-2.5 py-1 text-[10px] font-black rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 transition-all cursor-pointer shadow-2xs"
+                                  title="Scrap Remaining Quantity"
+                                >
+                                  Scrap Other
+                                </button>
                               )}
-                            </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
