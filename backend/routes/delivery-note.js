@@ -102,14 +102,44 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
       items = roItemsRes.rows;
     } else if (po_no) {
       if (po_no.startsWith('PPO-')) {
-        const ppoRes = await pool.query('SELECT id FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
+        const ppoRes = await pool.query('SELECT id, job_ids FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
         if (ppoRes.rows.length === 0) return res.status(404).json({ error: 'Process Purchase Order not found' });
         const ppoDbId = ppoRes.rows[0].id;
+        
+        let jobIdsArray = [];
+        try {
+            if (typeof ppoRes.rows[0].job_ids === 'string') {
+               jobIdsArray = JSON.parse(ppoRes.rows[0].job_ids);
+            } else if (Array.isArray(ppoRes.rows[0].job_ids)) {
+               jobIdsArray = ppoRes.rows[0].job_ids;
+            }
+        } catch(e) {}
+        
+        let processNameMap = {};
+        if (jobIdsArray && jobIdsArray.length > 0) {
+           const jobsResult = await pool.query(
+             `SELECT j.process_name, (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items 
+              FROM job j 
+              WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int) AND j.company_id = $2`,
+             [JSON.stringify(jobIdsArray), req.user.company_id]
+           );
+           jobsResult.rows.forEach(job => {
+               const tgtGroups = job.target_items || [];
+               tgtGroups.forEach(ti => {
+                  if (Array.isArray(ti.items)) {
+                      ti.items.forEach(t => {
+                          processNameMap[t.item_code] = job.process_name;
+                      });
+                  }
+               });
+           });
+        }
 
         const ppoItemsRes = await pool.query(
           `SELECT
             poi.id as process_po_item_id,
             poi.target_item_id,
+            poi.process_name,
             i.item_code,
             COALESCE(poi.target_qty, 0) as original_qty,
             COALESCE(poi.price, 0) as rate_per_piece,
@@ -136,6 +166,7 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
           const targetTraceId = tgtArray.length > 0 ? (tgtArray[0].traceid || tgtArray[0].trace_id) : null;
           return {
             ...row,
+            process_name: processNameMap[row.item_code] || row.process_name || null,
             process_target_trace_item_id: targetTraceId,
             linked_trace_item_id: targetTraceId
           };
@@ -249,37 +280,40 @@ router.post('/', async (req, res) => {
     const ro_no = roDoc ? roDoc.id : null;
 
     let poDbId = null, ppoDbId = null, roDbId = null;
-    let ppoMessage = null, ppoNo = null;
+    let ppoMessage = null, ppoNo = null, ppoJobIds = null;
 
     if (po_no) {
       if (po_no.startsWith('PPO-')) {
-        const ppoRes = await client.query('SELECT id, message, po_no FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
+        const ppoRes = await client.query('SELECT id, message, po_no, job_ids FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
         if (ppoRes.rows.length > 0) {
           ppoDbId = ppoRes.rows[0].id;
           ppoMessage = ppoRes.rows[0].message;
           ppoNo = ppoRes.rows[0].po_no;
+          ppoJobIds = ppoRes.rows[0].job_ids;
         }
       } else {
         const poRes = await client.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
         if (poRes.rows.length > 0) {
           poDbId = poRes.rows[0].id;
         } else {
-          const ppoRes = await client.query('SELECT id, message, po_no FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
+          const ppoRes = await client.query('SELECT id, message, po_no, job_ids FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, companyId]);
           if (ppoRes.rows.length > 0) {
             ppoDbId = ppoRes.rows[0].id;
             ppoMessage = ppoRes.rows[0].message;
             ppoNo = ppoRes.rows[0].po_no;
+            ppoJobIds = ppoRes.rows[0].job_ids;
           }
         }
       }
     }
 
     if (!ppoDbId && tradeDbId) {
-      const ppoCheck = await client.query('SELECT id, message, po_no FROM process_po WHERE trade_id = $1 AND company_id = $2', [tradeDbId, companyId]);
+      const ppoCheck = await client.query('SELECT id, message, po_no, job_ids FROM process_po WHERE trade_id = $1 AND company_id = $2', [tradeDbId, companyId]);
       if (ppoCheck.rows.length > 0) {
         ppoDbId = ppoCheck.rows[0].id;
         ppoMessage = ppoCheck.rows[0].message;
         ppoNo = ppoCheck.rows[0].po_no;
+        ppoJobIds = ppoCheck.rows[0].job_ids;
       }
     }
 
@@ -352,15 +386,47 @@ router.post('/', async (req, res) => {
           let initialHistory = [stepObj];
 
           if (ppoDbId) {
+             let ppoItemProcessName = null;
+             let ppoItemId = null;
+
+             if (ppoJobIds && ppoJobIds.length > 0) {
+               const jobFetchRes = await client.query(`
+                 SELECT j.process_name 
+                 FROM target_item ti
+                 JOIN job j ON ti.job_id = j.id
+                 WHERE ti.job_id = ANY($1::int[]) 
+                   AND ti.company_id = $2 
+                   AND EXISTS (
+                     SELECT 1 FROM jsonb_array_elements(ti.items) AS elem 
+                     WHERE (elem->>'item_code') = $3 
+                        OR (elem->>'item_code') = $4::text
+                        OR (elem->>'itemcode') = $3
+                        OR (elem->>'item_code_id') = $4::text
+                   )
+                 LIMIT 1
+               `, [ppoJobIds, companyId, item.item_code, itemDbId]);
+               if (jobFetchRes.rows.length > 0 && jobFetchRes.rows[0].process_name) {
+                 ppoItemProcessName = jobFetchRes.rows[0].process_name;
+               }
+             }
+
+             if (!ppoItemProcessName) {
+               const targetItemsRes = await client.query(
+                 'SELECT process_name FROM process_po_target_item WHERE process_po_id = $1 AND item_code = $2 AND company_id = $3',
+                 [ppoDbId, itemDbId, companyId]
+               );
+               if (targetItemsRes.rows.length > 0 && targetItemsRes.rows[0].process_name) {
+                 ppoItemProcessName = targetItemsRes.rows[0].process_name;
+               }
+             }
+
              const sourceItemsRes = await client.query(
                'SELECT id, source_trace_id_array, process_name FROM process_po_item WHERE process_po_id = $1 AND target_item_id = $2 AND company_id = $3',
                [ppoDbId, itemDbId, companyId]
              );
-             let ppoItemProcessName = null;
-             let ppoItemId = null;
              
              if (sourceItemsRes.rows.length > 0) {
-                ppoItemProcessName = sourceItemsRes.rows[0].process_name;
+                if (!ppoItemProcessName) ppoItemProcessName = sourceItemsRes.rows[0].process_name;
                 ppoItemId = sourceItemsRes.rows[0].id;
              }
              
@@ -368,7 +434,7 @@ router.post('/', async (req, res) => {
                'trade id': trade_code,
                'process price': buyUnitPrice,
                'delivery note id': dnDbId,
-               'trace': ppoItemProcessName ? ppoItemProcessName : (ppoMessage ? ppoMessage : `Process ${ppoNo || ''}`.trim())
+               'trace': item.process_name ? item.process_name : (ppoItemProcessName ? ppoItemProcessName : (ppoMessage ? ppoMessage : `Process ${ppoNo || ''}`.trim()))
              };
              initialHistory = [stepObj];
 
@@ -395,23 +461,16 @@ router.post('/', async (req, res) => {
                      [srcTraceIds, companyId]
                    );
                    
-                   let mergedHistory = [];
+                   let sourceHistories = [];
                    for (const r of tracesRes.rows) {
                       if (Array.isArray(r.history)) {
-                         mergedHistory.push(...r.history);
+                         sourceHistories.push(r.history);
                       }
                    }
-                   
-                   const uniqueHist = [];
-                   const seen = new Set();
-                   for (const h of mergedHistory) {
-                      const str = JSON.stringify(h);
-                      if (!seen.has(str)) {
-                         seen.add(str);
-                         uniqueHist.push(h);
-                      }
+                   if (sourceHistories.length > 0) {
+                      stepObj.sources = sourceHistories;
                    }
-                   initialHistory = [...uniqueHist, stepObj];
+                   initialHistory = [stepObj];
                 }
              }
           }
@@ -567,16 +626,17 @@ router.put('/:delivery_note_no', async (req, res) => {
     let tradeDbId = null;
     let trade_code = null;
     let ppoDbId = null;
-    let ppoMessage = null, ppoNo = null;
+    let ppoMessage = null, ppoNo = null, ppoJobIds = null;
     const tradeRes = await client.query('SELECT t.id, t.trade_id, t.trade_type FROM delivery_notes dn JOIN trades t ON dn.trade_id = t.id WHERE dn.delivery_note_no = $1 AND dn.company_id = $2', [delivery_note_no, companyId]);
     if (tradeRes.rows.length > 0) {
       tradeDbId = tradeRes.rows[0].id;
       trade_code = tradeRes.rows[0].trade_id;
-      const ppoRes = await client.query('SELECT pp.id, pp.message, pp.po_no FROM process_po pp WHERE pp.trade_id = $1 AND pp.company_id = $2', [tradeDbId, companyId]);
+      const ppoRes = await client.query('SELECT pp.id, pp.message, pp.po_no, pp.job_ids FROM process_po pp WHERE pp.trade_id = $1 AND pp.company_id = $2', [tradeDbId, companyId]);
       if (ppoRes.rows.length > 0) {
         ppoDbId = ppoRes.rows[0].id;
         ppoMessage = ppoRes.rows[0].message;
         ppoNo = ppoRes.rows[0].po_no;
+        ppoJobIds = ppoRes.rows[0].job_ids;
       }
     }
     const rawTradeType = (tradeRes.rows[0]?.trade_type || 'sell').toLowerCase();
@@ -637,14 +697,46 @@ router.put('/:delivery_note_no', async (req, res) => {
           let initialHistory = [stepObj];
 
           if (ppoDbId) {
+             let ppoItemProcessName = null;
+
+             if (ppoJobIds && ppoJobIds.length > 0) {
+               const jobFetchRes = await client.query(`
+                 SELECT j.process_name 
+                 FROM target_item ti
+                 JOIN job j ON ti.job_id = j.id
+                 WHERE ti.job_id = ANY($1::int[]) 
+                   AND ti.company_id = $2 
+                   AND EXISTS (
+                     SELECT 1 FROM jsonb_array_elements(ti.items) AS elem 
+                     WHERE (elem->>'item_code') = $3 
+                        OR (elem->>'item_code') = $4::text
+                        OR (elem->>'itemcode') = $3
+                        OR (elem->>'item_code_id') = $4::text
+                   )
+                 LIMIT 1
+               `, [ppoJobIds, companyId, item.item_code, itemDbId]);
+               if (jobFetchRes.rows.length > 0 && jobFetchRes.rows[0].process_name) {
+                 ppoItemProcessName = jobFetchRes.rows[0].process_name;
+               }
+             }
+
+             if (!ppoItemProcessName) {
+               const targetItemsRes = await client.query(
+                 'SELECT process_name FROM process_po_target_item WHERE process_po_id = $1 AND item_code = $2 AND company_id = $3',
+                 [ppoDbId, itemDbId, companyId]
+               );
+               if (targetItemsRes.rows.length > 0 && targetItemsRes.rows[0].process_name) {
+                 ppoItemProcessName = targetItemsRes.rows[0].process_name;
+               }
+             }
+
              const sourceItemsRes = await client.query(
                'SELECT id, source_trace_id_array, process_name FROM process_po_item WHERE process_po_id = $1 AND target_item_id = $2 AND company_id = $3',
                [ppoDbId, itemDbId, companyId]
              );
-             let ppoItemProcessName = null;
              
              if (sourceItemsRes.rows.length > 0) {
-                ppoItemProcessName = sourceItemsRes.rows[0].process_name;
+                if (!ppoItemProcessName) ppoItemProcessName = sourceItemsRes.rows[0].process_name;
              }
              
              stepObj = {

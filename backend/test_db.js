@@ -1,0 +1,1 @@
+const { pool } = require('./db'); pool.query(SELECT data_type FROM information_schema.columns WHERE table_name = 'process_po' AND column_name = 'job_ids').then(r => { console.log(r.rows); process.exit(0); }).catch(e => { console.error(e); process.exit(1); })

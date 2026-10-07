@@ -90,6 +90,7 @@ router.get('/', async (req, res) => {
          ppo.date_of_start, 
          ppo.date_of_end, 
          ppo.received_q_id,
+         ppo.job_ids,
          ppo.trade_id,
          ppo.seller,
          ppo.party,
@@ -152,10 +153,17 @@ router.get('/', async (req, res) => {
               'target_item_id', poi.target_item_id,
               'target_item_code', tgt.item_code,
               'target_item_description', tgt.description,
+              'process_name', poi.process_name,
               'source_trace_id_array', poi.source_trace_id_array,
               'price', poi.price,
               'source_qty', poi.source_qty,
               'target_qty', poi.target_qty,
+              'delivered_qty', COALESCE((
+                 SELECT SUM(dni.quantity)
+                 FROM delivery_notes dn
+                 JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+                 WHERE dn.trade_id = ppo.trade_id AND dni.item_id = poi.target_item_id AND dn.company_id = ppo.company_id
+              ), 0),
               'target_trace_id_array', poi.target_trace_id_array
             ))
             FROM process_po_item poi
@@ -197,6 +205,7 @@ router.get('/:id', async (req, res) => {
          ppo.date_of_end AS delivery_date, 
          ppo.date_of_end,
          ppo.received_q_id,
+         ppo.job_ids,
          ppo.trade_id,
          ppo.seller,
          ppo.party,
@@ -258,10 +267,17 @@ router.get('/:id', async (req, res) => {
               'target_item_id', poi.target_item_id,
               'target_item_code', tgt.item_code,
               'target_description', tgt.description,
+              'process_name', poi.process_name,
               'source_item_traceid_array', poi.source_trace_id_array,
               'price', poi.price,
               'source_item_quantity', poi.source_qty,
               'target_item_quantity', poi.target_qty,
+              'delivered_qty', COALESCE((
+                 SELECT SUM(dni.quantity)
+                 FROM delivery_notes dn
+                 JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+                 WHERE dn.trade_id = ppo.trade_id AND dni.item_id = poi.target_item_id AND dn.company_id = ppo.company_id
+              ), 0),
               'target_trace_id_array', poi.target_trace_id_array
             ))
             FROM process_po_item poi
@@ -279,7 +295,44 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Process PO not found' });
     }
 
-    res.json(result.rows[0]);
+    const ppo = result.rows[0];
+
+    // Fetch associated jobs
+    if (ppo.job_ids && ppo.job_ids.length > 0) {
+      const jobsResult = await pool.query(`
+        SELECT j.*, 
+               (SELECT json_agg(si.*) FROM source_item si WHERE si.job_id = j.id) as source_items,
+               (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items
+        FROM job j
+        WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int)
+      `, [JSON.stringify(ppo.job_ids)]);
+      
+      ppo.jobs = jobsResult.rows.map(j => {
+        let flattenedSourceItems = [];
+        if (j.source_items) {
+          j.source_items.forEach(si => {
+            if (Array.isArray(si.items)) flattenedSourceItems.push(...si.items);
+          });
+        }
+        
+        let flattenedTargetItems = [];
+        if (j.target_items) {
+          j.target_items.forEach(ti => {
+            if (Array.isArray(ti.items)) flattenedTargetItems.push(...ti.items);
+          });
+        }
+        
+        return {
+          ...j,
+          source_items: flattenedSourceItems,
+          target_items: flattenedTargetItems
+        };
+      });
+    } else {
+      ppo.jobs = [];
+    }
+
+    res.json(ppo);
   } catch (err) {
     console.error('Error fetching process PO by ID:', err.message);
     res.status(500).json({ error: 'Failed to fetch process PO' });
@@ -306,6 +359,7 @@ router.post('/', async (req, res) => {
     delivery_date,
     shipping_address,
     message,
+    job_ids,
     source_items,
     target_items,
     items
@@ -366,8 +420,8 @@ router.post('/', async (req, res) => {
          po_no, date_of_start, date_of_end, received_q_id, trade_id,
          seller, party, gst_type, gst_rate, gst, transport,
          packing_forward, other, basic_value, delivery_date,
-         shipping_address, message, company_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+         shipping_address, message, job_ids, company_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19)
        RETURNING id, created_at`,
       [
         po_no.trim(),
@@ -387,6 +441,7 @@ router.post('/', async (req, res) => {
         delivery_date || date_of_end || null,
         shipping_address || null,
         message || null,
+        job_ids ? JSON.stringify(Array.isArray(job_ids) ? job_ids : [job_ids]) : '[]',
         companyId
       ]
     );
@@ -395,6 +450,7 @@ router.post('/', async (req, res) => {
 
     const normalizedSourceItems = Array.isArray(source_items) ? source_items : [];
     const normalizedTargetItems = Array.isArray(target_items) ? target_items : [];
+    require('fs').writeFileSync('payload_debug.json', JSON.stringify({source_items, target_items, items}, null, 2));
 
     if (hasLegacyItems && normalizedSourceItems.length === 0) {
       items.forEach(it => {
@@ -467,8 +523,8 @@ router.post('/', async (req, res) => {
       await client.query(
         `INSERT INTO process_po_target_item (
            process_po_id, item_code, qty, delivered_qty, price,
-           gst_type, gst_rate, shipping_address, delivery_date, status, company_id
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+           gst_type, gst_rate, shipping_address, delivery_date, status, company_id, process_name
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           ppoId,
           tgtItemId,
@@ -480,7 +536,8 @@ router.post('/', async (req, res) => {
           tgt.shipping_address || shipping_address || null,
           tgt.delivery_date || delivery_date || date_of_end || null,
           'under Process PO',
-          companyId
+          companyId,
+          tgt.process_name || null
         ]
       );
     }
@@ -494,7 +551,8 @@ router.post('/', async (req, res) => {
           source_qty: normalizedSourceItems.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0),
           target_qty: normalizedTargetItems.reduce((acc, t) => acc + (parseFloat(t.qty) || 0), 0),
           price: normalizedTargetItems[0].price || 0,
-          source_trace_id_array: normalizedSourceItems.filter(s => s.trace_item_id).map(s => ({ trace_id: s.trace_item_id, Qty: parseFloat(s.qty) || 0 }))
+          source_trace_id_array: normalizedSourceItems.filter(s => s.trace_item_id).map(s => ({ trace_id: s.trace_item_id, Qty: parseFloat(s.qty) || 0 })),
+          process_name: normalizedTargetItems[0].process_name || null
         }
       ] : []
     );
@@ -506,7 +564,8 @@ router.post('/', async (req, res) => {
         source_qty,
         target_qty,
         price,
-        source_trace_id_array
+        source_trace_id_array,
+        process_name
       } = item;
 
       const sourceDbId = await resolveItemId(source_item_code);
@@ -522,8 +581,8 @@ router.post('/', async (req, res) => {
         `INSERT INTO process_po_item (
            process_po_id, source_item_id, target_item_id,
            source_trace_id_array, price, source_qty, target_qty,
-           target_trace_id_array, company_id
-         ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9)`,
+           target_trace_id_array, company_id, process_name
+         ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9, $10)`,
         [
           ppoId,
           sourceDbId,
@@ -533,7 +592,8 @@ router.post('/', async (req, res) => {
           parsedSourceQty,
           parsedTargetQty,
           JSON.stringify(targetTraceIdArray),
-          companyId
+          companyId,
+          process_name || null
         ]
       );
     }

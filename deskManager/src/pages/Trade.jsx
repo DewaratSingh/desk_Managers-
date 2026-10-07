@@ -530,6 +530,7 @@ export default function TradeView() {
           invoices={invoices}
           grns={grns}
           payments={payments}
+          purchaseOrder={purchaseOrder}
           onRefresh={() => fetchTradeDetails(trade.trade_id)}
           focusedDeliveryId={deliveryId}
         />

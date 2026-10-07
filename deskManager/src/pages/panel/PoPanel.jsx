@@ -1,4 +1,4 @@
-import { ShoppingCart, List, Edit2, Plus, ExternalLink, Truck } from 'lucide-react';
+import { ShoppingCart, List, Edit2, Plus, ExternalLink, Truck, Layers, Package } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const fmtDate = (d) => {
@@ -141,139 +141,321 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
             ))}
           </div>
 
-          {/* 1. Source Items Table */}
-          <div>
-            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1 mb-2">
-              <List size={11} /> Source Raw Materials (Consumed)
-            </p>
-            <div className="border border-amber-200 rounded-lg overflow-x-auto shadow-2xs">
-              <table className="w-full border-collapse text-left text-xs bg-amber-50/20">
-                <thead>
-                  <tr className="bg-amber-50/50 border-b border-amber-200 text-[10px] font-bold text-amber-800 uppercase tracking-wider">
-                    <th className="px-4 py-2.5">Item Code</th>
-                    <th className="px-4 py-2.5">Description</th>
-                    <th className="px-4 py-2.5">Allocated Trace IDs</th>
-                    <th className="px-4 py-2.5 text-right w-24">Required Qty</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-amber-100 bg-white">
-                  {(purchaseOrder.items || []).map((item, idx) => {
-                    const srcAllocs = item.source_item_traceid_array || [];
-                    return (
-                      <tr key={`src-${idx}`} className="hover:bg-amber-50/50 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900">
-                            {item.source_item_code}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.source_description || '—'}</td>
-                        <td className="px-4 py-3">
-                          {srcAllocs.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {srcAllocs.map((a, ai) => {
-                                const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
-                                const qty = a.Qty || a.quantity || a.qty || '';
-                                return (
-                                  <span key={ai} className="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
-                                    TR-{traceId}{qty ? ` × ${qty}` : ''}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          ) : <span className="text-slate-400 text-[10px] italic">Not assigned</span>}
-                        </td>
-                        <td className="px-4 py-3 text-right font-black text-slate-800">{item.source_item_quantity}</td>
-                      </tr>
-                    );
-                  })}
-                  {(purchaseOrder.items || []).length === 0 && (
-                    <tr>
-                      <td colSpan="4" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No source items.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* 2. Target Items Table */}
-          <div>
-            <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1 mb-2 mt-6">
-              <List size={11} /> Target Output Products (Produced)
-            </p>
-            <div className="border border-indigo-200 rounded-lg overflow-x-auto shadow-2xs">
-              <table className="w-full border-collapse text-left text-xs">
-                <thead>
-                  <tr className="bg-indigo-50/50 border-b border-indigo-200 text-[10px] font-bold text-indigo-800 uppercase tracking-wider">
-                    <th className="px-4 py-2.5">Item Code</th>
-                    <th className="px-4 py-2.5">Description</th>
-                    <th className="px-4 py-2.5 text-right w-20">Total Qty</th>
-                    <th className="px-4 py-2.5 text-right w-24">Pending Qty</th>
-                    <th className="px-4 py-2.5 text-right w-24">Unit Price</th>
-                    <th className="px-4 py-2.5 text-right w-24">Delivered Price</th>
-                    <th className="px-4 py-2.5 text-right w-24">Remaining Price</th>
-                    <th className="px-4 py-2.5 text-right w-24">Line Total</th>
-                    <th className="px-4 py-2.5 w-32">Trace / Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-indigo-100 bg-white">
-                  {(purchaseOrder.items || []).map((item, idx) => {
-                    const tgtAllocs = item.target_item_traceid_array || [];
-                    const lineTotal = (parseFloat(item.price) || 0) * (parseFloat(item.target_item_quantity) || 0);
-                    const deliveredQty = parseFloat(item.delivered_qty) || 0;
+          {purchaseOrder.jobs && purchaseOrder.jobs.length > 0 ? (
+            <div className="space-y-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                <List size={12} /> Assigned Jobs ({purchaseOrder.jobs.length})
+              </p>
+              {purchaseOrder.jobs.map((job, jIdx) => {
+                const sourceItems = job.source_items || [];
+                const targetItems = job.target_items || [];
+                
+                return (
+                  <div key={jIdx} className="border border-slate-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
+                    <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800">Job {jIdx + 1}: {job.process_name}</span>
+                        {job.message && <p className="text-[10px] text-slate-500 mt-0.5">{job.message}</p>}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-white px-2 py-1 rounded border border-slate-200 shadow-2xs">
+                        {fmtDate(job.date_of_start)} {job.date_of_end ? ` → ${fmtDate(job.date_of_end)}` : ''}
+                      </div>
+                    </div>
                     
-                    const isFullyDelivered = (purchaseOrder.status || '').toLowerCase() === 'delivered' || (deliveredQty >= parseFloat(item.target_item_quantity));
-                    const displayDeliveredQty = isFullyDelivered ? item.target_item_quantity : deliveredQty;
-                    const pendingQty = Math.max(0, (parseFloat(item.target_item_quantity) || 0) - displayDeliveredQty);
-
-                    return (
-                      <tr key={`tgt-${idx}`} className="hover:bg-indigo-50/30 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-900">
-                            {item.target_item_code}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.target_description || '—'}</td>
-                        <td className="px-4 py-3 text-right font-bold text-slate-800">{item.target_item_quantity}</td>
-                        <td className="px-4 py-3 text-right font-black text-indigo-700">{pendingQty}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(item.price)}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-green-700">₹{fmt(item.delivered_price || (deliveredQty * (item.price || 0)))}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-orange-600">₹{fmt(item.remaining_price || ((parseFloat(item.target_item_quantity) - deliveredQty) * (item.price || 0)))}</td>
-                        <td className="px-4 py-3 text-right font-mono font-black text-slate-900">₹{fmt(lineTotal)}</td>
-                        <td className="px-4 py-3">
-                          {tgtAllocs.length > 0 ? (
-                            <div className="flex flex-col gap-1.5">
-                              {tgtAllocs.map((a, ai) => {
-                                const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
-                                const qty = a.Qty || a.quantity || a.qty || item.target_item_quantity || '';
-                                const isDeliv = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'in inventory' || a.status === 'delivered' || a.status === 'completed';
-                                return (
-                                  <span key={ai} className={`inline-flex w-fit items-center text-[9px] font-bold px-2 py-0.5 rounded-full border ${
-                                    isDeliv ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                                  }`}>
-                                    TR-{traceId}{qty ? ` × ${qty}` : ''}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColor(purchaseOrder.status)}`}>
-                              {purchaseOrder.status || 'under process'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {(purchaseOrder.items || []).length === 0 && (
-                    <tr>
-                      <td colSpan="7" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No target items.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    <div className="p-4 space-y-4">
+                      {/* Source Items */}
+                      {sourceItems.length > 0 && (
+                        <div className="border border-amber-200 rounded-xl bg-amber-50/30 p-4 space-y-2">
+                          <div className="flex items-center gap-2 border-b border-amber-200/70 pb-2">
+                            <Layers size={14} className="text-amber-600" />
+                            <h3 className="text-[10px] font-black text-amber-950 uppercase tracking-wider m-0">
+                              Source Raw Materials ({sourceItems.length})
+                            </h3>
+                          </div>
+                          
+                          <div className="overflow-x-auto mt-2">
+                            <table className="w-full border-collapse text-left text-xs bg-white rounded-lg overflow-hidden border border-amber-100">
+                              <thead className="bg-amber-50/50 border-b border-amber-100 text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                                <tr>
+                                  <th className="px-3 py-2">Item Code</th>
+                                  <th className="px-3 py-2">Description</th>
+                                  <th className="px-3 py-2">Allocated Trace IDs</th>
+                                  <th className="px-3 py-2 text-right">Required Qty</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-amber-50">
+                                {sourceItems.map((src, sIdx) => {
+                                  const poSrcItem = (purchaseOrder.items || []).find(i => 
+                                    (i.source_item_code === src.item_code) || (i.item_code === src.item_code)
+                                  );
+                                  const srcAllocs = poSrcItem ? (poSrcItem.source_item_traceid_array || []) : [];
+                                  
+                                  return (
+                                    <tr key={sIdx} className="hover:bg-amber-50/30 transition-colors">
+                                      <td className="px-3 py-2">
+                                        <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                          {src.item_code || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-slate-700 max-w-[160px] truncate">{src.description || '—'}</td>
+                                      <td className="px-3 py-2">
+                                        {srcAllocs.length > 0 ? (
+                                          <div className="flex flex-wrap gap-1">
+                                            {srcAllocs.map((a, ai) => {
+                                              const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
+                                              const qty = a.Qty || a.quantity || a.qty || '';
+                                              return (
+                                                <span key={ai} className="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full">
+                                                  TR-{traceId}{qty ? ` × ${qty}` : ''}
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : (
+                                          <span className="text-slate-400 text-[10px] italic">Not assigned</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-black text-slate-800">{src.qty || 0}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Target Items */}
+                      {targetItems.length > 0 && (
+                        <div className="border border-indigo-200 rounded-xl bg-indigo-50/30 p-4 space-y-2">
+                          <div className="flex items-center gap-2 border-b border-indigo-200/70 pb-2">
+                            <Package size={14} className="text-indigo-600" />
+                            <h3 className="text-[10px] font-black text-indigo-950 uppercase tracking-wider m-0">
+                              Target Output Products ({targetItems.length})
+                            </h3>
+                          </div>
+                          
+                          <div className="overflow-x-auto mt-2">
+                            <table className="w-full border-collapse text-left text-xs bg-white rounded-lg overflow-hidden border border-indigo-100">
+                              <thead className="bg-indigo-50/50 border-b border-indigo-100 text-[9px] font-bold text-indigo-800 uppercase tracking-wider">
+                                <tr>
+                                  <th className="px-3 py-2">Item Code</th>
+                                  <th className="px-3 py-2">Description</th>
+                                  <th className="px-3 py-2 text-right">Total Qty</th>
+                                  <th className="px-3 py-2 text-right">Pending Qty</th>
+                                  <th className="px-3 py-2 text-right">Unit Price</th>
+                                  <th className="px-3 py-2 text-right">Delivered Price</th>
+                                  <th className="px-3 py-2 text-right">Remaining Price</th>
+                                  <th className="px-3 py-2 text-right">Line Total</th>
+                                  <th className="px-3 py-2">Trace / Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-indigo-50">
+                                {targetItems.map((tgt, tIdx) => {
+                                  const poTgtItem = (purchaseOrder.target_items || purchaseOrder.items || []).find(i => 
+                                    (i.item_code === tgt.item_code) || (i.target_item_code === tgt.item_code)
+                                  ) || {};
+                                  
+                                  const tgtAllocs = poTgtItem.target_item_traceid_array || poTgtItem.target_trace_id_array || [];
+                                  const price = poTgtItem.price || tgt.price || 0;
+                                  const targetQty = poTgtItem.target_item_quantity || poTgtItem.target_qty || poTgtItem.qty || tgt.qty || 0;
+                                  const lineTotal = (parseFloat(price) || 0) * (parseFloat(targetQty) || 0);
+                                  const deliveredQty = parseFloat(poTgtItem.delivered_qty) || 0;
+                                  
+                                  const isFullyDelivered = (purchaseOrder.status || '').toLowerCase() === 'delivered' || (deliveredQty >= parseFloat(targetQty));
+                                  const displayDeliveredQty = isFullyDelivered ? targetQty : deliveredQty;
+                                  const pendingQty = Math.max(0, (parseFloat(targetQty) || 0) - displayDeliveredQty);
+                                  
+                                  return (
+                                    <tr key={tIdx} className="hover:bg-indigo-50/30 transition-colors">
+                                      <td className="px-3 py-2">
+                                        <span className="font-mono text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                                          {tgt.item_code || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-slate-700 max-w-[120px] truncate">{tgt.description || poTgtItem.target_description || poTgtItem.description || '—'}</td>
+                                      <td className="px-3 py-2 text-right font-bold text-slate-800">{targetQty}</td>
+                                      <td className="px-3 py-2 text-right font-black text-indigo-700">{pendingQty}</td>
+                                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-800">₹{fmt(price)}</td>
+                                      <td className="px-3 py-2 text-right font-mono font-bold text-green-700">₹{fmt(poTgtItem.delivered_price || (deliveredQty * (price || 0)))}</td>
+                                      <td className="px-3 py-2 text-right font-mono font-bold text-orange-600">₹{fmt(poTgtItem.remaining_price || (pendingQty * (price || 0)))}</td>
+                                      <td className="px-3 py-2 text-right font-mono font-black text-slate-900">₹{fmt(lineTotal)}</td>
+                                      <td className="px-3 py-2">
+                                        {tgtAllocs.length > 0 ? (
+                                          <div className="flex flex-col gap-1">
+                                            {tgtAllocs.map((a, ai) => {
+                                              const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
+                                              const qty = a.Qty || a.quantity || a.qty || targetQty || '';
+                                              const isDeliv = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'in inventory' || a.status === 'delivered' || a.status === 'completed';
+                                              return (
+                                                <span key={ai} className={`inline-flex w-fit items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                                                  isDeliv ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                                }`}>
+                                                  TR-{traceId}{qty ? ` × ${qty}` : ''}
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : (
+                                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColor(purchaseOrder.status)}`}>
+                                            {purchaseOrder.status || 'under process'}
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          ) : (
+            <>
+              {/* 1. Source Items Table */}
+              <div>
+                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1 mb-2">
+                  <List size={11} /> Source Raw Materials (Consumed)
+                </p>
+                <div className="border border-amber-200 rounded-lg overflow-x-auto shadow-2xs">
+                  <table className="w-full border-collapse text-left text-xs bg-amber-50/20">
+                    <thead>
+                      <tr className="bg-amber-50/50 border-b border-amber-200 text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                        <th className="px-4 py-2.5">Item Code</th>
+                        <th className="px-4 py-2.5">Description</th>
+                        <th className="px-4 py-2.5">Allocated Trace IDs</th>
+                        <th className="px-4 py-2.5 text-right w-24">Required Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-amber-100 bg-white">
+                      {(purchaseOrder.source_items || purchaseOrder.items || []).map((item, idx) => {
+                        const srcAllocs = item.source_item_traceid_array || [];
+                        return (
+                          <tr key={`src-${idx}`} className="hover:bg-amber-50/50 transition-colors">
+                            <td className="px-4 py-3">
+                              <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900">
+                                {item.source_item_code || item.item_code}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.source_description || item.description || '—'}</td>
+                            <td className="px-4 py-3">
+                              {srcAllocs.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {srcAllocs.map((a, ai) => {
+                                    const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
+                                    const qty = a.Qty || a.quantity || a.qty || '';
+                                    return (
+                                      <span key={ai} className="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
+                                        TR-{traceId}{qty ? ` × ${qty}` : ''}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              ) : <span className="text-slate-400 text-[10px] italic">Not assigned</span>}
+                            </td>
+                            <td className="px-4 py-3 text-right font-black text-slate-800">{item.source_item_quantity || item.qty}</td>
+                          </tr>
+                        );
+                      })}
+                      {(purchaseOrder.source_items || purchaseOrder.items || []).length === 0 && (
+                        <tr>
+                          <td colSpan="4" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No source items.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 2. Target Items Table */}
+              <div>
+                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1 mb-2 mt-6">
+                  <List size={11} /> Target Output Products (Produced)
+                </p>
+                <div className="border border-indigo-200 rounded-lg overflow-x-auto shadow-2xs">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="bg-indigo-50/50 border-b border-indigo-200 text-[10px] font-bold text-indigo-800 uppercase tracking-wider">
+                        <th className="px-4 py-2.5">Item Code</th>
+                        <th className="px-4 py-2.5">Description</th>
+                        <th className="px-4 py-2.5">Process Name</th>
+                        <th className="px-4 py-2.5 text-right w-20">Total Qty</th>
+                        <th className="px-4 py-2.5 text-right w-24">Pending Qty</th>
+                        <th className="px-4 py-2.5 text-right w-24">Unit Price</th>
+                        <th className="px-4 py-2.5 text-right w-24">Delivered Price</th>
+                        <th className="px-4 py-2.5 text-right w-24">Remaining Price</th>
+                        <th className="px-4 py-2.5 text-right w-24">Line Total</th>
+                        <th className="px-4 py-2.5 w-32">Trace / Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-indigo-100 bg-white">
+                      {(purchaseOrder.target_items || purchaseOrder.items || []).map((item, idx) => {
+                        const tgtAllocs = item.target_item_traceid_array || item.target_trace_id_array || [];
+                        const itemPrice = parseFloat(item.price) || 0;
+                        const itemQty = parseFloat(item.target_item_quantity) || parseFloat(item.target_qty) || parseFloat(item.qty) || 0;
+                        const lineTotal = itemPrice * itemQty;
+                        const deliveredQty = parseFloat(item.delivered_qty) || 0;
+                        
+                        const isFullyDelivered = (purchaseOrder.status || '').toLowerCase() === 'delivered' || (deliveredQty >= itemQty);
+                        const displayDeliveredQty = isFullyDelivered ? itemQty : deliveredQty;
+                        const pendingQty = Math.max(0, itemQty - displayDeliveredQty);
+
+                        return (
+                          <tr key={`tgt-${idx}`} className="hover:bg-indigo-50/30 transition-colors">
+                            <td className="px-4 py-3">
+                              <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-900">
+                                {item.target_item_code || item.item_code}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.target_description || item.description || '—'}</td>
+                            <td className="px-4 py-3 text-slate-700 font-semibold">{item.process_name || '—'}</td>
+                            <td className="px-4 py-3 text-right font-bold text-slate-800">{itemQty}</td>
+                            <td className="px-4 py-3 text-right font-black text-indigo-700">{pendingQty}</td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(itemPrice)}</td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-green-700">₹{fmt(item.delivered_price || (deliveredQty * itemPrice))}</td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-orange-600">₹{fmt(item.remaining_price || (pendingQty * itemPrice))}</td>
+                            <td className="px-4 py-3 text-right font-mono font-black text-slate-900">₹{fmt(lineTotal)}</td>
+                            <td className="px-4 py-3">
+                              {tgtAllocs.length > 0 ? (
+                                <div className="flex flex-col gap-1.5">
+                                  {tgtAllocs.map((a, ai) => {
+                                    const traceId = a.trace_id || a.traceid || a.trace_item_id || '?';
+                                    const qty = a.Qty || a.quantity || a.qty || itemQty || '';
+                                    const isDeliv = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'in inventory' || a.status === 'delivered' || a.status === 'completed';
+                                    return (
+                                      <span key={ai} className={`inline-flex w-fit items-center text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                        isDeliv ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                      }`}>
+                                        TR-{traceId}{qty ? ` × ${qty}` : ''}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColor(purchaseOrder.status)}`}>
+                                  {purchaseOrder.status || 'under process'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {(purchaseOrder.target_items || purchaseOrder.items || []).length === 0 && (
+                        <tr>
+                          <td colSpan="10" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No target items.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
           
           {/* Summary / Total section for Process PO */}
           <div className="flex justify-between items-center pt-4 border-t border-slate-200 mt-6">

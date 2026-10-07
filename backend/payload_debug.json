@@ -1,0 +1,27 @@
+{
+  "source_items": [
+    {
+      "item_code": "nut",
+      "description": "rdtr",
+      "trace_item_id": 24,
+      "qty": "3",
+      "available_qty": "3.000"
+    },
+    {
+      "item_code": "nut",
+      "description": "rdtr",
+      "trace_item_id": 25,
+      "qty": "4",
+      "available_qty": "4.000"
+    }
+  ],
+  "target_items": [
+    {
+      "item_code": "nut",
+      "description": "rdtr",
+      "qty": "40",
+      "price": "10",
+      "process_name": "laying"
+    }
+  ]
+}

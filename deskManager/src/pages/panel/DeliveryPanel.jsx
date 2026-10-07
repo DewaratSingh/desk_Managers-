@@ -446,7 +446,7 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
   );
 }
 
-export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = [], grns = [], payments = [], onRefresh, focusedDeliveryId }) {
+export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = [], grns = [], payments = [], purchaseOrder, onRefresh, focusedDeliveryId }) {
   const navigate = useNavigate();
 
   // Set default selection to focusedDeliveryId if it matches one of our delivery notes
@@ -634,6 +634,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         <th className="px-4 py-2.5">Item Code</th>
+                        {activeNote.trade_type === 'process' && <th className="px-4 py-2.5">Process Name</th>}
                         <th className="px-4 py-2.5">Description</th>
                         <th className="px-4 py-2.5 text-right">Quantity</th>
                         <th className="px-4 py-2.5 text-right">Rate</th>
@@ -646,6 +647,21 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                       {activeItems.map((item, idx) => {
                         const total = (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0);
                         const hasActivity = item.next_activity && (item.next_activity.inventory || item.next_activity.sell || item.next_activity.process);
+                        
+                        let processName = null;
+                        if (activeNote.trade_type === 'process' && purchaseOrder) {
+                          if (purchaseOrder.jobs) {
+                            purchaseOrder.jobs.forEach(job => {
+                              const target = (job.target_items || []).find(ti => (ti.item_code || ti.target_item_code) === item.item_code);
+                              if (target) processName = job.process_name;
+                            });
+                          }
+                          if (!processName && purchaseOrder.items) {
+                            const pItem = purchaseOrder.items.find(i => i.target_item_code === item.item_code);
+                            if (pItem) processName = pItem.process_name;
+                          }
+                        }
+
                         return (
                           <tr key={idx} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3">
@@ -654,6 +670,15 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                                 {item.item_code}
                               </span>
                             </td>
+                            {activeNote.trade_type === 'process' && (
+                              <td className="px-4 py-3">
+                                {processName ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-200 bg-indigo-50 text-indigo-700">
+                                    {processName}
+                                  </span>
+                                ) : <span className="text-slate-400 text-[10px] italic">—</span>}
+                              </td>
+                            )}
                             <td className="px-4 py-3 text-slate-700 font-medium">
                               <div>{item.description || '—'}</div>
                               {item.drawing_number && (

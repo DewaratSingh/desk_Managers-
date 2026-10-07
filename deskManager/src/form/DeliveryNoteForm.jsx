@@ -430,6 +430,7 @@ export default function DeliveryNoteForm() {
           inv_qty: item.inv_qty || 0,
           inv_details: item.inv_details || null,
           process_target_trace_item_id: item.process_target_trace_item_id || null,
+          process_name: item.process_name || null,
           stock_allocations: (tradeType === 'sell' || tradeType === 'ARC') && Array.isArray(item.stock_allocations)
             ? item.stock_allocations
             : []
@@ -642,6 +643,7 @@ export default function DeliveryNoteForm() {
                   <tr className="bg-slate-50 border-b border-slate-200 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                     <th className="px-3 py-2 text-center w-10">Select</th>
                     <th className="px-3 py-2 w-20">Item Code</th>
+                    {tradeType === 'process' && <th className="px-3 py-2">Process Name</th>}
                     <th className="px-3 py-2">Description & Drawing</th>
                     <th className="px-3 py-2 text-right w-16">Order Qty</th>
                     <th className="px-3 py-2 text-right w-16">Delivered</th>
@@ -670,6 +672,15 @@ export default function DeliveryNoteForm() {
                           {item.item_code}
                         </span>
                       </td>
+                      {tradeType === 'process' && (
+                        <td className="px-3 py-1.5">
+                          {item.process_name ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-200 bg-indigo-50 text-indigo-700">
+                              {item.process_name}
+                            </span>
+                          ) : <span className="text-slate-400 text-[10px] italic">—</span>}
+                        </td>
+                      )}
                       <td className="px-3 py-1.5">
                         <div className="font-semibold text-slate-800 text-[11px]">{item.description || '—'}</div>
                         {item.drawing_number && (

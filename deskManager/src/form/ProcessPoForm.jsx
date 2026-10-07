@@ -71,6 +71,7 @@ export default function ProcessPoForm() {
 
   // State for restricting inventory trace modal to source items defined in RQ
   const [rqSourceItemCodes, setRqSourceItemCodes] = useState([]);
+  const [jobIds, setJobIds] = useState([]);
 
   // Populate form fields from a Process RQ record object
   const populateFromProcessRq = (rq) => {
@@ -92,6 +93,9 @@ export default function ProcessPoForm() {
     }
     if (rq.message) {
       setMessage(rq.message);
+    }
+    if (rq.job_ids) {
+      setJobIds(Array.isArray(rq.job_ids) ? rq.job_ids : []);
     }
     // Collect all source and target items from all jobs
     let allSourceItems = [];
@@ -425,6 +429,7 @@ export default function ProcessPoForm() {
         delivery_date: dateOfEnd || null,
         shipping_address: shippingAddress || null,
         message: message || null,
+        job_ids: jobIds,
         source_items: finalSourceItems,
         target_items: finalTargetItems
       };

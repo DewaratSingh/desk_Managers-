@@ -663,6 +663,7 @@ const initializeDatabase = async () => {
         date_of_end DATE,
         received_q_id INTEGER REFERENCES rq_process(id) ON DELETE SET NULL,
         message TEXT,
+        job_ids JSONB DEFAULT '[]'::jsonb,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -673,6 +674,7 @@ const initializeDatabase = async () => {
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS date_of_start DATE;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS date_of_end DATE;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS received_q_id INTEGER;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS job_ids JSONB DEFAULT '[]'::jsonb;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS seller VARCHAR(255);
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS party VARCHAR(255);
