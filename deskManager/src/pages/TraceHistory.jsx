@@ -125,15 +125,32 @@ export default function TraceHistory() {
   useEffect(() => {
     fetchTraceData();
     
-    // Center the view on load (give enough room for branches)
-    if (containerRef.current) {
-      const container = containerRef.current;
-      setPosition({
-        x: container.clientWidth / 2 - 200, 
-        y: 50
-      });
-    }
+    // Center the view on load
+    setPosition({
+      x: 0, 
+      y: 50
+    });
   }, [id]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheelNative = (e) => {
+      e.preventDefault(); // Stop browser page zoom
+      const zoomSensitivity = 0.001;
+      setScale(prevScale => {
+        let newScale = prevScale - (e.deltaY * zoomSensitivity);
+        return Math.min(Math.max(0.1, newScale), 3);
+      });
+    };
+
+    // passive: false is required so preventDefault() works
+    container.addEventListener('wheel', handleWheelNative, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheelNative);
+    };
+  }, []);
 
   const fetchTraceData = async () => {
     try {
@@ -177,18 +194,6 @@ export default function TraceHistory() {
     setIsPanning(false);
   };
 
-  const handleWheel = (e) => {
-    // Prevent zoom behavior from bubbling (though actual preventDefault requires passive: false event listener, we can just stop propagation)
-    e.stopPropagation();
-
-    const zoomSensitivity = 0.001; // Adjust sensitivity for touchpad/mouse wheel
-    let newScale = scale - (e.deltaY * zoomSensitivity);
-
-    // Clamp the scale between 10% and 300%
-    newScale = Math.min(Math.max(0.1, newScale), 3);
-    setScale(newScale);
-  };
-
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden relative">
       {/* Header */}
@@ -224,11 +229,10 @@ export default function TraceHistory() {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
         style={{
           backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
           backgroundSize: `${24 * scale}px ${24 * scale}px`,
-          backgroundPosition: `${position.x}px ${position.y}px`
+          backgroundPosition: `calc(50% + ${position.x}px) ${position.y}px`
         }}
       >
         {loading ? (
@@ -241,9 +245,9 @@ export default function TraceHistory() {
           </div>
         ) : (
           <div 
-            className="absolute origin-center transition-transform duration-75 ease-linear"
+            className="absolute left-1/2 origin-top transition-transform duration-75 ease-linear"
             style={{ 
-              transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+              transform: `translate(calc(-50% + ${position.x}px), ${position.y}px) scale(${scale})`,
               width: 'max-content'
             }}
           >
