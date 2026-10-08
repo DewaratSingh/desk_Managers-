@@ -35,10 +35,10 @@ const HistoryBranch = ({ historyArray }) => {
         return (
           <div key={idx} className="flex flex-col items-center w-full">
             {/* The Node Card */}
-            <div className="bg-white border border-slate-200 shadow-md rounded-2xl w-[320px] relative z-10 transition-transform hover:-translate-y-1 hover:shadow-xl hover:border-slate-300 cursor-default animate-fade-in-up">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 rounded-t-2xl">
+            <div className="bg-[var(--bg-form)] border border-slate-200 shadow-md rounded-2xl w-[320px] relative z-10 transition-transform hover:-translate-y-1 hover:shadow-xl hover:border-slate-300 cursor-default animate-fade-in-up">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-[var(--bg-form)] rounded-t-2xl">
                 <div className="flex items-center gap-2.5">
-                  <div className="bg-white p-2 rounded-xl shadow-xs border border-slate-100">
+                  <div className="bg-[var(--bg-form)] p-2 rounded-xl shadow-xs border border-slate-100">
                     {renderIconForStep(step)}
                   </div>
                   <span className="font-black text-sm text-slate-700">{getStepTitle(step)}</span>
@@ -49,7 +49,7 @@ const HistoryBranch = ({ historyArray }) => {
                   </div>
                 )}
               </div>
-              <div className="p-4 bg-white rounded-b-2xl">
+              <div className="p-4 bg-[var(--bg-form)] rounded-b-2xl">
                 <div className="space-y-2">
                   {Object.entries(step).map(([key, val]) => {
                     // Skip internal/UI keys
@@ -195,9 +195,9 @@ export default function TraceHistory() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 overflow-hidden relative">
+    <div className="h-full flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden relative">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 shadow-sm relative">
+      <div className="bg-[var(--bg-form)] border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 shadow-sm relative">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/inventory')}
@@ -224,7 +224,7 @@ export default function TraceHistory() {
       {/* Panning Canvas Area */}
       <div 
         ref={containerRef}
-        className={`flex-1 relative overflow-hidden bg-[#fafafa] transition-colors ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex-1 relative overflow-hidden bg-transparent transition-colors ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -256,7 +256,7 @@ export default function TraceHistory() {
             <div className="flex flex-col items-center">
 
               {/* Root Node: Current Trace Details */}
-              <div className="bg-white border-2 border-amber-300 shadow-xl rounded-2xl w-[360px] relative z-10 animate-fade-in-up">
+              <div className="bg-[var(--bg-form)] border-2 border-amber-300 shadow-xl rounded-2xl w-[360px] relative z-10 animate-fade-in-up">
                 <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-5 py-3 rounded-t-xl flex justify-between items-center">
                   <span className="font-black tracking-wide text-sm flex items-center gap-2">
                     <Box size={16} /> CURRENT TRACE

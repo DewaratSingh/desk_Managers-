@@ -220,7 +220,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                     {/* Controls: bigger search + filter suggestions */}
                     <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-stretch sm:items-center shrink-0">
                       {/* Search Bar (Bigger) */}
-                      <div className="flex items-center gap-2.5 border border-slate-300 rounded-xl px-3.5 py-2 bg-white shadow-sm transition-all focus-within:border-[var(--theme-color)] focus-within:ring-2 focus-within:ring-[var(--theme-color)]/10 w-full sm:w-64 md:w-80 animate-fade-in">
+                      <div className="flex items-center gap-2.5 border border-slate-300 rounded-xl px-3.5 py-2 bg-[var(--bg-form)] shadow-sm transition-all focus-within:border-[var(--theme-color)] focus-within:ring-2 focus-within:ring-[var(--theme-color)]/10 w-full sm:w-64 md:w-80 animate-fade-in">
                         <Search size={16} className="text-slate-400 shrink-0" />
                         <input
                           type="text"
@@ -289,7 +289,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                     <p className="text-center text-xs font-bold text-slate-400 py-8">No trade records found. Click "SELL" to get started.</p>
                   ) : (
                     <>
-                  <div className="border border-slate-300 rounded-lg overflow-x-auto bg-white shadow-sm">
+                  <div className="border border-slate-300 rounded-lg overflow-x-auto bg-[var(--bg-form)] shadow-sm transition-colors duration-300">
                     <table className="w-full border-collapse text-left text-xs">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
@@ -364,7 +364,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                       <button
                         onClick={() => fetchTrades(true)}
                         disabled={loadingMoreTrades}
-                        className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm disabled:opacity-50 inline-flex items-center gap-1.5"
+                        className="px-4 py-2 bg-[var(--bg-form)] border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm disabled:opacity-50 inline-flex items-center gap-1.5"
                       >
                         {loadingMoreTrades && <RefreshCw size={12} className="animate-spin" />}
                         Show More
@@ -595,9 +595,9 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   return activeTab === 'purchase-order' ? (
     renderContent()
   ) : (
-    <div className="p-6">
+    <div className="p-6 transition-colors duration-300">
       <div className="mx-auto max-w-6xl">
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-[var(--bg-form)] p-6 shadow-sm transition-colors duration-300">
           {renderContent()}
         </div>
       </div>

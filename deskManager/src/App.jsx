@@ -32,10 +32,11 @@ import ArcView from './pages/Arc'
 import GstCategoryView from './pages/GstCategory'
 import ManufactureList from './pages/ManufactureList'
 import ProcessPoList from './pages/ProcessPoList'
+import Settings from './pages/Settings'
 
 function App() {
   return (
-    <div className="min-h-screen text-slate-100">
+    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] transition-colors duration-300">
       
       <Routes>
         {/* Public Routes */}
@@ -74,6 +75,7 @@ function App() {
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
           <Route path="/addRfq" element={<RfqForm />} />
           <Route path="/updateRfq/:id" element={<RfqForm />} />

@@ -6,6 +6,7 @@ import App from './App.jsx'
 import { RfqProvider } from './context/RfqContext.jsx'
 import { ReceivedQuotationProvider } from './context/ReceivedQuotationContext.jsx'
 import { ReleaseOrderProvider } from './context/ReleaseOrderContext.jsx'
+import { ThemeProvider } from './context/ThemeContext.jsx'
 
 // Global window.fetch Interceptor for JWT injection and 401 redirect
 const originalFetch = window.fetch;
@@ -41,7 +42,9 @@ createRoot(document.getElementById('root')).render(
       <RfqProvider>
         <ReceivedQuotationProvider>
           <ReleaseOrderProvider>
-            <App />
+            <ThemeProvider>
+              <App />
+            </ThemeProvider>
           </ReleaseOrderProvider>
         </ReceivedQuotationProvider>
       </RfqProvider>

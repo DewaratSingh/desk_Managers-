@@ -18,9 +18,9 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-100 text-slate-900">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-[var(--bg-app)] text-[var(--text-primary)] transition-colors duration-300">
       <Sidebar user={user} onLogout={handleLogout} />
-      <main className="flex-1 overflow-x-hidden bg-slate-50 min-h-screen">
+      <main className="flex-1 overflow-x-hidden min-h-screen">
         <Outlet />
       </main>
     </div>

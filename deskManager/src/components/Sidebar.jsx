@@ -16,7 +16,8 @@ import {
   LogOut,
   Building2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Settings
 } from "lucide-react";
 import logoImg from "../assets/image.jpeg";
 import { hasPermission } from "../utils/permissions";
@@ -64,7 +65,9 @@ export default function Sidebar({ user, onLogout }) {
     FileText,
     FileSignature,
     Percent,
-    Building2
+    Percent,
+    Building2,
+    Settings
   };
 
   const defaultMenuItems = [
@@ -78,14 +81,18 @@ export default function Sidebar({ user, onLogout }) {
     { id: "arc", label: "ARC", icon: FileSignature, path: "/arc", permission: "manage_arc" },
     { id: "gst-category", label: "GST Categories", icon: Percent, path: "/gst-category", permission: "manage_gst" },
     { id: "users", label: "Users", icon: Users, path: "/users", permission: "manage_users" },
+    { id: "settings", label: "Settings", icon: Settings, path: "/settings" },
   ];
 
   // Resolve backend-authorized navigation items
   const menuItems = backendMenuItems
-    ? backendMenuItems.map(item => ({
-        ...item,
-        icon: typeof item.icon === 'string' ? (iconMap[item.icon] || LayoutDashboard) : item.icon
-      }))
+    ? [
+        ...backendMenuItems.map(item => ({
+          ...item,
+          icon: typeof item.icon === 'string' ? (iconMap[item.icon] || LayoutDashboard) : item.icon
+        })),
+        { id: "settings", label: "Settings", icon: Settings, path: "/settings" }
+      ]
     : defaultMenuItems;
 
   // Filter out any menu options that are NOT ALLOWED for this user
@@ -94,7 +101,7 @@ export default function Sidebar({ user, onLogout }) {
   );
 
   const NavContent = () => (
-    <div className="flex flex-col h-full overflow-hidden text-slate-100" style={{ backgroundColor: "var(--theme-primary)" }}>
+    <div className="flex flex-col h-full overflow-hidden text-[var(--text-sidebar)] transition-colors duration-300" style={{ backgroundColor: "var(--theme-primary)" }}>
       {/* Brand */}
       <div className={`py-4 border-b border-slate-800/80 flex items-center shrink-0 ${isShrunk ? 'px-2.5 justify-center gap-1.5' : 'px-4 justify-between'}`}>
         <div className="flex items-center gap-3">
@@ -105,7 +112,7 @@ export default function Sidebar({ user, onLogout }) {
           />
           {!isShrunk && (
             <div>
-              <p className="font-black text-sm text-white leading-tight tracking-tight">
+              <p className="font-black text-sm text-[var(--text-sidebar)] leading-tight tracking-tight">
                 {user?.company_name}
               </p>
               <p
@@ -121,7 +128,7 @@ export default function Sidebar({ user, onLogout }) {
         {/* Shrink / Expand Button (Desktop Only) */}
         <button
           onClick={toggleShrunk}
-          className="hidden lg:flex items-center justify-center p-1 hover:bg-slate-800/80 rounded text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+          className="hidden lg:flex items-center justify-center p-1 hover:bg-slate-800/80 rounded text-[var(--text-sidebar)] opacity-50 hover:opacity-100 transition-all cursor-pointer shrink-0"
           title={isShrunk ? "Expand Sidebar" : "Collapse Sidebar"}
         >
           {isShrunk ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -168,7 +175,7 @@ export default function Sidebar({ user, onLogout }) {
                   navigate(item.path);
                   setIsOpen(false);
                 }}
-                className={`group w-full flex items-center ${isShrunk ? 'justify-center gap-0 px-1 py-2' : 'gap-3 px-3 py-1.5'} mb-1 rounded-lg font-semibold text-sm transition-all duration-150 text-left cursor-pointer ${isActive ? "text-white shadow-md" : "text-slate-300 hover:text-white hover:bg-slate-800/60"}`}
+                className={`group w-full flex items-center ${isShrunk ? 'justify-center gap-0 px-1 py-2' : 'gap-3 px-3 py-1.5'} mb-1 rounded-lg font-semibold text-sm transition-all duration-150 text-left cursor-pointer ${isActive ? "text-[var(--text-sidebar)] shadow-md" : "text-[var(--text-sidebar)] opacity-70 hover:opacity-100 hover:bg-slate-800/60"}`}
                 style={
                   isActive ? { backgroundColor: "var(--theme-secondary)" } : undefined
                 }
@@ -179,8 +186,8 @@ export default function Sidebar({ user, onLogout }) {
                   return (
                     <div className={`p-1.5 rounded-md transition-all duration-200 flex items-center justify-center shrink-0 ${
                       isActive 
-                        ? "bg-white/20 text-white shadow-sm" 
-                        : "bg-slate-800/80 text-slate-400 group-hover:bg-slate-700/60 group-hover:text-white"
+                        ? "bg-white/20 text-[var(--text-sidebar)] shadow-sm" 
+                        : "bg-slate-800/80 text-[var(--text-sidebar)] opacity-70 group-hover:opacity-100 group-hover:bg-slate-700/60"
                     }`}>
                       <Icon
                         size={16}
@@ -209,7 +216,7 @@ export default function Sidebar({ user, onLogout }) {
             </div>
             {!isShrunk && (
               <div className="overflow-hidden">
-                <p className="font-bold text-xs text-white truncate leading-tight">
+                <p className="font-bold text-xs text-[var(--text-sidebar)] truncate leading-tight">
                   {user.username || "Operator"}
                 </p>
                 <p className="text-[10px] font-semibold text-slate-400 truncate capitalize">
@@ -236,7 +243,7 @@ export default function Sidebar({ user, onLogout }) {
   return (
     <>
       {/* Mobile Top Header (Always Expanded Visual branding) */}
-      <div className="lg:hidden flex items-center justify-between p-4 border-b border-slate-800 text-white sticky top-0 z-50" style={{ backgroundColor: "var(--theme-primary)" }}>
+      <div className="lg:hidden flex items-center justify-between p-4 border-b border-slate-800 text-[var(--text-sidebar)] sticky top-0 z-50 transition-colors duration-300" style={{ backgroundColor: "var(--theme-primary)" }}>
         <div className="flex items-center gap-2.5">
           <img
             src={logoImg}
@@ -244,7 +251,7 @@ export default function Sidebar({ user, onLogout }) {
             className="w-9 h-9 object-contain rounded-lg"
           />
           <div>
-            <p className="font-extrabold text-sm text-white tracking-tight">
+            <p className="font-extrabold text-sm text-[var(--text-sidebar)] tracking-tight">
               {user?.company_name}
             </p>
             <p
@@ -257,7 +264,7 @@ export default function Sidebar({ user, onLogout }) {
         </div>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="p-2 text-slate-300 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+          className="p-2 text-[var(--text-sidebar)] opacity-70 hover:opacity-100 hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
         >
           {isOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
