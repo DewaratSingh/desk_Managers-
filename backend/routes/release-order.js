@@ -16,6 +16,7 @@ router.get('/', async (req, res) => {
         (
           SELECT COALESCE(json_agg(json_build_object(
             'item_code', i.item_code,
+            'description', i.description,
             'quantity', roi.quantity,
             'unit_price', roi.unit_price,
             'gst_rate', roi.gst_rate,

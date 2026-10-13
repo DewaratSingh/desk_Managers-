@@ -3,9 +3,10 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Printer, Edit2, Check, X, FileText,
-  Package, Tag, Hash, ChevronRight
+  ChevronRight, Save, RefreshCw
 } from 'lucide-react';
 
+/* ── helpers ─────────────────────────────────────────────────────────────── */
 const fmtDate = (d) => {
   if (!d) return '—';
   const s = typeof d === 'string' ? d : d.toISOString?.() ?? String(d);
@@ -19,18 +20,9 @@ const fmtDate = (d) => {
 };
 
 const fmt = (v) => (parseFloat(v) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+const fmtQty = (v) => (parseFloat(v) || 0).toLocaleString('en-IN');
 
-const statusColor = (s) => {
-  const v = (s || '').toLowerCase();
-  if (v === 'delivered' || v === 'received' || v === 'completed')
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (v === 'shipped')    return 'bg-blue-50    text-blue-700    border-blue-200';
-  if (v === 'ordered')    return 'bg-indigo-50  text-indigo-700  border-indigo-200';
-  if (v === 'cancelled')  return 'bg-red-50     text-red-700     border-red-200';
-  return 'bg-amber-50 text-amber-700 border-amber-200';
-};
-
-/* ── Reusable inline search dropdown ──────────────────────────────────────── */
+/* ── inline search dropdown (portal-based) ───────────────────────────────── */
 function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, onClear }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -46,14 +38,9 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
     const updateCoords = () => {
       if (open && ref.current) {
         const rect = ref.current.getBoundingClientRect();
-        setCoords({
-          top: rect.bottom,
-          left: rect.left,
-          width: rect.width
-        });
+        setCoords({ top: rect.bottom, left: rect.left, width: rect.width });
       }
     };
-
     updateCoords();
     if (open) {
       window.addEventListener('scroll', updateCoords, true);
@@ -73,19 +60,19 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
     <div
       style={{
         position: 'fixed',
-        top: `${coords.top + 4}px`,
+        top: `${coords.top + 2}px`,
         left: `${coords.left}px`,
-        width: `${Math.max(192, coords.width)}px`,
+        width: `${Math.max(160, coords.width)}px`,
         zIndex: 9999,
       }}
-      className="bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto"
+      className="bg-white border border-slate-300 rounded shadow-xl overflow-hidden max-h-40 overflow-y-auto"
     >
       {filtered.map((s) => (
         <button
           key={s}
           type="button"
           onMouseDown={(e) => { e.preventDefault(); onSelect(s); setOpen(false); }}
-          className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-blue-50 border-b border-slate-100 last:border-0 cursor-pointer transition-colors"
+          className="w-full text-left px-3 py-1.5 text-[11px] font-semibold text-slate-800 hover:bg-slate-50 border-b border-slate-100 last:border-0 cursor-pointer transition-colors"
         >
           {s}
         </button>
@@ -103,12 +90,13 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
           autoComplete="off"
-          className="w-36 px-2 py-1 border border-slate-300 rounded text-xs font-medium bg-white focus:outline-none focus:border-[var(--theme-color)] placeholder:text-slate-400"
+          style={{ borderColor: 'var(--theme-secondary)' }}
+          className="w-full px-1.5 py-0.5 border rounded text-[11px] font-medium bg-white focus:outline-none placeholder:text-slate-300"
         />
         {value && (
           <button type="button" onClick={onClear}
             className="text-slate-400 hover:text-red-500 cursor-pointer shrink-0">
-            <X size={11} />
+            <X size={10} />
           </button>
         )}
       </div>
@@ -117,7 +105,69 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
   );
 }
 
-/* ── Main component ────────────────────────────────────────────────────────── */
+/* ── status badge ────────────────────────────────────────────────────────── */
+function StatusBadge({ status }) {
+  const v = (status || '').toLowerCase();
+  let style = {};
+  if (v === 'delivered' || v === 'received' || v === 'completed') {
+    style = { color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac' };
+  } else if (v === 'shipped' || v === 'in transit') {
+    style = { color: '#1d4ed8', background: '#eff6ff', border: '1px solid #93c5fd' };
+  } else if (v === 'ordered') {
+    style = { color: '#6d28d9', background: '#f5f3ff', border: '1px solid #c4b5fd' };
+  } else if (v === 'cancelled') {
+    style = { color: '#9f1239', background: '#fff1f2', border: '1px solid #fca5a5' };
+  } else if (v === 'awaiting to receive' || v === 'pending') {
+    style = { color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d' };
+  } else {
+    style = { color: 'var(--theme-secondary)', background: 'rgba(217,53,45,0.05)', border: '1px solid var(--theme-secondary)' };
+  }
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide whitespace-nowrap"
+      style={style}
+    >
+      {status || 'pending'}
+    </span>
+  );
+}
+
+/* ── column header ───────────────────────────────────────────────────────── */
+function TH({ children, align = 'left', className = '', style = {} }) {
+  return (
+    <th
+      className={`px-2 py-2 text-[9px] font-black uppercase tracking-widest whitespace-nowrap border-r last:border-r-0 select-none ${className}`}
+      style={{
+        textAlign: align,
+        backgroundColor: 'var(--theme-primary)',
+        color: 'var(--text-sidebar)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        ...style
+      }}
+    >
+      {children}
+    </th>
+  );
+}
+
+/* ── cell ────────────────────────────────────────────────────────────────── */
+function TD({ children, align = 'left', className = '', style = {}, ...rest }) {
+  return (
+    <td
+      className={`px-2 py-1.5 text-[11px] border-r last:border-r-0 ${className}`}
+      style={{
+        textAlign: align,
+        borderColor: 'var(--border-color)',
+        ...style
+      }}
+      {...rest}
+    >
+      {children}
+    </td>
+  );
+}
+
+/* ── main component ──────────────────────────────────────────────────────── */
 export default function PurchaseOrderView() {
   const { po_no: rawParam } = useParams();
   const po_no = decodeURIComponent(rawParam);
@@ -127,20 +177,16 @@ export default function PurchaseOrderView() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError]         = useState(null);
 
-  // Reference data
   const [statuses, setStatuses]   = useState([]);
-  const [customers, setCustomers] = useState([]);   // for vendor search
+  const [customers, setCustomers] = useState([]);
 
-  // Inline edit state
   const [editingCode, setEditingCode] = useState(null);
   const [editStatus, setEditStatus]   = useState('');
   const [editVendor, setEditVendor]   = useState('');
   const [isSaving, setIsSaving]       = useState(false);
   const [saveError, setSaveError]     = useState(null);
 
-  useEffect(() => {
-    fetchPo();
-  }, [po_no]);
+  useEffect(() => { fetchPo(); }, [po_no]);
 
   const fetchPo = async () => {
     setIsLoading(true); setError(null);
@@ -152,34 +198,24 @@ export default function PurchaseOrderView() {
     finally { setIsLoading(false); }
   };
 
-  // Debounced search for statuses (limit 5)
   useEffect(() => {
     const trimmed = editStatus.trim();
-    const delayDebounceFn = setTimeout(() => {
-      fetch(`/api/statuses?q=${encodeURIComponent(trimmed)}&limit=5`)
-        .then(r => r.json())
-        .then(data => {
-          setStatuses(data);
-        })
-        .catch(console.error);
+    const t = setTimeout(() => {
+      fetch(`/api/statuses?q=${encodeURIComponent(trimmed)}&limit=8`)
+        .then(r => r.json()).then(setStatuses).catch(console.error);
     }, 200);
-
-    return () => clearTimeout(delayDebounceFn);
+    return () => clearTimeout(t);
   }, [editStatus]);
 
-  // Debounced search for customers/vendors (limit 5)
   useEffect(() => {
     const trimmed = editVendor.trim();
-    const delayDebounceFn = setTimeout(() => {
-      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
+    const t = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=8`)
         .then(r => r.json())
-        .then(data => {
-          setCustomers(data.map(c => c.name).filter(Boolean));
-        })
+        .then(data => setCustomers(data.map(c => c.name).filter(Boolean)))
         .catch(console.error);
     }, 200);
-
-    return () => clearTimeout(delayDebounceFn);
+    return () => clearTimeout(t);
   }, [editVendor]);
 
   const startEdit = (item) => {
@@ -188,7 +224,6 @@ export default function PurchaseOrderView() {
     setEditVendor(item.vendor || '');
     setSaveError(null);
   };
-
   const cancelEdit = () => { setEditingCode(null); setSaveError(null); };
 
   const saveEdit = async (itemCode) => {
@@ -210,7 +245,7 @@ export default function PurchaseOrderView() {
     finally { setIsSaving(false); }
   };
 
-  /* Totals */
+  /* totals */
   const itemsBasic = (po?.items || []).reduce((s, i) =>
     s + (parseFloat(i.unit_price)||0) * (parseFloat(i.quantity)||0), 0);
   const gstTotal = (po?.items || []).reduce((s, i) => {
@@ -223,325 +258,502 @@ export default function PurchaseOrderView() {
   const basicVal   = parseFloat(po?.basic_value)     || 0;
   const grandTotal = itemsBasic + gstTotal + transport + packing + other + basicVal;
 
-  /* Loading / Error */
+  /* ── loading ── */
   if (isLoading) return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-      <p className="text-slate-500 font-bold text-sm animate-pulse">Loading Purchase Order…</p>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-app)' }}>
+      <div className="flex items-center gap-3">
+        <RefreshCw size={18} className="animate-spin" style={{ color: 'var(--theme-secondary)' }} />
+        <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Loading Purchase Order…</p>
+      </div>
     </div>
   );
 
+  /* ── error ── */
   if (error || !po) return (
-    <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center gap-4 p-8">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8" style={{ backgroundColor: 'var(--bg-app)' }}>
       <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-semibold max-w-md text-center">
         {error || 'Purchase Order not found.'}
       </div>
       <button onClick={() => navigate(-1)}
-        className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm cursor-pointer transition-colors">
-        <ArrowLeft size={15} /> Go Back
+        className="flex items-center gap-1.5 px-4 py-2 text-white font-bold rounded-lg text-sm cursor-pointer transition-all"
+        style={{ backgroundColor: 'var(--theme-primary)' }}>
+        <ArrowLeft size={14} /> Go Back
       </button>
     </div>
   );
 
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 print:bg-white">
+  const items = po.items || [];
+  const totalQty = items.reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
+  const deliveredQty = items.reduce((s, i) => s + (parseFloat(i.delivered_qty) || 0), 0);
+  const pendingQtyTotal = Math.max(0, totalQty - deliveredQty);
 
-      {/* ── Sticky Top Bar ──────────────────────────────────────────────────── */}
-      <div className="print:hidden sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm">
-        <div className="w-full px-6 py-3 flex items-center justify-between gap-4">
+  return (
+    <div className="min-h-screen flex flex-col print:bg-white" style={{ backgroundColor: 'var(--bg-app)' }}>
+
+      {/* ── sticky topbar ─────────────────────────────────────────────────── */}
+      <div
+        className="print:hidden sticky top-0 z-30 border-b shadow-sm"
+        style={{ backgroundColor: 'var(--theme-primary)', borderColor: 'rgba(255,255,255,0.1)' }}
+      >
+        <div className="w-full px-4 py-2.5 flex items-center justify-between gap-4">
+          {/* left: back + breadcrumb */}
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => navigate(-1)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer shrink-0">
-              <ArrowLeft size={14} /> Back
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+              style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: 'var(--text-sidebar)' }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+            >
+              <ArrowLeft size={13} /> Back
             </button>
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 min-w-0">
+
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold min-w-0" style={{ color: 'rgba(255,255,255,0.6)' }}>
               {po.trade_id && (
                 <>
                   <Link to={`/trade/${po.trade_id}`}
-                    className="truncate hover:underline cursor-pointer"
-                    style={{ color: 'var(--theme-color)' }}>
+                    className="truncate hover:underline"
+                    style={{ color: 'var(--theme-secondary)' }}>
                     {po.trade_id}
                   </Link>
-                  <ChevronRight size={12} className="shrink-0" />
+                  <ChevronRight size={11} className="shrink-0" />
                 </>
               )}
               {po.quotation_no && (
                 <>
-                  <span className="truncate text-slate-500">{po.quotation_no}</span>
-                  <ChevronRight size={12} className="shrink-0" />
+                  <span className="truncate" style={{ color: 'rgba(255,255,255,0.5)' }}>{po.quotation_no}</span>
+                  <ChevronRight size={11} className="shrink-0" />
                 </>
               )}
-              <span className="font-black text-slate-800 truncate">{po.po_no}</span>
+              <span className="font-black truncate" style={{ color: 'var(--text-sidebar)' }}>{po.po_no}</span>
             </div>
           </div>
+
+          {/* right: action buttons */}
           <div className="flex items-center gap-2 shrink-0">
             {po.trade_id && (
               <Link to={`/trade/${po.trade_id}`}
-                className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5">
-                <FileText size={13} /> View Trade
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer"
+                style={{ color: 'var(--text-sidebar)', borderColor: 'rgba(255,255,255,0.25)', backgroundColor: 'rgba(255,255,255,0.08)' }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.16)'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+              >
+                <FileText size={12} /> View Trade
               </Link>
             )}
+            <Link
+              to={`/updatePurchaseOrder/${po.po_no}?trade_id=${po.trade_id}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer"
+              style={{ color: 'var(--text-sidebar)', borderColor: 'rgba(255,255,255,0.25)', backgroundColor: 'rgba(255,255,255,0.08)' }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.16)'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+            >
+              <Edit2 size={12} /> Edit PO
+            </Link>
             <button onClick={() => window.print()}
-              className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5">
-              <Printer size={13} /> Print
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white cursor-pointer transition-all"
+              style={{ backgroundColor: 'var(--theme-secondary)' }}
+              onMouseEnter={e => e.currentTarget.style.filter = 'brightness(0.88)'}
+              onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+            >
+              <Printer size={12} /> Print
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── Content ─────────────────────────────────────────────────────────── */}
-      <div className="w-full px-4 sm:px-8 py-8 space-y-6">
+      {/* ── page content ──────────────────────────────────────────────────── */}
+      <div className="flex-1 p-4 space-y-4">
 
-        {/* Title row */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900">Purchase Order</h1>
-            <p className="text-xs text-slate-500 mt-0.5 font-semibold">Per-item status &amp; vendor management</p>
-          </div>
-          <span className="font-mono font-black text-sm px-3 py-1.5 rounded-lg border"
-            style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.06)' }}>
-            {po.po_no}
-          </span>
-        </div>
-
-        {/* ── PO Info Card ─────────────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="bg-slate-50 px-6 py-3 border-b border-slate-200">
-            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-              <Hash size={13} style={{ color: 'var(--theme-color)' }} /> PO Information
-            </span>
-          </div>
-          <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-4">
-            {[
-              { label: 'PO No.',        value: po.po_no,            mono: true },
-              { label: 'PO Date',       value: fmtDate(po.po_date) },
-              { label: 'Delivery Date', value: fmtDate(po.delivery_date) },
-              { label: 'Quotation',     value: po.quotation_no || '—', mono: true },
-              { label: 'Trade',         value: po.trade_id     || '—', mono: true },
-            ].map(({ label, value, mono }) => (
-              <div key={label}>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
-                <p className={`text-sm font-bold text-slate-800 ${mono ? 'font-mono' : ''}`}>{value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Items Table ──────────────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 flex justify-between items-center">
-            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-              <Package size={13} style={{ color: 'var(--theme-color)' }} />
-              Ordered Items ({(po.items || []).length})
-            </span>
-            <span className="text-[10px] font-bold text-slate-400">
-              Click <strong>Edit</strong> to update Status &amp; Vendor per item
-            </span>
-          </div>
-
-          {saveError && (
-            <div className="mx-6 mt-4 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg flex items-center gap-1.5">
-              <X size={13} /> {saveError}
+        {/* PO info strip */}
+        <div
+          className="rounded-xl border px-4 py-3 flex flex-wrap gap-6 items-center shadow-sm"
+          style={{ backgroundColor: 'var(--bg-form, white)', borderColor: 'var(--border-color)' }}
+        >
+          {[
+            { label: 'PO Number',     value: po.po_no,             mono: true },
+            { label: 'PO Date',       value: fmtDate(po.po_date) },
+            { label: 'Delivery Date', value: fmtDate(po.delivery_date) },
+            { label: 'Quotation',     value: po.quotation_no || '—', mono: true },
+            { label: 'Trade',         value: po.trade_id     || '—', mono: true },
+            { label: 'Items',         value: items.length },
+            { label: 'Total Qty',     value: fmtQty(totalQty) },
+            { label: 'Pending Qty',   value: fmtQty(pendingQtyTotal), highlight: pendingQtyTotal > 0 },
+          ].map(({ label, value, mono, highlight }) => (
+            <div key={label} className="flex flex-col min-w-0">
+              <span className="text-[9px] font-black uppercase tracking-widest mb-0.5"
+                style={{ color: 'var(--theme-secondary)' }}>
+                {label}
+              </span>
+              <span
+                className={`text-[13px] font-black ${mono ? 'font-mono' : ''}`}
+                style={{ color: highlight ? 'var(--theme-secondary)' : 'var(--text-primary)' }}
+              >
+                {value}
+              </span>
             </div>
-          )}
+          ))}
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+        {/* save error */}
+        {saveError && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg">
+            <X size={13} /> {saveError}
+          </div>
+        )}
+
+        {/* ── Excel-style table ────────────────────────────────────────────── */}
+        <div
+          className="rounded-xl border overflow-hidden shadow-sm"
+          style={{ borderColor: 'var(--border-color)' }}
+        >
+          {/* toolbar strip */}
+          <div
+            className="flex items-center justify-between px-4 py-2 border-b"
+            style={{ backgroundColor: 'var(--bg-form, white)', borderColor: 'var(--border-color)' }}
+          >
+            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: 'var(--text-primary)' }}>
+              Ordered Items — {items.length} row{items.length !== 1 ? 's' : ''}
+            </span>
+            <span className="text-[9px] font-semibold" style={{ color: 'var(--theme-secondary)' }}>
+              Click ✏ to edit Status &amp; Vendor inline
+            </span>
+          </div>
+
+          <div className="overflow-x-auto w-full">
+            <table
+              className="w-full border-collapse"
+              style={{ minWidth: '900px', tableLayout: 'fixed' }}
+            >
+              {/* col widths */}
+              <colgroup>
+                <col style={{ width: '34px' }} />   {/* S.N */}
+                <col style={{ width: '110px' }} />  {/* Item Code */}
+                <col style={{ width: '220px' }} />  {/* Description */}
+                <col style={{ width: '70px' }} />   {/* Total Qty */}
+                <col style={{ width: '70px' }} />   {/* Pending Qty */}
+                <col style={{ width: '90px' }} />   {/* Unit Price */}
+                <col style={{ width: '70px' }} />   {/* GST % */}
+                <col style={{ width: '100px' }} />  {/* Line Total */}
+                <col style={{ width: '80px' }} />   {/* Del. Date */}
+                <col style={{ width: '140px' }} />  {/* Status */}
+                <col style={{ width: '140px' }} />  {/* Vendor */}
+                <col style={{ width: '64px' }} />   {/* Actions */}
+              </colgroup>
+
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="px-4 py-3">Item Code</th>
-                  <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3 text-right">Qty</th>
-                  <th className="px-4 py-3 text-right">Pending Qty</th>
-                  <th className="px-4 py-3 text-right">Unit Price</th>
-                  <th className="px-4 py-3 text-right">GST</th>
-                  <th className="px-4 py-3 text-right">Line Total</th>
-                  <th className="px-4 py-3">Shipping Address</th>
-                  <th className="px-4 py-3">Del. Date</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Vendor</th>
-                  <th className="px-4 py-3 text-center print:hidden">Actions</th>
+                <tr>
+                  <TH align="center">#</TH>
+                  <TH>Item Code</TH>
+                  <TH>Description</TH>
+                  <TH align="right">Total Qty</TH>
+                  <TH align="right">Pending</TH>
+                  <TH align="right">Unit Price</TH>
+                  <TH align="right">GST</TH>
+                  <TH align="right">Line Total</TH>
+                  <TH>Del. Date</TH>
+                  <TH>Status</TH>
+                  <TH>Vendor</TH>
+                  <TH align="center" className="print:hidden">Edit</TH>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(po.items || []).map((item) => {
-                  const isEditing  = editingCode === item.item_code;
-                  const lineBasic  = (parseFloat(item.unit_price)||0) * (parseFloat(item.quantity)||0);
-                  const lineGst    = lineBasic * ((parseFloat(item.gst_rate)||0) / 100);
-                  const lineTotal  = lineBasic + lineGst;
 
-                  return (
-                    <tr key={item.item_code}
-                      className={`transition-colors ${isEditing ? 'bg-slate-50/80' : 'hover:bg-slate-50'}`}>
+              <tbody>
+                {items.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={12}
+                      className="py-12 text-center text-[11px] font-bold"
+                      style={{ color: 'var(--text-primary)', opacity: 0.4 }}
+                    >
+                      No items found in this purchase order.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((item, idx) => {
+                    const isEditing  = editingCode === item.item_code;
+                    const lineBasic  = (parseFloat(item.unit_price)||0) * (parseFloat(item.quantity)||0);
+                    const lineGst    = lineBasic * ((parseFloat(item.gst_rate)||0) / 100);
+                    const lineTotal  = lineBasic + lineGst;
+                    const pendingQty = Math.max(0, (parseFloat(item.quantity)||0) - (parseFloat(item.delivered_qty)||0));
+                    const isEven     = idx % 2 === 0;
 
-                      {/* Item Code */}
-                      <td className="px-4 py-3">
-                        <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border"
-                          style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' }}>
-                          {item.item_code}
-                        </span>
-                      </td>
+                    const rowBg = isEditing
+                      ? 'rgba(217,53,45,0.04)'
+                      : isEven
+                      ? 'var(--bg-form, #ffffff)'
+                      : 'rgba(0,0,0,0.018)';
 
-                      {/* Description */}
-                      <td className="px-4 py-3 max-w-[160px]">
-                        <p className="font-semibold text-slate-800 line-clamp-2">{item.description || '—'}</p>
-                        {item.drawing_number && (
-                          <span className="text-[9px] text-slate-400 bg-slate-100 border border-slate-200 px-1 py-0.5 rounded mt-0.5 inline-block">
-                            DRW: {item.drawing_number}
+                    return (
+                      <tr
+                        key={item.item_code}
+                        style={{ backgroundColor: rowBg }}
+                        className="transition-colors group"
+                        onMouseEnter={e => {
+                          if (!isEditing) e.currentTarget.style.backgroundColor = 'rgba(217,53,45,0.035)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.backgroundColor = rowBg;
+                        }}
+                      >
+                        {/* S.N */}
+                        <TD align="center" className="font-mono font-bold" style={{ color: 'var(--theme-secondary)', opacity: 0.7 }}>
+                          {idx + 1}
+                        </TD>
+
+                        {/* Item Code */}
+                        <TD>
+                          <span
+                            className="font-mono font-black text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                            style={{
+                              color: 'var(--theme-secondary)',
+                              borderColor: 'var(--theme-secondary)',
+                              backgroundColor: 'rgba(217,53,45,0.05)'
+                            }}
+                          >
+                            {item.item_code}
                           </span>
-                        )}
-                      </td>
+                          {item.drawing_number && (
+                            <span className="block text-[9px] mt-0.5 font-mono" style={{ color: 'var(--text-primary)', opacity: 0.4 }}>
+                              DRW: {item.drawing_number}
+                            </span>
+                          )}
+                        </TD>
 
-                      {/* Qty */}
-                      <td className="px-4 py-3 text-right font-bold text-slate-800">{item.quantity}</td>
-
-                      {/* Pending Qty */}
-                      <td className="px-4 py-3 text-right font-bold text-slate-800">
-                        {Math.max(0, (parseFloat(item.quantity) || 0) - (parseFloat(item.delivered_qty) || 0))}
-                      </td>
-
-                      {/* Unit Price */}
-                      <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(item.unit_price)}</td>
-
-                      {/* GST */}
-                      <td className="px-4 py-3 text-right">
-                        {item.gst_type ? (
-                          <>
-                            <span className="font-bold text-slate-800">{item.gst_rate}%</span>
-                            <span className="text-[10px] text-slate-400 block font-mono">₹{fmt(lineGst)}</span>
-                          </>
-                        ) : <span className="text-slate-400">—</span>}
-                      </td>
-
-                      {/* Line Total */}
-                      <td className="px-4 py-3 text-right font-mono font-black text-slate-900">₹{fmt(lineTotal)}</td>
-
-                      {/* Shipping Address */}
-                      <td className="px-4 py-3 text-slate-500 max-w-[130px] whitespace-pre-wrap text-[10px]">
-                        {item.shipping_address || '—'}
-                      </td>
-
-                      {/* Delivery Date */}
-                      <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
-                        {fmtDate(item.delivery_date)}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        {isEditing ? (
-                          <SearchDropdown
-                            value={editStatus}
-                            onChange={setEditStatus}
-                            suggestions={statuses}
-                            placeholder="Search status…"
-                            onSelect={setEditStatus}
-                            onClear={() => setEditStatus('')}
-                          />
-                        ) : (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${statusColor(item.status)}`}>
-                            {item.status || 'pending'}
+                        {/* Description */}
+                        <TD>
+                          <span
+                            className="font-semibold block leading-snug text-[11px]"
+                            style={{ color: 'var(--text-primary)' }}
+                            title={item.description || '—'}
+                          >
+                            {item.description || <span style={{ opacity: 0.3 }}>—</span>}
                           </span>
-                        )}
-                      </td>
+                        </TD>
 
-                      {/* Vendor */}
-                      <td className="px-4 py-3">
-                        {isEditing ? (
-                          <SearchDropdown
-                            value={editVendor}
-                            onChange={setEditVendor}
-                            suggestions={customers}
-                            placeholder="Search customer…"
-                            onSelect={setEditVendor}
-                            onClear={() => setEditVendor('')}
-                          />
-                        ) : (
-                          <span className="font-semibold text-slate-800">{item.vendor || '—'}</span>
-                        )}
-                      </td>
+                        {/* Total Qty */}
+                        <TD align="right">
+                          <span className="font-mono font-bold text-[11px]" style={{ color: 'var(--text-primary)' }}>
+                            {fmtQty(item.quantity)}
+                          </span>
+                        </TD>
 
-                      {/* Actions */}
-                      <td className="px-4 py-3 text-center print:hidden">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button onClick={() => saveEdit(item.item_code)} disabled={isSaving} title="Save"
-                              className="p-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded border border-emerald-200 transition-colors cursor-pointer disabled:opacity-50">
-                              <Check size={13} />
+                        {/* Pending Qty */}
+                        <TD align="right">
+                          <span
+                            className="font-mono font-black text-[11px]"
+                            style={{
+                              color: pendingQty > 0 ? 'var(--theme-secondary)' : '#15803d'
+                            }}
+                          >
+                            {fmtQty(pendingQty)}
+                          </span>
+                        </TD>
+
+                        {/* Unit Price */}
+                        <TD align="right">
+                          <span className="font-mono font-bold text-[11px]" style={{ color: 'var(--text-primary)' }}>
+                            ₹{fmt(item.unit_price)}
+                          </span>
+                        </TD>
+
+                        {/* GST */}
+                        <TD align="right">
+                          {item.gst_rate ? (
+                            <span className="font-mono text-[10px]" style={{ color: 'var(--text-primary)', opacity: 0.7 }}>
+                              {item.gst_rate}%
+                              <span className="block text-[9px]" style={{ opacity: 0.55 }}>₹{fmt(lineGst)}</span>
+                            </span>
+                          ) : (
+                            <span style={{ opacity: 0.25, fontSize: '10px' }}>—</span>
+                          )}
+                        </TD>
+
+                        {/* Line Total */}
+                        <TD align="right">
+                          <span className="font-mono font-black text-[12px]" style={{ color: 'var(--text-primary)' }}>
+                            ₹{fmt(lineTotal)}
+                          </span>
+                        </TD>
+
+                        {/* Delivery Date */}
+                        <TD>
+                          <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: 'var(--text-primary)', opacity: 0.75 }}>
+                            {fmtDate(item.delivery_date)}
+                          </span>
+                        </TD>
+
+                        {/* Status */}
+                        <TD>
+                          {isEditing ? (
+                            <SearchDropdown
+                              value={editStatus}
+                              onChange={setEditStatus}
+                              suggestions={statuses}
+                              placeholder="Search status…"
+                              onSelect={setEditStatus}
+                              onClear={() => setEditStatus('')}
+                            />
+                          ) : (
+                            <StatusBadge status={item.status} />
+                          )}
+                        </TD>
+
+                        {/* Vendor */}
+                        <TD>
+                          {isEditing ? (
+                            <SearchDropdown
+                              value={editVendor}
+                              onChange={setEditVendor}
+                              suggestions={customers}
+                              placeholder="Search vendor…"
+                              onSelect={setEditVendor}
+                              onClear={() => setEditVendor('')}
+                            />
+                          ) : (
+                            <span className="text-[11px] font-semibold" style={{ color: item.vendor ? 'var(--text-primary)' : 'rgba(0,0,0,0.2)' }}>
+                              {item.vendor || '—'}
+                            </span>
+                          )}
+                        </TD>
+
+                        {/* Actions */}
+                        <TD align="center" className="print:hidden">
+                          {isEditing ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => saveEdit(item.item_code)}
+                                disabled={isSaving}
+                                title="Save"
+                                className="p-1 rounded cursor-pointer transition-colors disabled:opacity-40 text-white"
+                                style={{ backgroundColor: '#15803d' }}
+                                onMouseEnter={e => e.currentTarget.style.filter = 'brightness(0.85)'}
+                                onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+                              >
+                                {isSaving ? <RefreshCw size={10} className="animate-spin" /> : <Check size={10} />}
+                              </button>
+                              <button
+                                onClick={cancelEdit}
+                                disabled={isSaving}
+                                title="Cancel"
+                                className="p-1 rounded cursor-pointer transition-colors disabled:opacity-40"
+                                style={{ backgroundColor: '#fff1f2', color: '#9f1239', border: '1px solid #fca5a5' }}
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => startEdit(item)}
+                              title="Edit"
+                              className="p-1 rounded cursor-pointer transition-colors"
+                              style={{ color: 'var(--text-primary)', opacity: 0.35 }}
+                              onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--theme-secondary)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.opacity = '0.35'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                            >
+                              <Edit2 size={11} />
                             </button>
-                            <button onClick={cancelEdit} disabled={isSaving} title="Cancel"
-                              className="p-1 bg-red-50 hover:bg-red-100 text-red-700 rounded border border-red-200 transition-colors cursor-pointer disabled:opacity-50">
-                              <X size={13} />
-                            </button>
-                          </div>
-                        ) : (
-                          <button onClick={() => startEdit(item)}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-800 bg-transparent hover:bg-slate-100 rounded border border-transparent hover:border-slate-200 transition-all cursor-pointer">
-                            <Edit2 size={10} /> Edit
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                          )}
+                        </TD>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+
+              {/* totals footer */}
+              {items.length > 0 && (
+                <tfoot>
+                  <tr style={{ backgroundColor: 'rgba(0,0,0,0.03)', borderTop: `2px solid var(--border-color)` }}>
+                    <TD colSpan={3} className="font-black text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-primary)' }}>
+                      Totals
+                    </TD>
+                    <TD align="right">
+                      <span className="font-mono font-black text-[11px]" style={{ color: 'var(--text-primary)' }}>
+                        {fmtQty(totalQty)}
+                      </span>
+                    </TD>
+                    <TD align="right">
+                      <span className="font-mono font-black text-[11px]" style={{ color: pendingQtyTotal > 0 ? 'var(--theme-secondary)' : '#15803d' }}>
+                        {fmtQty(pendingQtyTotal)}
+                      </span>
+                    </TD>
+                    <TD />
+                    <TD align="right">
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-primary)', opacity: 0.6 }}>₹{fmt(gstTotal)}</span>
+                    </TD>
+                    <TD align="right">
+                      <span className="font-mono font-black text-[13px]" style={{ color: 'var(--theme-secondary)' }}>
+                        ₹{fmt(itemsBasic + gstTotal)}
+                      </span>
+                    </TD>
+                    <TD colSpan={4} />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+
+        {/* ── Financial summary ─────────────────────────────────────────────── */}
+        <div
+          className="rounded-xl border overflow-hidden shadow-sm"
+          style={{ borderColor: 'var(--border-color)' }}
+        >
+          <div
+            className="px-4 py-2 border-b"
+            style={{
+              backgroundColor: 'var(--theme-primary)',
+              borderColor: 'rgba(255,255,255,0.1)'
+            }}
+          >
+            <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: 'var(--text-sidebar)' }}>
+              Financial Breakdown
+            </span>
+          </div>
+
+          <div
+            className="overflow-x-auto"
+            style={{ backgroundColor: 'var(--bg-form, white)' }}
+          >
+            <table className="w-full border-collapse" style={{ minWidth: '500px' }}>
+              <tbody>
+                {[
+                  { label: 'Items Subtotal',         value: itemsBasic, muted: false },
+                  { label: 'GST / Tax',               value: gstTotal,   muted: true },
+                  { label: 'Additional Basic Value',  value: basicVal,   muted: true },
+                  { label: 'Transport / Freight',     value: transport,  muted: true },
+                  { label: 'Packing & Forwarding',    value: packing,    muted: true },
+                  { label: 'Other Charges',           value: other,      muted: true },
+                ].map(({ label, value, muted }, i) => (
+                  <tr
+                    key={label}
+                    className="border-b last:border-b-0"
+                    style={{ borderColor: 'var(--border-color)' }}
+                  >
+                    <TD className="text-[11px] font-semibold w-1/2" style={{ color: 'var(--text-primary)', opacity: muted ? 0.6 : 1 }}>
+                      {label}
+                    </TD>
+                    <TD align="right" className="font-mono font-bold text-[12px] w-1/2" style={{ color: 'var(--text-primary)' }}>
+                      ₹{fmt(value)}
+                    </TD>
+                  </tr>
+                ))}
+                {/* grand total */}
+                <tr style={{ backgroundColor: 'var(--theme-primary)' }}>
+                  <td className="px-2 py-3 text-[10px] font-black uppercase tracking-widest" style={{ color: 'var(--text-sidebar)' }}>
+                    Grand Total PO Value
+                  </td>
+                  <td className="px-2 py-3 text-right font-mono font-black text-[16px]" style={{ color: 'var(--theme-secondary)' }}>
+                    ₹{fmt(grandTotal)}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* ── Financial Breakdown ──────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="bg-slate-50 px-6 py-3 border-b border-slate-200">
-            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-              <Tag size={13} style={{ color: 'var(--theme-color)' }} /> Financial Breakdown
-            </span>
-          </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-0 text-sm">
-              {[
-                { label: 'Items Subtotal',       value: itemsBasic },
-                { label: 'GST / Tax',            value: gstTotal   },
-                { label: 'Add. Basic Value',     value: basicVal   },
-                { label: 'Transport / Freight',  value: transport  },
-                { label: 'Packing & Forwarding', value: packing    },
-                { label: 'Other Charges',        value: other      },
-              ].map(({ label, value }) => (
-                <div key={label} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-                  <span className="font-semibold text-slate-500">{label}</span>
-                  <span className="font-mono font-bold text-slate-800">₹{fmt(value)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-5 pt-4 border-t-2 border-slate-200 flex justify-between items-center">
-              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Grand Total PO Value</span>
-              <span className="text-2xl font-black text-slate-900">₹{fmt(grandTotal)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Bottom actions ───────────────────────────────────────────────── */}
-        <div className="flex items-center justify-end gap-3 print:hidden pb-4">
-          <Link
-            to={`/updatePurchaseOrder/${po.po_no}?trade_id=${po.trade_id}`}
-            className="px-5 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm transition-colors cursor-pointer flex items-center gap-1.5"
-          >
-            <Edit2 size={15} /> Edit Purchase Order
-          </Link>
-          {po.trade_id && (
-            <Link to={`/trade/${po.trade_id}`}
-              className="px-5 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm transition-colors cursor-pointer flex items-center gap-1.5">
-              <FileText size={15} /> View Trade
-            </Link>
-          )}
-          <button onClick={() => window.print()}
-            className="px-5 py-2.5 rounded-lg font-bold text-sm text-white transition-colors cursor-pointer flex items-center gap-1.5"
-            style={{ backgroundColor: 'var(--theme-color)' }}
-            onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(0.9)'}
-            onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
-          >
-            <Printer size={15} /> Print / Save as PDF
-          </button>
-        </div>
-
+        {/* bottom spacer */}
+        <div className="h-6 print:hidden" />
       </div>
     </div>
   );

@@ -380,213 +380,201 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         );
 
       case 'purchase-order': {
-        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
-        const calcTotal = (ord) => {
-          const itemsBasic = (ord.items || []).reduce((s, i) => s + (parseFloat(i.unit_price)||0)*(parseFloat(i.quantity)||0), 0);
-          const gst   = parseFloat(ord.gst)             || 0;
-          const trans = parseFloat(ord.transport)       || 0;
-          const pack  = parseFloat(ord.packing_forward) || 0;
-          const other = parseFloat(ord.other)           || 0;
-          const bv    = parseFloat(ord.basic_value)     || 0;
-          return itemsBasic + gst + trans + pack + other + bv;
+        const fmtDate = (d) => {
+          if (!d) return '—';
+          const s = typeof d === 'string' ? d : String(d);
+          if (s.match(/^\d{4}-\d{2}-\d{2}/)) {
+            const [y, m, day] = s.substring(0, 10).split('-');
+            return `${day}/${m}/${y}`;
+          }
+          const dt = new Date(d);
+          if (isNaN(dt)) return d;
+          return `${String(dt.getUTCDate()).padStart(2,'0')}/${String(dt.getUTCMonth()+1).padStart(2,'0')}/${dt.getUTCFullYear()}`;
         };
-        const fmt = (v) => (parseFloat(v)||0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+        const fmtAmt = (v) => (parseFloat(v)||0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+        const fmtQty = (v) => (parseFloat(v)||0).toLocaleString('en-IN');
 
-        const showPOs = orderFilter === 'ALL' || orderFilter === 'PO' || orderFilter === 'PO_BUY';
-        const showROs = orderFilter === 'ALL' || orderFilter === 'RO';
+        /* ── collect all orders (PO + RO) skipping completed/fully delivered ── */
+        let allOrders = [];
 
-        let displayOrders = [];
-
-        if (showPOs) {
-          purchaseOrders.forEach(po => {
-            if (orderFilter === 'PO_BUY' && po.trade_type !== 'buy') return;
-            if (orderFilter === 'PO' && po.trade_type !== 'sell') return;
-            if (po.trade_status && (po.trade_status.trim().toLowerCase() === 'completed' || po.trade_status.trim().toLowerCase() === 'complete')) return;
-            
-            // Calculate delivered percentage to skip if fully delivered
-            const totalQty = (po.items || []).reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
-            const deliveredQty = (po.items || []).reduce((s, i) => s + (parseFloat(i.delivered_qty) || 0), 0);
-            const deliveredPct = totalQty > 0 ? (deliveredQty / totalQty) * 100 : 0;
-            if (totalQty > 0 && deliveredPct >= 99.9) return;
-
-            displayOrders.push({
-              id: po.po_no,
-              type: 'PO',
-              number: po.po_no,
-              date: po.po_date,
-              partyId: po.party_id || '—',
-              deliveryDate: po.delivery_date,
-              tradeId: po.trade_id,
-              linkedDoc: po.quotation_no ? `QTN: ${po.quotation_no}` : null,
-              items: po.items || [],
-              basic_value: po.basic_value,
-              gst: po.gst,
-              transport: po.transport,
-              packing_forward: po.packing_forward,
-              other: po.other,
-              navigatePath: `/order/${encodeURIComponent(po.po_no)}`,
-              status: 'Ordered'
-            });
+        purchaseOrders.forEach(po => {
+          if (po.trade_status && (po.trade_status.trim().toLowerCase() === 'completed' || po.trade_status.trim().toLowerCase() === 'complete')) return;
+          const totalQty     = (po.items||[]).reduce((s,i) => s+(parseFloat(i.quantity)||0), 0);
+          const deliveredQty = (po.items||[]).reduce((s,i) => s+(parseFloat(i.delivered_qty)||0), 0);
+          if (totalQty > 0 && (deliveredQty/totalQty)*100 >= 99.9) return;
+          allOrders.push({
+            groupKey:      po.po_no,
+            type:          po.trade_type === 'buy' ? 'BUY' : 'PO',
+            number:        po.po_no,
+            date:          po.po_date,
+            partyId:       po.party_id || '—',
+            items:         po.items || [],
+            navigatePath:  `/order/${encodeURIComponent(po.po_no)}`,
           });
-        }
+        });
 
-        if (showROs) {
-          releaseOrders.forEach(ro => {
-            if (ro.trade_status && (ro.trade_status.trim().toLowerCase() === 'completed' || ro.trade_status.trim().toLowerCase() === 'complete')) return;
-            
-            // Calculate delivered percentage to skip if fully delivered
-            const totalQty = (ro.items || []).reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
-            const deliveredQty = (ro.items || []).reduce((s, i) => s + (parseFloat(i.delivered_qty) || 0), 0);
-            const deliveredPct = totalQty > 0 ? (deliveredQty / totalQty) * 100 : 0;
-            if (totalQty > 0 && deliveredPct >= 99.9) return;
-
-            displayOrders.push({
-              id: ro.ro_no,
-              type: 'RO',
-              number: ro.ro_no,
-              date: ro.ro_date,
-              partyId: ro.party_id || '—',
-              deliveryDate: ro.delivery_date,
-              tradeId: ro.trade_id,
-              linkedDoc: ro.contract_ref ? `Ref: ${ro.contract_ref}` : null,
-              items: ro.items || [],
-              basic_value: ro.basic_value,
-              gst: ro.gst,
-              transport: ro.transport,
-              packing_forward: ro.packing_forward,
-              other: ro.other,
-              navigatePath: `/release-order/${encodeURIComponent(ro.ro_no)}`,
-              status: 'Release Order'
-            });
+        releaseOrders.forEach(ro => {
+          if (ro.trade_status && (ro.trade_status.trim().toLowerCase() === 'completed' || ro.trade_status.trim().toLowerCase() === 'complete')) return;
+          const totalQty     = (ro.items||[]).reduce((s,i) => s+(parseFloat(i.quantity)||0), 0);
+          const deliveredQty = (ro.items||[]).reduce((s,i) => s+(parseFloat(i.delivered_qty)||0), 0);
+          if (totalQty > 0 && (deliveredQty/totalQty)*100 >= 99.9) return;
+          allOrders.push({
+            groupKey:     ro.ro_no,
+            type:         'RO',
+            number:       ro.ro_no,
+            date:         ro.ro_date,
+            partyId:      ro.party_id || '—',
+            items:        ro.items || [],
+            navigatePath: `/release-order/${encodeURIComponent(ro.ro_no)}`,
           });
-        }
+        });
 
-        // Apply Search Filter
-        if (orderSearchQuery.trim() !== '') {
+        /* sort newest first */
+        allOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        /* search filter */
+        if (orderSearchQuery.trim()) {
           const q = orderSearchQuery.toLowerCase();
-          displayOrders = displayOrders.filter(ord => 
+          allOrders = allOrders.filter(ord =>
             ord.number.toLowerCase().includes(q) ||
-            (ord.linkedDoc && ord.linkedDoc.toLowerCase().includes(q)) ||
-            (ord.tradeId && ord.tradeId.toLowerCase().includes(q)) ||
-            (ord.items || []).some(item => item.item_code.toLowerCase().includes(q))
+            ord.partyId.toLowerCase().includes(q) ||
+            (ord.items||[]).some(i =>
+              (i.item_code||'').toLowerCase().includes(q) ||
+              (i.description||'').toLowerCase().includes(q)
+            )
           );
         }
 
-        displayOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+        /* ── flatten to item rows ── */
+        let sn = 0;
+        const flatRows = [];
+        allOrders.forEach(ord => {
+          (ord.items||[]).forEach((item, idx) => {
+            sn++;
+            flatRows.push({
+              ...item,
+              _sn:          sn,
+              _groupKey:    ord.groupKey,
+              _type:        ord.type,
+              _number:      ord.number,
+              _date:        ord.date,
+              _partyId:     ord.partyId,
+              _isFirst:     idx === 0,
+              _groupSize:   (ord.items||[]).length,
+              _navigatePath: ord.navigatePath,
+            });
+          });
+        });
 
         const isLoadingAll = posLoading || rosLoading;
 
-        return (
-          <div className="flex-1 p-6 bg-slate-100 text-slate-900 min-h-screen">
-            <div className="max-w-4xl mx-auto space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">Orders &amp; Releases</h2>
-                  <p className="text-xs text-slate-500 mt-1">Manage purchase orders and release orders.</p>
-                </div>
-              </div>
+        /* ── header cell ── */
+        const TH = ({ children, align = 'left', style = {} }) => (
+          <th
+            className="px-2 py-2 text-[9px] font-black uppercase tracking-widest whitespace-nowrap border-r last:border-r-0 select-none"
+            style={{
+              textAlign: align,
+              backgroundColor: 'var(--theme-primary)',
+              color: 'var(--text-sidebar, #fff)',
+              borderColor: 'rgba(255,255,255,0.12)',
+              position: 'sticky',
+              top: 0,
+              zIndex: 2,
+              ...style
+            }}
+          >
+            {children}
+          </th>
+        );
 
-              {/* Search Bar */}
-              <div className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors focus-within:border-[var(--theme-color)]">
-                <Search size={18} className="text-slate-400 shrink-0" />
+        /* ── body cell ── */
+        const TD = ({ children, align = 'left', className = '', style = {} }) => (
+          <td
+            className={`px-2 py-1.5 text-[11px] border-r last:border-r-0 ${className}`}
+            style={{ textAlign: align, borderColor: 'var(--border-color)', ...style }}
+          >
+            {children}
+          </td>
+        );
+
+        /* ── status badge ── */
+        const StatusBadge = ({ status }) => {
+          const v = (status||'').toLowerCase();
+          let s = { color:'var(--theme-secondary)', background:'rgba(217,53,45,0.06)', border:'1px solid var(--theme-secondary)' };
+          if (v==='delivered'||v==='received'||v==='completed') s={color:'#15803d',background:'#f0fdf4',border:'1px solid #86efac'};
+          else if (v==='shipped'||v==='in transit') s={color:'#1d4ed8',background:'#eff6ff',border:'1px solid #93c5fd'};
+          else if (v==='ordered') s={color:'#6d28d9',background:'#f5f3ff',border:'1px solid #c4b5fd'};
+          else if (v==='cancelled') s={color:'#9f1239',background:'#fff1f2',border:'1px solid #fca5a5'};
+          else if (v.includes('await')||v==='pending') s={color:'#92400e',background:'#fffbeb',border:'1px solid #fcd34d'};
+          return (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide whitespace-nowrap" style={s}>
+              {status || '—'}
+            </span>
+          );
+        };
+
+        return (
+          <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--bg-app)' }}>
+
+            {/* ── toolbar ── */}
+            <div
+              className="px-4 py-2.5 border-b flex items-center gap-3 shrink-0"
+              style={{ backgroundColor: 'var(--bg-form,white)', borderColor: 'var(--border-color)' }}
+            >
+              <div className="flex-1 flex items-center gap-2 border rounded-lg px-3 py-1.5 transition-colors"
+                style={{ borderColor: 'var(--border-color)', backgroundColor: 'white' }}
+                onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--theme-secondary)'}
+                onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
+              >
+                <Search size={13} style={{ color: 'var(--theme-secondary)', flexShrink: 0 }} />
                 <input
                   type="text"
-                  placeholder="Search orders by number, trade reference, linked doc, or item code..."
+                  placeholder="Search by PO/RO number, party, item code, description…"
                   value={orderSearchQuery}
                   onChange={(e) => setOrderSearchQuery(e.target.value)}
-                  className="w-full bg-transparent focus:outline-none text-sm text-slate-900 placeholder:text-slate-400 font-medium"
+                  className="w-full bg-transparent focus:outline-none text-[11px] font-semibold placeholder:font-normal"
+                  style={{ color: 'var(--text-primary)' }}
                 />
-              </div>
-
-              {/* Filter Pills */}
-              <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
-                {[
-                  { id: 'ALL', label: 'All Orders' },
-                  { id: 'PO',  label: 'Purchase Orders (PO)' },
-                  { id: 'PO_BUY', label: 'Buy POs' },
-                  { id: 'RO',  label: 'Release Orders (RO)' }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setOrderFilter(tab.id)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${orderFilter === tab.id ? 'text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`}
-                    style={orderFilter === tab.id ? { backgroundColor: 'var(--theme-color)' } : undefined}
-                  >
-                    {tab.label}
+                {orderSearchQuery && (
+                  <button onClick={() => setOrderSearchQuery('')} className="shrink-0 cursor-pointer" style={{ color: 'var(--theme-secondary)' }}>
+                    <X size={12} />
                   </button>
-                ))}
+                )}
               </div>
 
-              {isLoadingAll && displayOrders.length === 0 ? (
-                <p className="text-center text-xs font-bold text-slate-400 py-10 animate-pulse">Loading Orders...</p>
-              ) : displayOrders.length === 0 ? (
-                <p className="text-center text-xs font-bold text-slate-400 py-10">No orders match filter or search.</p>
-              ) : (
-                <div className="border border-slate-300 rounded-lg overflow-x-auto bg-white shadow-sm animate-fade-in">
-                  <table className="w-full border-collapse text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="px-4 py-2.5">PO/RO Number</th>
-                        <th className="px-4 py-2.5">PO/RO Date</th>
-                        <th className="px-4 py-2.5">Party ID</th>
-                        <th className="px-4 py-2.5 text-right">Total Rate</th>
-                        <th className="px-4 py-2.5 text-right">% Delivered</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                      {displayOrders.map((ord) => {
-                        const total = calcTotal(ord);
-                        const totalQty = ord.items.reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
-                        const deliveredQty = ord.items.reduce((s, i) => s + (parseFloat(i.delivered_qty) || 0), 0);
-                        const deliveredPct = totalQty > 0 ? ((deliveredQty / totalQty) * 100).toFixed(1) : '0.0';
+              <span className="text-[10px] font-bold shrink-0" style={{ color: 'var(--text-primary)', opacity: 0.45 }}>
+                {isLoadingAll ? 'Loading…' : `${flatRows.length} item${flatRows.length !== 1 ? 's' : ''} · ${allOrders.length} order${allOrders.length !== 1 ? 's' : ''}`}
+              </span>
 
-                        return (
-                          <tr 
-                            key={ord.id} 
-                            onClick={() => navigate(ord.navigatePath)}
-                            className="hover:bg-slate-50 transition-colors cursor-pointer group"
-                          >
-                            <td className="px-4 py-3 font-mono font-bold text-slate-900 group-hover:text-[var(--theme-color)]">
-                              <div className="flex items-center gap-1.5">
-                                <span>{ord.number}</span>
-                                <span className={`text-[9px] font-black uppercase px-1 py-0.5 rounded border ${ord.type === 'PO' ? 'text-blue-700 bg-blue-50 border-blue-200' : 'text-purple-700 bg-purple-50 border-purple-200'}`}>
-                                  {ord.type}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-slate-500 font-semibold">
-                              {fmtDate(ord.date)}
-                            </td>
-                            <td className="px-4 py-3 font-semibold text-slate-700 font-mono">
-                              {ord.partyId}
-                            </td>
-                            <td className="px-4 py-3 text-right font-bold text-slate-900">
-                              {hasPermission(currentUser, 'view_pricing') ? `₹${fmt(total)}` : '***'}
-                            </td>
-                            <td className="px-4 py-3 text-right font-semibold">
-                              <span 
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  parseFloat(deliveredPct) === 100 
-                                    ? 'text-green-700 bg-green-50 border border-green-200' 
-                                    : parseFloat(deliveredPct) === 0
-                                    ? 'text-slate-500 bg-slate-50 border border-slate-200'
-                                    : 'text-amber-700 bg-amber-50 border border-amber-200'
-                                }`}
-                              >
-                                {deliveredPct}%
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              {isLoadingAll && <RefreshCw size={13} className="animate-spin shrink-0" style={{ color: 'var(--theme-secondary)' }} />}
+            </div>
+
+            {/* ── table wrapper ── */}
+            <div className="flex-1 overflow-auto">
+              {flatRows.length === 0 && !isLoadingAll ? (
+                <div className="flex items-center justify-center h-40">
+                  <p className="text-[11px] font-bold" style={{ color: 'var(--text-primary)', opacity: 0.35 }}>
+                    {orderSearchQuery ? 'No results match your search.' : 'No active orders found.'}
+                  </p>
                 </div>
+              ) : (
+                <OrderTable
+                  flatRows={flatRows}
+                  fmtDate={fmtDate}
+                  fmtAmt={fmtAmt}
+                  fmtQty={fmtQty}
+                  currentUser={currentUser}
+                  navigate={navigate}
+                  TH={TH}
+                  TD={TD}
+                  StatusBadge={StatusBadge}
+                />
               )}
             </div>
           </div>
         );
       }
+
       default:
         return null;
     }
@@ -604,3 +592,220 @@ export default function Dashboard({ activeTab: propActiveTab }) {
     </div>
   );
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   OrderTable — separate component so hooks (useState) work inside the case
+───────────────────────────────────────────────────────────────────────────── */
+function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, TH, TD, StatusBadge }) {
+  const [hoveredGroup, setHoveredGroup] = React.useState(null);
+
+  if (!flatRows.length) return null;
+
+  return (
+    <div className="overflow-x-auto w-full">
+      <table
+        className="w-full border-collapse"
+        style={{ minWidth: '1020px', tableLayout: 'fixed' }}
+      >
+        <colgroup>
+          <col style={{ width: '30px' }} />    {/* S.N */}
+          <col style={{ width: '130px' }} />   {/* Order No */}
+          <col style={{ width: '72px' }} />    {/* Date */}
+          <col style={{ width: '76px' }} />    {/* Party */}
+          <col style={{ width: '100px' }} />   {/* Item Code */}
+          <col style={{ width: '200px' }} />   {/* Description */}
+          <col style={{ width: '80px' }} />    {/* Pending/Total */}
+          <col style={{ width: '72px' }} />    {/* Del. Date */}
+          <col style={{ width: '100px' }} />   {/* Vendor */}
+          <col style={{ width: '110px' }} />   {/* Status */}
+          <col style={{ width: '90px' }} />    {/* Rate */}
+          <col style={{ width: '70px' }} />    {/* Given Rate */}
+        </colgroup>
+
+        <thead>
+          <tr>
+            <TH align="center">#</TH>
+            <TH>Order No</TH>
+            <TH>Date</TH>
+            <TH>Party</TH>
+            <TH>Item Code</TH>
+            <TH>Description</TH>
+            <TH align="right">Pending&nbsp;/&nbsp;Total</TH>
+            <TH>Del. Date</TH>
+            <TH>Vendor</TH>
+            <TH>Status</TH>
+            <TH align="right">Rate</TH>
+            <TH align="right">Given Rate</TH>
+          </tr>
+        </thead>
+
+        <tbody>
+          {flatRows.map((row, idx) => {
+            const isHovered   = hoveredGroup === row._groupKey;
+            const pendingQty  = Math.max(0, (parseFloat(row.quantity)||0) - (parseFloat(row.delivered_qty)||0));
+            const isEvenGroup = (() => {
+              // compute alternating group parity
+              let g = 0, lastKey = null;
+              for (let i = 0; i < flatRows.length; i++) {
+                if (flatRows[i]._groupKey !== lastKey) { g++; lastKey = flatRows[i]._groupKey; }
+                if (i === idx) return g % 2 === 0;
+              }
+              return false;
+            })();
+
+            /* background */
+            let rowBg;
+            if (isHovered) {
+              rowBg = 'rgba(217,53,45,0.07)';
+            } else if (row._isFirst && isEvenGroup) {
+              rowBg = 'rgba(0,0,0,0.022)';
+            } else {
+              rowBg = 'transparent';
+            }
+
+            /* top border: first row of each group gets a separator */
+            const topBorderStyle = row._isFirst && idx > 0
+              ? { borderTop: '2px solid var(--border-color)' }
+              : {};
+
+            return (
+              <tr
+                key={`${row._groupKey}-${row.item_code}-${idx}`}
+                style={{ backgroundColor: rowBg, cursor: 'pointer', transition: 'background 0.12s', ...topBorderStyle }}
+                onMouseEnter={() => setHoveredGroup(row._groupKey)}
+                onMouseLeave={() => setHoveredGroup(null)}
+                onClick={() => navigate(row._navigatePath)}
+              >
+                {/* S.N */}
+                <TD align="center">
+                  <span className="font-mono text-[9px] font-bold" style={{ color: 'var(--theme-secondary)', opacity: 0.6 }}>
+                    {row._sn}
+                  </span>
+                </TD>
+
+                {/* Order No — only first row of group */}
+                <TD>
+                  {row._isFirst ? (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span
+                        className="font-mono font-black text-[10px] leading-tight"
+                        style={{ color: isHovered ? 'var(--theme-secondary)' : 'var(--text-primary)' }}
+                      >
+                        {row._number}
+                      </span>
+                      <span
+                        className="text-[8px] font-black uppercase px-1 py-0.5 rounded"
+                        style={
+                          row._type === 'RO'
+                            ? { color: '#6d28d9', background: '#f5f3ff', border: '1px solid #c4b5fd' }
+                            : row._type === 'BUY'
+                            ? { color: '#0369a1', background: '#f0f9ff', border: '1px solid #7dd3fc' }
+                            : { color: 'var(--theme-secondary)', background: 'rgba(217,53,45,0.08)', border: '1px solid var(--theme-secondary)' }
+                        }
+                      >
+                        {row._type}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-[9px]" style={{ color: 'transparent', userSelect: 'none' }}>·</span>
+                  )}
+                </TD>
+
+                {/* Date — only first row */}
+                <TD>
+                  {row._isFirst ? (
+                    <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: 'var(--text-primary)', opacity: 0.7 }}>
+                      {fmtDate(row._date)}
+                    </span>
+                  ) : null}
+                </TD>
+
+                {/* Party — only first row */}
+                <TD>
+                  {row._isFirst ? (
+                    <span className="font-mono font-bold text-[10px] whitespace-nowrap overflow-hidden block" title={row._partyId}
+                      style={{ color: 'var(--text-primary)' }}>
+                      {row._partyId}
+                    </span>
+                  ) : null}
+                </TD>
+
+                {/* Item Code */}
+                <TD>
+                  <span
+                    className="font-mono font-black text-[9px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                    style={{
+                      color: 'var(--theme-secondary)',
+                      borderColor: 'var(--theme-secondary)',
+                      backgroundColor: 'rgba(217,53,45,0.05)'
+                    }}
+                  >
+                    {row.item_code}
+                  </span>
+                </TD>
+
+                {/* Description */}
+                <TD>
+                  <span
+                    className="font-semibold text-[11px] leading-tight block truncate"
+                    style={{ color: 'var(--text-primary)' }}
+                    title={row.description || '—'}
+                  >
+                    {row.description || <span style={{ opacity: 0.25 }}>—</span>}
+                  </span>
+                </TD>
+
+                {/* Pending / Total */}
+                <TD align="right">
+                  <span className="font-mono font-black text-[11px]" style={{ color: pendingQty > 0 ? 'var(--theme-secondary)' : '#15803d' }}>
+                    {fmtQty(pendingQty)}
+                  </span>
+                  <span className="font-mono text-[9px]" style={{ color: 'var(--text-primary)', opacity: 0.35 }}>
+                    /{fmtQty(row.quantity)}
+                  </span>
+                </TD>
+
+                {/* Delivery Date */}
+                <TD>
+                  <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: 'var(--text-primary)', opacity: 0.65 }}>
+                    {fmtDate(row.delivery_date)}
+                  </span>
+                </TD>
+
+                {/* Vendor */}
+                <TD>
+                  <span className="text-[11px] font-semibold" style={{ color: row.vendor ? 'var(--text-primary)' : 'var(--text-primary)', opacity: row.vendor ? 1 : 0.2 }}>
+                    {row.vendor || '—'}
+                  </span>
+                </TD>
+
+                {/* Status */}
+                <TD>
+                  {row.status ? <StatusBadge status={row.status} /> : <span style={{ opacity: 0.2, fontSize: '10px' }}>—</span>}
+                </TD>
+
+                {/* Rate */}
+                <TD align="right">
+                  {hasPermission(currentUser, 'view_pricing') ? (
+                    <span className="font-mono font-bold text-[11px]" style={{ color: 'var(--text-primary)' }}>
+                      ₹{fmtAmt(row.unit_price)}
+                    </span>
+                  ) : (
+                    <span style={{ opacity: 0.25, fontSize: '10px' }}>***</span>
+                  )}
+                </TD>
+
+                {/* Given Rate — placeholder */}
+                <TD align="right">
+                  <span style={{ opacity: 0.2, fontSize: '10px' }}>—</span>
+                </TD>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+

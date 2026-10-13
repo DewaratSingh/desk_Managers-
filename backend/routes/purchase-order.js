@@ -85,10 +85,14 @@ router.get('/', async (req, res) => {
         (
           SELECT COALESCE(json_agg(json_build_object(
             'item_code', i.item_code,
+            'description', i.description,
             'quantity', poi.quantity,
             'unit_price', poi.unit_price,
             'gst_rate', poi.gst_rate,
             'gst_type', poi.gst_type,
+            'delivery_date', poi.delivery_date,
+            'status', poi.status,
+            'vendor', poi.vendor,
             'delivered_qty', COALESCE((
               SELECT SUM(dni.quantity)
               FROM delivery_note_items dni
