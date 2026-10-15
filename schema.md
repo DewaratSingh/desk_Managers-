@@ -391,6 +391,7 @@ CREATE TABLE contracts (
   company_id   INTEGER       REFERENCES companies(id),
   buyer_id     INTEGER       REFERENCES buyers(id),
   created_at   TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+   type    
 );
 ```
 

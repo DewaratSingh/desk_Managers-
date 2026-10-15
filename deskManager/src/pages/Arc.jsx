@@ -33,6 +33,7 @@ export default function ArcView() {
   const [editingContract, setEditingContract] = useState(null);
   const [companyName, setCompanyName] = useState('');
   const [buyerId, setBuyerId] = useState('');
+  const [contractType, setContractType] = useState('buy');
   
   // Buyer Auto-complete state
   const [buyerInput, setBuyerInput] = useState('');
@@ -55,8 +56,14 @@ export default function ArcView() {
   const [itemDate, setItemDate] = useState(new Date().toISOString().split('T')[0]);
   const [itemExpiryDate, setItemExpiryDate] = useState('');
   const [historyItem, setHistoryItem] = useState(null);
+  // Process-item extra field
+  const [processName, setProcessName] = useState('');
   
   const dropdownRef = useRef(null);
+
+  // Helper: is the selected contract a process type?
+  const isProcessType = (contract) =>
+    contract?.type === 'buy process' || contract?.type === 'sell process';
 
   useEffect(() => {
     if (isFormRoute) {
@@ -67,11 +74,13 @@ export default function ArcView() {
         setCompanyName(c.company_name || '');
         setBuyerId(c.buyer_id || '');
         setBuyerInput(c.buyer_name ? `${c.buyer_name} (${c.email || ''})` : (c.buyer_id || ''));
+        setContractType(c.type || 'buy');
       } else {
         setEditingContract(null);
         setCompanyName('');
         setBuyerId('');
         setBuyerInput('');
+        setContractType('buy');
       }
     } else if (selectedContract) {
       setViewMode('detail');
@@ -131,18 +140,30 @@ export default function ArcView() {
     }
   };
 
-  const fetchContractDetails = async (id) => {
+  const fetchContractDetails = async (contract) => {
+    const id = contract.id;
+    const useProcess = isProcessType(contract);
     setIsLoading(true);
     setError(null);
     try {
+      // Always fetch the contract metadata
       const res = await fetch(`/api/contracts/${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setContractItems(data.items || []);
-        setSelectedContract(data);
+      if (!res.ok) { setError('Failed to load contract details'); return; }
+      const data = await res.json();
+
+      // Fetch items from the correct table
+      if (useProcess) {
+        const pRes = await fetch(`/api/contracts/${id}/process-items`);
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          setContractItems(pData);
+        } else {
+          setContractItems([]);
+        }
       } else {
-        setError('Failed to load contract details');
+        setContractItems(data.items || []);
       }
+      setSelectedContract(data);
     } catch (err) {
       setError('Connection error');
     } finally {
@@ -177,7 +198,7 @@ export default function ArcView() {
     setIsLoading(true);
     
     try {
-      const payload = { company_name: companyName, buyer_id: buyerId };
+      const payload = { company_name: companyName, buyer_id: buyerId, type: contractType };
       let res;
       if (editingContract) {
         res = await fetch(`/api/contracts/${editingContract.id}`, {
@@ -257,38 +278,85 @@ export default function ArcView() {
   const handleSaveContractItem = async (e) => {
     e.preventDefault();
     if (!selectedContract) return;
-    
+    const useProcess = isProcessType(selectedContract);
+
     setError(null);
     setIsLoading(true);
     try {
-      if (editingItem) {
-        const res = await fetch(`/api/contracts/${selectedContract.id}/items/${editingItem.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ price: parseFloat(itemPrice), date: itemDate, expiry_date: itemExpiryDate || null })
-        });
-        if (res.ok) {
-          toast.success('Item price updated!');
-          fetchContractDetails(selectedContract.id);
-          resetItemForm();
+      if (useProcess) {
+        // ---- process-items endpoint ----
+        if (editingItem) {
+          const res = await fetch(`/api/contracts/${selectedContract.id}/process-items/${editingItem.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              processname: processName,
+              price: parseFloat(itemPrice),
+              date: itemDate,
+              expiry_date: itemExpiryDate || null
+            })
+          });
+          if (res.ok) {
+            toast.success('Process item updated!');
+            fetchContractDetails(selectedContract);
+            resetItemForm();
+          } else {
+            const data = await res.json();
+            setError(data.error || 'Failed to update process item');
+          }
         } else {
-          const data = await res.json();
-          setError(data.error || 'Failed to update item');
+          const targetItemCode = selectedCatalogItem ? selectedCatalogItem.item_code : itemInput;
+          const res = await fetch(`/api/contracts/${selectedContract.id}/process-items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              item_code: targetItemCode,
+              processname: processName,
+              price: parseFloat(itemPrice),
+              date: itemDate,
+              expiry_date: itemExpiryDate || null
+            })
+          });
+          if (res.ok) {
+            toast.success('Process item added to contract!');
+            fetchContractDetails(selectedContract);
+            resetItemForm();
+          } else {
+            const data = await res.json();
+            setError(data.error || 'Failed to add process item');
+          }
         }
       } else {
-        const targetItemCode = selectedCatalogItem ? selectedCatalogItem.item_code : itemInput;
-        const res = await fetch(`/api/contracts/${selectedContract.id}/items`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item_code: targetItemCode, price: parseFloat(itemPrice), date: itemDate, expiry_date: itemExpiryDate || null })
-        });
-        if (res.ok) {
-          toast.success('Item added to contract!');
-          fetchContractDetails(selectedContract.id);
-          resetItemForm();
+        // ---- standard items endpoint ----
+        if (editingItem) {
+          const res = await fetch(`/api/contracts/${selectedContract.id}/items/${editingItem.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ price: parseFloat(itemPrice), date: itemDate, expiry_date: itemExpiryDate || null })
+          });
+          if (res.ok) {
+            toast.success('Item price updated!');
+            fetchContractDetails(selectedContract);
+            resetItemForm();
+          } else {
+            const data = await res.json();
+            setError(data.error || 'Failed to update item');
+          }
         } else {
-          const data = await res.json();
-          setError(data.error || 'Failed to add item');
+          const targetItemCode = selectedCatalogItem ? selectedCatalogItem.item_code : itemInput;
+          const res = await fetch(`/api/contracts/${selectedContract.id}/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_code: targetItemCode, price: parseFloat(itemPrice), date: itemDate, expiry_date: itemExpiryDate || null })
+          });
+          if (res.ok) {
+            toast.success('Item added to contract!');
+            fetchContractDetails(selectedContract);
+            resetItemForm();
+          } else {
+            const data = await res.json();
+            setError(data.error || 'Failed to add item');
+          }
         }
       }
     } catch (err) {
@@ -300,12 +368,16 @@ export default function ArcView() {
 
   const handleDeleteContractItem = async (itemId) => {
     if (!window.confirm('Delete this item from contract?')) return;
+    const useProcess = isProcessType(selectedContract);
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/contracts/${selectedContract.id}/items/${itemId}`, { method: 'DELETE' });
+      const endpoint = useProcess
+        ? `/api/contracts/${selectedContract.id}/process-items/${itemId}`
+        : `/api/contracts/${selectedContract.id}/items/${itemId}`;
+      const res = await fetch(endpoint, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Item removed');
-        fetchContractDetails(selectedContract.id);
+        fetchContractDetails(selectedContract);
       } else {
         toast.error('Failed to remove item');
       }
@@ -324,6 +396,7 @@ export default function ArcView() {
     setItemPrice('');
     setItemDate(new Date().toISOString().split('T')[0]);
     setItemExpiryDate('');
+    setProcessName('');
     setError(null);
   };
 
@@ -374,7 +447,7 @@ export default function ArcView() {
                   key={contract.id} 
                   onClick={() => {
                     setSelectedContract(contract);
-                    fetchContractDetails(contract.id);
+                    fetchContractDetails(contract);
                   }}
                   className="bg-white border border-slate-300 rounded-xl p-5 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all group relative"
                 >
@@ -406,6 +479,19 @@ export default function ArcView() {
                       Buyer: <span className="text-slate-700">{contract.buyer_name}</span> {contract.email ? `(${contract.email})` : ''}
                     </div>
                   )}
+                  {contract.type && (() => {
+                    const typeColors = {
+                      'buy':          'bg-blue-100 text-blue-700',
+                      'sell':         'bg-emerald-100 text-emerald-700',
+                      'buy process':  'bg-violet-100 text-violet-700',
+                      'sell process': 'bg-amber-100 text-amber-700',
+                    };
+                    return (
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide mb-1 ${typeColors[contract.type] || 'bg-slate-100 text-slate-600'}`}>
+                        {contract.type}
+                      </span>
+                    );
+                  })()}
                   <div className="text-[10px] text-slate-400 font-mono mt-4">
                     Created: {new Date(contract.created_at).toLocaleDateString()}
                   </div>
@@ -450,6 +536,38 @@ export default function ArcView() {
                   className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
                   placeholder="e.g. Acme Corp Annual Rate"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Contract Type <span className="text-red-500">*</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'buy',          label: 'Buy',          color: 'blue' },
+                    { value: 'sell',         label: 'Sell',         color: 'emerald' },
+                    { value: 'buy process',  label: 'Buy Process',  color: 'violet' },
+                    { value: 'sell process', label: 'Sell Process', color: 'amber' },
+                  ].map(({ value, label, color }) => {
+                    const active = contractType === value;
+                    const styles = {
+                      blue:    active ? 'bg-blue-600 text-white border-blue-600'           : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-50',
+                      emerald: active ? 'bg-emerald-600 text-white border-emerald-600'     : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50',
+                      violet:  active ? 'bg-violet-600 text-white border-violet-600'       : 'bg-white text-violet-700 border-violet-300 hover:bg-violet-50',
+                      amber:   active ? 'bg-amber-500 text-white border-amber-500'         : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50',
+                    };
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setContractType(value)}
+                        className={`px-4 py-1.5 rounded-full border text-xs font-bold transition-all cursor-pointer ${styles[color]}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               
               <div ref={buyerRef} className="relative">
@@ -547,7 +665,7 @@ export default function ArcView() {
               {selectedContract.buyer_name && (
                 <div className="mt-2 space-y-1">
                   <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                    <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold">Buyer:</span> 
+                    <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold">{selectedContract.type}er:</span> 
                     {selectedContract.buyer_name}
                   </p>
                   {(selectedContract.email || selectedContract.phone) && (
@@ -569,82 +687,112 @@ export default function ArcView() {
           </div>
 
           {/* Item Form Modal/Inline */}
-          {showItemForm && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 shadow-inner" ref={dropdownRef}>
-              <h3 className="font-bold text-slate-800 mb-4">{editingItem ? 'Edit Item Price' : 'Add Item to Contract'}</h3>
-              
-              {error && (
-                <div className="mb-4 p-2 bg-red-100 text-red-700 text-xs font-semibold rounded flex items-center gap-1">
-                  <AlertCircle size={12} /> {error}
-                </div>
-              )}
+          {showItemForm && (() => {
+            const proc = isProcessType(selectedContract);
+            return (
+              <div className={`border rounded-xl p-5 shadow-inner ${proc ? 'bg-violet-50 border-violet-200' : 'bg-blue-50 border-blue-200'}`} ref={dropdownRef}>
+                <h3 className="font-bold text-slate-800 mb-4">
+                  {editingItem
+                    ? (proc ? 'Edit Process Item' : 'Edit Item Price')
+                    : (proc ? 'Add Process Item to Contract' : 'Add Item to Contract')}
+                </h3>
 
-              <form onSubmit={handleSaveContractItem} className="flex flex-wrap items-end gap-4">
-                <div className="flex-1 min-w-[250px] relative">
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Item Code <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    disabled={!!editingItem}
-                    placeholder="Search item..."
-                    value={itemInput}
-                    onChange={(e) => handleItemInput(e.target.value)}
-                    onFocus={() => itemInput.trim() && setShowDropdown(true)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none disabled:bg-slate-100"
-                    autoComplete="off"
-                  />
-                  {showDropdown && suggestions.length > 0 && (
-                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {suggestions.map(i => (
-                        <button
-                          key={i.item_code} type="button" onClick={() => handleSelectItem(i)}
-                          className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-slate-100"
-                        >
-                          <div className="font-bold text-xs">{i.item_code}</div>
-                          <div className="text-[10px] text-slate-500">{i.description}</div>
-                        </button>
-                      ))}
+                {error && (
+                  <div className="mb-4 p-2 bg-red-100 text-red-700 text-xs font-semibold rounded flex items-center gap-1">
+                    <AlertCircle size={12} /> {error}
+                  </div>
+                )}
+
+                <form onSubmit={handleSaveContractItem} className="flex flex-wrap items-end gap-4">
+                  {/* Item Code */}
+                  <div className="flex-1 min-w-[220px] relative">
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Item Code <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      disabled={!!editingItem}
+                      placeholder="Search item..."
+                      value={itemInput}
+                      onChange={(e) => handleItemInput(e.target.value)}
+                      onFocus={() => itemInput.trim() && setShowDropdown(true)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none disabled:bg-slate-100"
+                      autoComplete="off"
+                    />
+                    {showDropdown && suggestions.length > 0 && (
+                      <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {suggestions.map(i => (
+                          <button
+                            key={i.item_code} type="button" onClick={() => handleSelectItem(i)}
+                            className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-slate-100"
+                          >
+                            <div className="font-bold text-xs">{i.item_code}</div>
+                            <div className="text-[10px] text-slate-500">{i.description}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Process Name — only for process contracts */}
+                  {proc && (
+                    <div className="flex-1 min-w-[180px]">
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Process Name <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Cutting, Welding..."
+                        value={processName}
+                        onChange={(e) => setProcessName(e.target.value)}
+                        className="w-full px-3 py-2 border border-violet-300 rounded text-sm focus:border-violet-500 focus:outline-none"
+                      />
                     </div>
                   )}
-                </div>
-                
-                <div className="w-32">
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Date</label>
-                  <input
-                    type="date" required
-                    value={itemDate} onChange={(e) => setItemDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                
-                <div className="w-32">
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Expiry Date</label>
-                  <input
-                    type="date"
-                    value={itemExpiryDate} onChange={(e) => setItemExpiryDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                
-                <div className="w-32">
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Price (₹) <span className="text-red-500">*</span></label>
-                  <input
-                    type="number" step="0.01" required min="0"
-                    value={itemPrice} onChange={(e) => setItemPrice(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                
-                <div className="flex gap-2">
-                  <button type="button" onClick={resetItemForm} className="px-4 py-2 border border-slate-300 bg-white rounded text-sm font-bold text-slate-700">
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={isLoading || (!editingItem && !selectedCatalogItem && !itemInput.trim())} className="px-4 py-2 rounded text-sm font-bold text-white bg-blue-600 disabled:opacity-50">
-                    {isLoading ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
+
+                  {/* Date */}
+                  <div className="w-32">
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Date</label>
+                    <input
+                      type="date" required
+                      value={itemDate} onChange={(e) => setItemDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Expiry Date */}
+                  <div className="w-32">
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Expiry Date</label>
+                    <input
+                      type="date"
+                      value={itemExpiryDate} onChange={(e) => setItemExpiryDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Price */}
+                  <div className="w-32">
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Price (₹) <span className="text-red-500">*</span></label>
+                    <input
+                      type="number" step="0.01" required min="0"
+                      value={itemPrice} onChange={(e) => setItemPrice(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button type="button" onClick={resetItemForm} className="px-4 py-2 border border-slate-300 bg-white rounded text-sm font-bold text-slate-700">
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isLoading || (!editingItem && !selectedCatalogItem && !itemInput.trim()) || (proc && !processName.trim())}
+                      className={`px-4 py-2 rounded text-sm font-bold text-white disabled:opacity-50 ${proc ? 'bg-violet-600 hover:bg-violet-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                    >
+                      {isLoading ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            );
+          })()}
 
           {/* Items Table */}
           <div className="bg-white border border-slate-300 rounded-lg overflow-hidden shadow-sm">
@@ -661,6 +809,7 @@ export default function ArcView() {
                     <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 text-xs uppercase">
                       <th className="px-5 py-3">Item Code</th>
                       <th className="px-5 py-3">Description</th>
+                      {isProcessType(selectedContract) && <th className="px-5 py-3">Process Name</th>}
                       <th className="px-5 py-3">Date</th>
                       <th className="px-5 py-3">Expiry Date</th>
                       <th className="px-5 py-3">Valid</th>
@@ -679,6 +828,11 @@ export default function ArcView() {
                         <tr key={item.id} className="hover:bg-slate-50">
                           <td className="px-5 py-3 font-mono font-bold text-blue-600 text-xs">{item.item_code}</td>
                           <td className="px-5 py-3 font-medium text-slate-700 max-w-[200px] truncate" title={item.description}>{item.description}</td>
+                          {isProcessType(selectedContract) && (
+                            <td className="px-5 py-3">
+                              <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded text-[11px] font-bold">{item.processname || '—'}</span>
+                            </td>
+                          )}
                           <td className="px-5 py-3 text-slate-600 font-medium">{item.date ? new Date(item.date).toLocaleDateString() : '—'}</td>
                           <td className="px-5 py-3 text-slate-600 font-medium">{item.expiry_date ? new Date(item.expiry_date).toLocaleDateString() : '—'}</td>
                           <td className="px-5 py-3">
@@ -706,6 +860,7 @@ export default function ArcView() {
                                 setItemPrice(item.price);
                                 setItemDate(item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0]);
                                 setItemExpiryDate(item.expiry_date ? item.expiry_date.split('T')[0] : '');
+                                setProcessName(item.processname || '');
                                 setShowItemForm(true);
                               }}
                               className="px-2 py-1 text-[11px] font-bold text-blue-600 border border-blue-200 rounded hover:bg-blue-600 hover:text-white transition-colors"

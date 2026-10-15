@@ -15,12 +15,16 @@ const EMPTY_FORM = {
 const ReleaseOrderContext = createContext(null);
 
 export function ReleaseOrderProvider({ children }) {
-  const [activeRoId, setActiveRoId] = useState(undefined); // undefined = uninitialized, null = new, string = editing ID
+  const [activeRoId, setActiveRoId] = useState(undefined);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [buyerInput, setBuyerInput] = useState('');
   const [selectedBuyer, setSelectedBuyer] = useState(null);
   const [customerInput, setCustomerInput] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  // ── NEW: contract picker state ──
+  const [contractInput, setContractInput] = useState('');
+  const [selectedContract, setSelectedContract] = useState(null);
+  // ────────────────────────────────
   const [itemSearchInput, setItemSearchInput] = useState('');
   const [gstSearchInput, setGstSearchInput] = useState({});
   const [shipInput, setShipInput] = useState({});
@@ -36,6 +40,8 @@ export function ReleaseOrderProvider({ children }) {
     setSelectedBuyer(null);
     setCustomerInput('');
     setSelectedCustomer(null);
+    setContractInput('');
+    setSelectedContract(null);
     setItemSearchInput('');
     setGstSearchInput({});
     setShipInput({});
@@ -56,6 +62,10 @@ export function ReleaseOrderProvider({ children }) {
       setCustomerInput,
       selectedCustomer,
       setSelectedCustomer,
+      contractInput,
+      setContractInput,
+      selectedContract,
+      setSelectedContract,
       itemSearchInput,
       setItemSearchInput,
       gstSearchInput,

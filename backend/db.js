@@ -306,10 +306,16 @@ const initializeDatabase = async () => {
         trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
         gst_type VARCHAR(50),
         gst_rate DECIMAL(5,2) DEFAULT 0.00,
+        ro_type VARCHAR(10) DEFAULT 'sell',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (ro_no, company_id)
       );
+    `);
+
+    // Backfill existing ROs as 'sell'
+    await client.query(`
+      UPDATE release_orders SET ro_type = 'sell' WHERE ro_type IS NULL;
     `);
 
     // 17. Release Order Items Table

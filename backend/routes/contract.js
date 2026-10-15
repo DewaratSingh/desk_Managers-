@@ -74,13 +74,16 @@ router.get('/:id', async (req, res) => {
 
 // Create a new contract
 router.post('/', async (req, res) => {
-  const { company_name, buyer_id } = req.body || {};
+  const { company_name, buyer_id, type } = req.body || {};
   if (!company_name) return res.status(400).json({ error: 'company_name required' });
   
+  const validTypes = ['buy', 'sell', 'buy process', 'sell process'];
+  const contractType = validTypes.includes(type) ? type : 'buy';
+
   try {
     const result = await pool.query(
-      'INSERT INTO contracts (company_name, buyer_id, company_id) VALUES ($1, $2, $3) RETURNING *',
-      [company_name, buyer_id || null, req.user.company_id]
+      'INSERT INTO contracts (company_name, buyer_id, company_id, type) VALUES ($1, $2, $3, $4) RETURNING *',
+      [company_name, buyer_id || null, req.user.company_id, contractType]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -92,14 +95,17 @@ router.post('/', async (req, res) => {
 // Update a contract
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { company_name, buyer_id } = req.body || {};
+  const { company_name, buyer_id, type } = req.body || {};
   
   if (!company_name) return res.status(400).json({ error: 'company_name required' });
+
+  const validTypes = ['buy', 'sell', 'buy process', 'sell process'];
+  const contractType = validTypes.includes(type) ? type : 'buy';
   
   try {
     const result = await pool.query(
-      'UPDATE contracts SET company_name = $1, buyer_id = $2 WHERE id = $3 AND company_id = $4 RETURNING *',
-      [company_name, buyer_id || null, id, req.user.company_id]
+      'UPDATE contracts SET company_name = $1, buyer_id = $2, type = $3 WHERE id = $4 AND company_id = $5 RETURNING *',
+      [company_name, buyer_id || null, contractType, id, req.user.company_id]
     );
     
     if (result.rows.length === 0) return res.status(404).json({ error: 'Contract not found' });

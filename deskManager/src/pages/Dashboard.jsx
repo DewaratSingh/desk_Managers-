@@ -155,48 +155,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
               <p className="text-xs text-slate-500 mt-1">Quick stats and recent activity.</p>
             </div>
 
-            {/* Action Buttons filtered by user permissions */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {hasPermission(currentUser, 'manage_rfqs') && (
-                <button
-                  onClick={() => navigate('/addRfq')}
-                  className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
-                >
-                  <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">SELL</span>
-                  <span className="text-xs text-slate-500 font-semibold">Create Sale Trade (RFQ)</span>
-                </button>
-              )}
-              
-              {hasPermission(currentUser, 'manage_orders') && (
-                <button
-                  onClick={() => navigate('/addReleaseOrder')}
-                  className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
-                >
-                  <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">ARC</span>
-                  <span className="text-xs text-slate-500 font-semibold">Annual Rate Contract</span>
-                </button>
-              )}
-
-              {hasPermission(currentUser, 'manage_quotations') && (
-                <button
-                  onClick={() => navigate('/addReceivedQuotation')}
-                  className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
-                >
-                  <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">BUY</span>
-                  <span className="text-xs text-slate-500 font-semibold">Create Buy Trade</span>
-                </button>
-              )}
-
-              {hasPermission(currentUser, 'manage_inventory') && (
-                <button
-                  onClick={() => navigate('/addProcessRq')}
-                  className="p-5 bg-white border border-slate-300 hover:border-[var(--theme-color)] rounded-xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm cursor-pointer hover:shadow-md group animate-fade-in"
-                >
-                  <span className="font-extrabold text-lg text-slate-900 group-hover:text-[var(--theme-color)]">PROCESS</span>
-                  <span className="text-xs text-slate-500 font-semibold">Create Process Trade</span>
-                </button>
-              )}
-            </div>
+            {/* Top 10 Trades Chart (Line Graph) */}
+            <TradeComparisonChart trades={trades} />
 
             {/* List all trade at bottom */}
             {(() => {
@@ -372,10 +332,10 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                     </div>
                   )}
                 </>
-              )}
-            </div>
-          );
-        })()}
+                  )}
+                </div>
+              );
+            })()}
           </div>
         );
 
@@ -394,7 +354,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         const fmtAmt = (v) => (parseFloat(v)||0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
         const fmtQty = (v) => (parseFloat(v)||0).toLocaleString('en-IN');
 
-        /* ── collect all orders (PO + RO) skipping completed/fully delivered ── */
         let allOrders = [];
 
         purchaseOrders.forEach(po => {
@@ -429,10 +388,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           });
         });
 
-        /* sort newest first */
         allOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        /* search filter */
         if (orderSearchQuery.trim()) {
           const q = orderSearchQuery.toLowerCase();
           allOrders = allOrders.filter(ord =>
@@ -445,7 +402,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           );
         }
 
-        /* ── flatten to item rows ── */
         let sn = 0;
         const flatRows = [];
         allOrders.forEach(ord => {
@@ -468,7 +424,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
         const isLoadingAll = posLoading || rosLoading;
 
-        /* ── header cell ── */
         const TH = ({ children, align = 'left', style = {} }) => (
           <th
             className="px-2 py-2 text-[9px] font-black uppercase tracking-widest whitespace-nowrap border-r last:border-r-0 select-none"
@@ -487,7 +442,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           </th>
         );
 
-        /* ── body cell ── */
         const TD = ({ children, align = 'left', className = '', style = {} }) => (
           <td
             className={`px-2 py-1.5 text-[11px] border-r last:border-r-0 ${className}`}
@@ -497,7 +451,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           </td>
         );
 
-        /* ── status badge ── */
         const StatusBadge = ({ status }) => {
           const v = (status||'').toLowerCase();
           let s = { color:'var(--theme-secondary)', background:'rgba(217,53,45,0.06)', border:'1px solid var(--theme-secondary)' };
@@ -515,8 +468,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
         return (
           <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--bg-app)' }}>
-
-            {/* ── toolbar ── */}
             <div
               className="px-4 py-2.5 border-b flex items-center gap-3 shrink-0"
               style={{ backgroundColor: 'var(--bg-form,white)', borderColor: 'var(--border-color)' }}
@@ -549,7 +500,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
               {isLoadingAll && <RefreshCw size={13} className="animate-spin shrink-0" style={{ color: 'var(--theme-secondary)' }} />}
             </div>
 
-            {/* ── table wrapper ── */}
             <div className="flex-1 overflow-auto">
               {flatRows.length === 0 && !isLoadingAll ? (
                 <div className="flex items-center justify-center h-40">
@@ -593,9 +543,6 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   OrderTable — separate component so hooks (useState) work inside the case
-───────────────────────────────────────────────────────────────────────────── */
 function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, TH, TD, StatusBadge }) {
   const [hoveredGroup, setHoveredGroup] = React.useState(null);
 
@@ -644,7 +591,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
             const isHovered   = hoveredGroup === row._groupKey;
             const pendingQty  = Math.max(0, (parseFloat(row.quantity)||0) - (parseFloat(row.delivered_qty)||0));
             const isEvenGroup = (() => {
-              // compute alternating group parity
               let g = 0, lastKey = null;
               for (let i = 0; i < flatRows.length; i++) {
                 if (flatRows[i]._groupKey !== lastKey) { g++; lastKey = flatRows[i]._groupKey; }
@@ -653,7 +599,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
               return false;
             })();
 
-            /* background */
             let rowBg;
             if (isHovered) {
               rowBg = 'rgba(217,53,45,0.07)';
@@ -663,7 +608,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
               rowBg = 'transparent';
             }
 
-            /* top border: first row of each group gets a separator */
             const topBorderStyle = row._isFirst && idx > 0
               ? { borderTop: '2px solid var(--border-color)' }
               : {};
@@ -676,14 +620,12 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                 onMouseLeave={() => setHoveredGroup(null)}
                 onClick={() => navigate(row._navigatePath)}
               >
-                {/* S.N */}
                 <TD align="center">
                   <span className="font-mono text-[9px] font-bold" style={{ color: 'var(--theme-secondary)', opacity: 0.6 }}>
                     {row._sn}
                   </span>
                 </TD>
 
-                {/* Order No — only first row of group */}
                 <TD>
                   {row._isFirst ? (
                     <div className="flex items-center gap-1 flex-wrap">
@@ -711,7 +653,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   )}
                 </TD>
 
-                {/* Date — only first row */}
                 <TD>
                   {row._isFirst ? (
                     <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: 'var(--text-primary)', opacity: 0.7 }}>
@@ -720,7 +661,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   ) : null}
                 </TD>
 
-                {/* Party — only first row */}
                 <TD>
                   {row._isFirst ? (
                     <span className="font-mono font-bold text-[10px] whitespace-nowrap overflow-hidden block" title={row._partyId}
@@ -730,7 +670,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   ) : null}
                 </TD>
 
-                {/* Item Code */}
                 <TD>
                   <span
                     className="font-mono font-black text-[9px] px-1.5 py-0.5 rounded border whitespace-nowrap"
@@ -744,7 +683,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   </span>
                 </TD>
 
-                {/* Description */}
                 <TD>
                   <span
                     className="font-semibold text-[11px] leading-tight block truncate"
@@ -755,7 +693,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   </span>
                 </TD>
 
-                {/* Pending / Total */}
                 <TD align="right">
                   <span className="font-mono font-black text-[11px]" style={{ color: pendingQty > 0 ? 'var(--theme-secondary)' : '#15803d' }}>
                     {fmtQty(pendingQty)}
@@ -765,26 +702,22 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   </span>
                 </TD>
 
-                {/* Delivery Date */}
                 <TD>
                   <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: 'var(--text-primary)', opacity: 0.65 }}>
                     {fmtDate(row.delivery_date)}
                   </span>
                 </TD>
 
-                {/* Vendor */}
                 <TD>
                   <span className="text-[11px] font-semibold" style={{ color: row.vendor ? 'var(--text-primary)' : 'var(--text-primary)', opacity: row.vendor ? 1 : 0.2 }}>
                     {row.vendor || '—'}
                   </span>
                 </TD>
 
-                {/* Status */}
                 <TD>
                   {row.status ? <StatusBadge status={row.status} /> : <span style={{ opacity: 0.2, fontSize: '10px' }}>—</span>}
                 </TD>
 
-                {/* Rate */}
                 <TD align="right">
                   {hasPermission(currentUser, 'view_pricing') ? (
                     <span className="font-mono font-bold text-[11px]" style={{ color: 'var(--text-primary)' }}>
@@ -795,7 +728,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   )}
                 </TD>
 
-                {/* Given Rate — placeholder */}
                 <TD align="right">
                   <span style={{ opacity: 0.2, fontSize: '10px' }}>—</span>
                 </TD>
@@ -808,4 +740,228 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   TradeComparisonChart — SVG Line Graph, Top 10 Trades by Delivered %
+───────────────────────────────────────────────────────────────────────────── */
+function TradeComparisonChart({ trades }) {
+  const [activeTooltip, setActiveTooltip] = useState(null);
+  const [hoveredId, setHoveredId] = useState(null);
+  const [animated, setAnimated] = useState(false);
 
+  useEffect(() => {
+    const t = setTimeout(() => setAnimated(true), 150);
+    return () => clearTimeout(t);
+  }, [trades]);
+
+  const top10 = [...(trades || [])]
+    .sort((a, b) => parseFloat(b.delivered_pct || 0) - parseFloat(a.delivered_pct || 0))
+    .slice(0, 10);
+
+  const TYPES = [
+    { key: 'Sell', label: 'Sell', color: '#10b981' },
+    { key: 'Buy', label: 'Buy', color: '#3b82f6' },
+    { key: 'Buy Process', label: 'Buy Process', color: '#8b5cf6' },
+    { key: 'Sell Process', label: 'Sell Process', color: '#f59e0b' },
+  ];
+
+  const typeCounts = TYPES.map(t => ({
+    ...t,
+    count: (trades || []).filter(
+      tr => (tr.trade_type || '').toLowerCase() === t.key.toLowerCase()
+    ).length,
+  }));
+
+  if (!top10.length) {
+    return (
+      <div className="rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-xs font-semibold shadow-sm bg-[var(--bg-form,white)]">
+        No trade data available for chart.
+      </div>
+    );
+  }
+
+  const W = 780, H = 280;
+  const PAD = { top: 32, right: 24, bottom: 48, left: 44 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const n = top10.length;
+  const stepX = n > 1 ? chartW / (n - 1) : chartW;
+
+  const points = top10.map((trade, i) => {
+    const pct = Math.min(100, Math.max(0, parseFloat(trade.delivered_pct || 0)));
+    const x = PAD.left + (n === 1 ? chartW / 2 : i * stepX);
+    const y = PAD.top + chartH - (pct / 100) * chartH;
+    return { x, y, pct, trade };
+  });
+
+  const linePath = points.reduce((acc, pt, idx) => `${acc} ${idx === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`, '');
+  const areaPath = `${linePath} L ${points[points.length - 1].x} ${PAD.top + chartH} L ${points[0].x} ${PAD.top + chartH} Z`;
+
+  const Y_LINES = [0, 25, 50, 75, 100];
+
+  return (
+    <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden bg-[var(--bg-form,white)]">
+      {/* Header */}
+      <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+            Trade Activity Trend
+          </h3>
+          <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+            Delivery progression curve across top 10 recent transactions
+          </p>
+        </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          {TYPES.map(t => (
+            <div key={t.key} className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+              <span className="text-[11px] font-bold text-slate-500">{t.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-4 divide-x divide-slate-200 border-b border-slate-200">
+        {typeCounts.map(t => (
+          <div key={t.key} className="px-4 py-3 flex items-center gap-2.5">
+            <span className="w-2 h-8 rounded-full shrink-0" style={{ backgroundColor: t.color, opacity: 0.8 }} />
+            <div>
+              <p className="text-xl font-black leading-tight" style={{ color: t.color }}>{t.count}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{t.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* SVG Line Chart */}
+      <div className="px-2 py-4 overflow-x-auto">
+        <svg
+          width="100%"
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ minWidth: '520px', display: 'block' }}
+          onMouseLeave={() => { setActiveTooltip(null); setHoveredId(null); }}
+        >
+          <defs>
+            <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--theme-color, #2563eb)" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="var(--theme-color, #2563eb)" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+
+          {/* Grid lines */}
+          {Y_LINES.map(pct => {
+            const y = PAD.top + chartH - (pct / 100) * chartH;
+            return (
+              <g key={pct}>
+                <line
+                  x1={PAD.left} y1={y} x2={PAD.left + chartW} y2={y}
+                  stroke={pct === 0 ? '#94a3b8' : '#e2e8f0'}
+                  strokeWidth={pct === 0 ? 1.5 : 0.75}
+                  strokeDasharray={pct === 0 ? undefined : '4 3'}
+                />
+                <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={9} fontWeight="700" fill="#94a3b8">
+                  {pct}%
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Area under curve */}
+          <path
+            d={areaPath}
+            fill="url(#lineGradient)"
+            style={{ opacity: animated ? 1 : 0, transition: 'opacity 0.8s ease-in-out' }}
+          />
+
+          {/* Smooth Line Path */}
+          <path
+            d={linePath}
+            fill="none"
+            stroke="var(--theme-color, #2563eb)"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{
+              strokeDasharray: chartW * 2,
+              strokeDashoffset: animated ? 0 : chartW * 2,
+              transition: 'stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
+          />
+
+          {/* Data Points */}
+          {points.map((pt, i) => {
+            const isHov = hoveredId === pt.trade.trade_id;
+            return (
+              <g key={pt.trade.trade_id || i}>
+                {/* Vertical guide line on hover */}
+                {isHov && (
+                  <line
+                    x1={pt.x} y1={PAD.top} x2={pt.x} y2={PAD.top + chartH}
+                    stroke="var(--theme-color, #2563eb)"
+                    strokeWidth={1}
+                    strokeDasharray="2 2"
+                    opacity={0.4}
+                  />
+                )}
+
+                {/* Outer Glow Ring on Hover */}
+                {isHov && (
+                  <circle cx={pt.x} cy={pt.y} r={8} fill="var(--theme-color, #2563eb)" opacity={0.25} />
+                )}
+
+                {/* Main Point Circle */}
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={isHov ? 5 : 3.5}
+                  fill="#ffffff"
+                  stroke="var(--theme-color, #2563eb)"
+                  strokeWidth={isHov ? 2.5 : 2}
+                  style={{ cursor: 'pointer', transition: 'r 0.15s ease' }}
+                  onMouseEnter={() => {
+                    setHoveredId(pt.trade.trade_id);
+                    setActiveTooltip(pt);
+                  }}
+                />
+
+                {/* X Axis Label */}
+                <text
+                  x={pt.x}
+                  y={PAD.top + chartH + 18}
+                  textAnchor="middle"
+                  fontSize={8}
+                  fontWeight="700"
+                  fill={isHov ? 'var(--theme-color,#2563eb)' : '#94a3b8'}
+                >
+                  {String(pt.trade.trade_id).length > 8 ? String(pt.trade.trade_id).slice(0, 7) + '…' : pt.trade.trade_id}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Tooltip Overlay */}
+          {activeTooltip && (() => {
+            const { x, y, pct, trade } = activeTooltip;
+            const bw = 130, bh = 64;
+            const tx = Math.max(4, Math.min(W - bw - 4, x - bw / 2));
+            const ty = Math.max(4, y - bh - 12);
+
+            return (
+              <g style={{ pointerEvents: 'none' }}>
+                <rect x={tx} y={ty} width={bw} height={bh} rx={6} fill="#0f172a" opacity={0.94} />
+                <text x={tx + 10} y={ty + 16} fontSize={8} fontWeight="800" fill="#fff" opacity={0.5}>TRADE ID</text>
+                <text x={tx + 10} y={ty + 28} fontSize={11} fontWeight="900" fill="#fff">{trade.trade_id}</text>
+                <text x={tx + bw - 10} y={ty + 26} fontSize={15} fontWeight="900" fill="#38bdf8" textAnchor="end">{pct.toFixed(1)}%</text>
+                <text x={tx + bw - 10} y={ty + 38} fontSize={8} fontWeight="700" fill="#94a3b8" textAnchor="end">Delivered</text>
+                <text x={tx + 10} y={ty + 52} fontSize={8} fontWeight="600" fill="#94a3b8">
+                  {(trade.party_id || trade.contact_name || '—').slice(0, 18)}
+                </text>
+              </g>
+            );
+          })()}
+        </svg>
+      </div>
+    </div>
+  );
+}

@@ -270,7 +270,7 @@ router.post('/', async (req, res) => {
     const tradeDbId = trade.id;
     const trade_code = trade.trade_id;
     const rawTradeType = (trade.trade_type || 'sell').toLowerCase();
-    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process';
+    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'arc';
 
     const docs = trade.documents || [];
     const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
@@ -382,7 +382,12 @@ router.post('/', async (req, res) => {
 
           const targetStatus = item.inv_details.status || 'In Inventory';
           const buyUnitPrice = parseFloat(item.inv_details.cost_price || item.rate_per_piece) || 0;
-          let stepObj = { type: 'BUY', id: trade_code, DeliveryNoteID: dnDbId, BuyPrice: buyUnitPrice };
+          let stepObj = {
+            buyprice:    buyUnitPrice,
+            trace:       'buy',
+            trade_id:    trade_code,
+            delivery_no: delivery_note_no
+          };
           let initialHistory = [stepObj];
 
           if (ppoDbId) {
@@ -640,7 +645,7 @@ router.put('/:delivery_note_no', async (req, res) => {
       }
     }
     const rawTradeType = (tradeRes.rows[0]?.trade_type || 'sell').toLowerCase();
-    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process';
+    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'arc';
 
     // 3. Rewrite items
     await client.query('DELETE FROM delivery_note_items WHERE delivery_note_id = $1 AND company_id = $2', [dnDbId, companyId]);
@@ -693,7 +698,12 @@ router.put('/:delivery_note_no', async (req, res) => {
 
           const targetStatus = item.inv_details.status || 'In Inventory';
           const buyUnitPrice = parseFloat(item.inv_details.cost_price || item.rate_per_piece) || 0;
-          let stepObj = { type: 'BUY', id: trade_code, DeliveryNoteID: dnDbId, BuyPrice: buyUnitPrice };
+          let stepObj = {
+            buyprice:    buyUnitPrice,
+            trace:       'buy',
+            trade_id:    trade_code,
+            delivery_no: delivery_note_no
+          };
           let initialHistory = [stepObj];
 
           if (ppoDbId) {
