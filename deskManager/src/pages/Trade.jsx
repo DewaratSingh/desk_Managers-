@@ -2,15 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, FileText, RefreshCw, Tag, Check, Loader2 } from 'lucide-react';
 
-import RfqPanel       from './panel/RfqPanel';
-import QuotationPanel from './panel/QuotationPanel';
-import ReceivedQuotationPanel from './panel/ReceivedQuotationPanel';
-import ProcessRqPanel from './panel/ProcessRqPanel';
-import PoPanel        from './panel/PoPanel';
-import RoPanel        from './panel/RoPanel';
-import DeliveryPanel  from './panel/DeliveryPanel';
-import InvoicePanel   from './panel/InvoicePanel';
-import PaymentPanel   from './panel/PaymentPanel';
+import RfqPanel       from '../panel/RfqPanel';
+import QuotationPanel from '../panel/QuotationPanel';
+import ReceivedQuotationPanel from '../panel/ReceivedQuotationPanel';
+import ProcessRqPanel from '../panel/ProcessRqPanel';
+import PoPanel        from '../panel/PoPanel';
+import RoPanel        from '../panel/RoPanel';
+import DeliveryPanel  from '../panel/DeliveryPanel';
+import InvoicePanel   from '../panel/InvoicePanel';
+import PaymentPanel   from '../panel/PaymentPanel';
 import TradeSummaryGraph from '../components/TradeSummaryGraph';
 
 // Status pill colours

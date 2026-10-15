@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, Plus, RefreshCw, Search, X, History } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { useRfq } from '../context/RfqContext.jsx';
-import ItemQuoteHistory from '../components/ItemQuoteHistory.jsx';
+import { useRfq } from '../../context/RfqContext.jsx';
+import ItemQuoteHistory from '../../components/ItemQuoteHistory.jsx';
 
 const EMPTY_FORM = {
   rfq_no: '',

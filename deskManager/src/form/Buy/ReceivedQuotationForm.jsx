@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, History } from 'lucide-react';
 import { toast } from 'react-toastify';
-import ItemQuoteHistory from '../components/ItemQuoteHistory.jsx';
-import { useReceivedQuotation } from '../context/ReceivedQuotationContext.jsx';
+import ItemQuoteHistory from '../../components/ItemQuoteHistory.jsx';
+import { useReceivedQuotation } from '../../context/ReceivedQuotationContext.jsx';
 
 const DEFAULT_TERMS = [
   "1. Price Validity: 30 days from date of quote.\n2. Delivery: 4-6 weeks after receipt of technically and commercially clear PO.\n3. Payment Terms: 30% advance with order, balance against delivery.\n4. Warranty: 12 months from dispatch.",
