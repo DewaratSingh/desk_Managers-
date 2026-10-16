@@ -15,7 +15,7 @@ window.fetch = async function (url, options = {}) {
   const urlStr = url.toString();
   
   // Attach token if making a call to a protected endpoint
-  if (urlStr.startsWith('/api/') && !urlStr.startsWith('/api/auth/')) {
+  if (urlStr.startsWith('/api/') && !urlStr.startsWith('/api/auth/login') && !urlStr.startsWith('/api/auth/signup')) {
     const token = sessionStorage.getItem('token');
     if (token) {
       options.headers = {
@@ -28,7 +28,7 @@ window.fetch = async function (url, options = {}) {
   const response = await originalFetch(url, options);
 
   // If unauthorized, clear session and force login redirection
-  if (response.status === 401 && urlStr.startsWith('/api/') && !urlStr.startsWith('/api/auth/')) {
+  if (response.status === 401 && urlStr.startsWith('/api/') && !urlStr.startsWith('/api/auth/login') && !urlStr.startsWith('/api/auth/signup')) {
     sessionStorage.removeItem('token');
     window.location.href = '/login';
   }

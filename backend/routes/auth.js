@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
   try {
     const hash = crypto.createHash('sha256').update(password).digest('hex');
     const result = await pool.query(
-      'SELECT username, role, name, surname, email, phone, permissions, company_id FROM users WHERE username = $1 AND password_hash = $2',
+      'SELECT username, role, name, surname, email, phone, permissions, company_id, theme FROM users WHERE username = $1 AND password_hash = $2',
       [username, hash]
     );
 
@@ -58,7 +58,7 @@ const { authMiddleware, computeAllowedNavigation } = require('../middleware/auth
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const userRes = await pool.query(
-      'SELECT username, role, name, surname, email, phone, permissions, company_id FROM users WHERE username = $1',
+      'SELECT username, role, name, surname, email, phone, permissions, company_id, theme FROM users WHERE username = $1',
       [req.user.username]
     );
 
@@ -78,6 +78,29 @@ router.get('/me', authMiddleware, async (req, res) => {
     res.json({ user, allowedNavigation });
   } catch (err) {
     console.error('Auth /me error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+router.put('/theme', authMiddleware, async (req, res) => {
+  const { theme } = req.body || {};
+  if (!theme || typeof theme !== 'object') {
+    return res.status(400).json({ error: 'Valid theme object is required.' });
+  }
+
+  try {
+    const result = await pool.query(
+      'UPDATE users SET theme = $1::jsonb WHERE username = $2 RETURNING username, theme',
+      [JSON.stringify(theme), req.user.username]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    res.json({ message: 'Theme updated successfully.', theme: result.rows[0].theme });
+  } catch (err) {
+    console.error('Update theme error:', err.message);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });

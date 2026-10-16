@@ -13,6 +13,8 @@ import UpdatePurchaseOrderForm from './form/Sell/PurchaseOrder/UpdatePurchaseOrd
 import CreateReleaseOrderForm from './form/Sell/ReleaseOrder/CreateReleaseOrderForm'
 import UpdateReleaseOrderForm from './form/Sell/ReleaseOrder/UpdateReleaseOrderForm'
 import CreateRfqForm from './form/Sell/RFQ/CreateRfqForm'
+import CreateProcessRfqForm from './form/sell_process/CreateProcessRfqForm'
+import UpdateProcessRfqForm from './form/sell_process/UpdateProcessRfqForm'
 import UpdateRfqForm from './form/Sell/RFQ/UpdateRfqForm'
 import CreateQuotationForm from './form/Sell/Quotation/CreateQuotationForm'
 import UpdateQuotationForm from './form/Sell/Quotation/UpdateQuotationForm'
@@ -41,6 +43,7 @@ import GstCategoryView from './pages/GstCategory'
 import ManufactureList from './pages/ManufactureList'
 import ProcessPoList from './pages/ProcessPoList'
 import Settings from './pages/Settings'
+import UnderConstruction from './pages/UnderConstruction'
 
 function App() {
   return (
@@ -86,8 +89,12 @@ function App() {
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/under-construction" element={<UnderConstruction />} />
           </Route>
+          <Route path="/construction" element={<UnderConstruction />} />
           <Route path="/addRfq" element={<CreateRfqForm />} />
+          <Route path="/addProcessRfq" element={<CreateProcessRfqForm />} />
+          <Route path="/updateProcessRfq/:id" element={<UpdateProcessRfqForm />} />
           <Route path="/updateRfq/:id" element={<UpdateRfqForm />} />
           <Route path="/addQuotation" element={<CreateQuotationForm />} />
           <Route path="/updateQuotation/:id" element={<UpdateQuotationForm />} />

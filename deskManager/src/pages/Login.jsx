@@ -52,6 +52,7 @@ export default function LoginView({ onLogin = () => {} }) {
 
       sessionStorage.setItem('user', JSON.stringify(data.user))
       sessionStorage.setItem('token', data.token)
+      window.dispatchEvent(new Event('user-logged-in'))
       
       onLogin(data.user)
       navigate(targetPath)

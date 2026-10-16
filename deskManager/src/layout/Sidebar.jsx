@@ -97,14 +97,14 @@ const OPERATIONS = [
         id: "ops-sp-rfq",
         label: "RFQ",
         icon: Send,
-        path: "/addProcessRq",
+        path: "/under-construction",
         hint: "Create RFQ",
       },
       {
         id: "ops-sp-ro",
         label: "Release Order",
         icon: FileOutput,
-        path: "/addReleaseOrder",
+        path: "/under-construction",
         hint: "Create Release Order",
       },
     ],
@@ -119,7 +119,7 @@ const OPERATIONS = [
         id: "ops-bp-rq",
         label: "Received Quotation",
         icon: ArrowDownToLine,
-        path: "/addReceivedQuotation",
+        path: "/addProcessRq",
         hint: "Create Received Quotation",
       },
       {
@@ -483,7 +483,7 @@ export default function Sidebar({ user, onLogout }) {
         </div>
 
         {/* Nav links */}
-        <nav className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden ${isShrunk ? 'px-2' : 'px-3'} py-2`}>
+        <nav className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden ${isShrunk ? 'px-2' : 'px-3'} py-2 sidebar-scrollbar`}>
           {visibleMenuItems.length === 0 ? (
             <div className="p-3 text-center text-xs font-semibold text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg my-2">
               {!isShrunk ? 'Nothing allowed to user' : 'No Access'}

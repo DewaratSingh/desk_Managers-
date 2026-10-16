@@ -55,6 +55,7 @@ CREATE TABLE users (
   phone         VARCHAR(50),
   email         VARCHAR(255),
   permissions   JSONB         DEFAULT '[]',       -- ["view_pricing","admin",...]
+  theme         JSONB         DEFAULT NULL,       -- {"primary":"#0f172a","secondary":"#D9352D",...}
   company_id    INTEGER       REFERENCES companies(id),
   created_at    TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );

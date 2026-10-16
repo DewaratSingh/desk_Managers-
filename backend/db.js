@@ -48,9 +48,14 @@ const initializeDatabase = async () => {
         phone VARCHAR(50),
         email VARCHAR(255),
         permissions JSONB DEFAULT '[]'::jsonb,
+        theme JSONB DEFAULT NULL,
         company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS theme JSONB DEFAULT NULL;
     `);
 
     // Seed default company
@@ -315,6 +320,7 @@ const initializeDatabase = async () => {
 
     // Backfill existing ROs as 'sell'
     await client.query(`
+      ALTER TABLE release_orders ADD COLUMN IF NOT EXISTS ro_type VARCHAR(10) DEFAULT 'sell';
       UPDATE release_orders SET ro_type = 'sell' WHERE ro_type IS NULL;
     `);
 
@@ -784,6 +790,45 @@ const initializeDatabase = async () => {
         INSERT INTO units (name, company_id) VALUES ($1, $2) ON CONFLICT (name, company_id) DO NOTHING;
       `, [unit, defaultCompanyId]);
     }
+
+    // 34. Process RFQ (Sell Process)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "processRFQ" (
+        id SERIAL PRIMARY KEY,
+        rfq_number VARCHAR(100) NOT NULL,
+        rfq_date DATE NOT NULL,
+        commercial_bid_due_date DATE NOT NULL,
+        technical_bid_due_date DATE NOT NULL,
+        buyer_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        status VARCHAR(50) DEFAULT 'active',
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (rfq_number, company_id)
+      );
+    `);
+
+    // 35. Process RFQ Items (Sell Process)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "processRFQ_item" (
+        id SERIAL PRIMARY KEY,
+        process_rfq_id INTEGER REFERENCES "processRFQ"(id) ON DELETE CASCADE,
+        item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        item_code VARCHAR(100) NOT NULL,
+        quantity NUMERIC(12, 3) NOT NULL DEFAULT 1 CHECK (quantity > 0),
+        price DECIMAL(12, 2) NOT NULL DEFAULT 0.00 CHECK (price >= 0),
+        process_name VARCHAR(255) NOT NULL,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Compatibility views
+    await client.query(`
+      CREATE OR REPLACE VIEW processrfq AS SELECT * FROM "processRFQ";
+      CREATE OR REPLACE VIEW processrfq_item AS SELECT * FROM "processRFQ_item";
+    `);
 
     console.log('Database initialized successfully.');
   } catch (error) {

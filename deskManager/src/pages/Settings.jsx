@@ -1,18 +1,27 @@
 import React from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { Settings as SettingsIcon, RotateCcw, Palette } from 'lucide-react';
+import { Settings as SettingsIcon, RotateCcw, Palette, Save, CheckCircle2, Loader2, Database } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 export default function Settings() {
-  const { theme, updateTheme, resetTheme } = useTheme();
+  const { theme, updateTheme, resetTheme, saveTheme, isSaving, lastSaved } = useTheme();
 
   const handleColorChange = (key, value) => {
     updateTheme({ [key]: value });
   };
 
-  const handleReset = () => {
-    resetTheme();
-    toast.success('Theme reset to default');
+  const handleReset = async () => {
+    await resetTheme();
+    toast.success('Theme reset to default and saved to user profile');
+  };
+
+  const handleManualSave = async () => {
+    const success = await saveTheme();
+    if (success) {
+      toast.success('Theme successfully saved to user table in database!');
+    } else {
+      toast.error('Failed to save theme to database. Please check your connection.');
+    }
   };
 
   return (
@@ -34,18 +43,51 @@ export default function Settings() {
 
         {/* Theme Section */}
         <div className="bg-[var(--bg-form)] border border-slate-300 rounded-xl p-6 shadow-sm transition-colors duration-300">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <Palette size={20} className="text-slate-600" />
-              <h2 className="text-lg font-bold text-slate-800">Theme Customization</h2>
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-slate-100 text-slate-700">
+                <Palette size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 m-0">Theme Customization</h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+                    <Database size={12} className="opacity-70" />
+                    Stored in User Table
+                  </span>
+                  {isSaving ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      <Loader2 size={10} className="animate-spin" />
+                      Saving to DB...
+                    </span>
+                  ) : lastSaved ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      <CheckCircle2 size={10} />
+                      Saved
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
-            <button
-              onClick={handleReset}
-              className="px-3 py-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors cursor-pointer"
-            >
-              <RotateCcw size={14} />
-              Reset Defaults
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleReset}
+                className="px-3 py-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors cursor-pointer"
+              >
+                <RotateCcw size={14} />
+                Reset Defaults
+              </button>
+              <button
+                onClick={handleManualSave}
+                disabled={isSaving}
+                className="px-3.5 py-1.5 flex items-center gap-1.5 text-xs font-bold text-white rounded-lg transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-60"
+                style={{ backgroundColor: 'var(--theme-secondary)' }}
+              >
+                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                {isSaving ? 'Saving...' : 'Save Theme'}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -228,7 +270,7 @@ export default function Settings() {
               </div>
               
               <p className="text-xs text-slate-400 mt-6 text-center">
-                Changes are applied instantly and saved automatically.
+                Changes are applied instantly and saved automatically to your profile in the user table.
               </p>
             </div>
             

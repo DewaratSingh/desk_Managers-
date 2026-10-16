@@ -13,12 +13,97 @@ router.get('/', requirePermission('manage_users'), async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT username, role, name, email, phone, permissions, company_id, created_at FROM users WHERE company_id = $1 ORDER BY username ASC',
+      'SELECT username, role, name, email, phone, permissions, company_id, theme, created_at FROM users WHERE company_id = $1 ORDER BY username ASC',
       [companyId]
     );
     res.json(result.rows);
   } catch (err) {
     console.error('Fetch users error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// GET /api/users/check/:username - Check if user is available in database
+router.get('/check/:username', requirePermission('manage_users'), async (req, res) => {
+  const companyId = req.user.company_id;
+  const targetUsername = (req.params.username || '').trim();
+
+  if (!targetUsername) {
+    return res.status(400).json({ error: 'Username is required.' });
+  }
+
+  try {
+    const existing = await pool.query(
+      'SELECT username, company_id, name, email, phone, role FROM users WHERE LOWER(username) = LOWER($1)',
+      [targetUsername]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.json({
+        exists: false,
+        available: true,
+        status: 'not_found',
+        message: 'User does not exist in database. A new user account will be created.'
+      });
+    }
+
+    const foundUser = existing.rows[0];
+
+    if (foundUser.company_id === companyId) {
+      return res.json({
+        exists: true,
+        available: false,
+        status: 'already_enrolled',
+        message: 'User is already enrolled in your company.',
+        user: { username: foundUser.username, name: foundUser.name, role: foundUser.role }
+      });
+    }
+
+    if (foundUser.company_id !== null) {
+      return res.json({
+        exists: true,
+        available: false,
+        status: 'taken',
+        message: 'Username is already registered with another organization.'
+      });
+    }
+
+    // foundUser.company_id === null -> available to enroll!
+    return res.json({
+      exists: true,
+      available: true,
+      status: 'available_to_enroll',
+      message: 'User exists in database and is available to enroll in your company.',
+      user: { username: foundUser.username, name: foundUser.name, email: foundUser.email }
+    });
+  } catch (err) {
+    console.error('Check user error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// GET /api/users/:username - Get details of a specific user in the company
+router.get('/:username', requirePermission('manage_users'), async (req, res) => {
+  const companyId = req.user.company_id;
+  const targetUsername = req.params.username;
+
+  if (!companyId) {
+    return res.status(400).json({ error: 'Company ID not found in session.' });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT username, role, name, email, phone, permissions, company_id, company_name, theme, created_at FROM users WHERE username = $1 AND company_id = $2',
+      [targetUsername, companyId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found in your company database.' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Get single user error:', err.message);
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
@@ -83,6 +168,30 @@ router.post('/', requirePermission('manage_users'), async (req, res) => {
   }
 });
 
+// PUT /api/users/theme - Update current logged in user's theme
+router.put('/theme', async (req, res) => {
+  const { theme } = req.body || {};
+  if (!theme || typeof theme !== 'object') {
+    return res.status(400).json({ error: 'Valid theme object is required.' });
+  }
+
+  try {
+    const result = await pool.query(
+      'UPDATE users SET theme = $1::jsonb WHERE username = $2 RETURNING username, theme',
+      [JSON.stringify(theme), req.user.username]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    res.json({ message: 'Theme updated successfully.', theme: result.rows[0].theme });
+  } catch (err) {
+    console.error('Update theme error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 // PUT /api/users/:username - Update user details
 router.put('/:username', requirePermission('manage_users'), async (req, res) => {
   const companyId = req.user.company_id;
@@ -92,7 +201,7 @@ router.put('/:username', requirePermission('manage_users'), async (req, res) => 
     return res.status(400).json({ error: 'Company ID not found in session.' });
   }
 
-  const { permissions } = req.body || {};
+  const { permissions, theme } = req.body || {};
 
   try {
     // Verify target user is in the same company
@@ -101,15 +210,22 @@ router.put('/:username', requirePermission('manage_users'), async (req, res) => 
       return res.status(404).json({ error: 'User not found in your company.' });
     }
 
-    const userPerms = Array.isArray(permissions) ? JSON.stringify(permissions) : '[]';
+    let updateQuery;
+    let updateParams;
 
-    const result = await pool.query(
-      `UPDATE users 
-       SET permissions = $1::jsonb 
-       WHERE username = $2 AND company_id = $3 
-       RETURNING username, role, name, email, phone, permissions, company_id, company_name, created_at`,
-      [userPerms, targetUsername, companyId]
-    );
+    if (permissions !== undefined && theme !== undefined) {
+      updateQuery = `UPDATE users SET permissions = $1::jsonb, theme = $2::jsonb WHERE username = $3 AND company_id = $4 RETURNING username, role, name, email, phone, permissions, company_id, company_name, theme, created_at`;
+      updateParams = [JSON.stringify(permissions || []), JSON.stringify(theme), targetUsername, companyId];
+    } else if (theme !== undefined) {
+      updateQuery = `UPDATE users SET theme = $1::jsonb WHERE username = $2 AND company_id = $3 RETURNING username, role, name, email, phone, permissions, company_id, company_name, theme, created_at`;
+      updateParams = [JSON.stringify(theme), targetUsername, companyId];
+    } else {
+      const userPerms = Array.isArray(permissions) ? JSON.stringify(permissions) : '[]';
+      updateQuery = `UPDATE users SET permissions = $1::jsonb WHERE username = $2 AND company_id = $3 RETURNING username, role, name, email, phone, permissions, company_id, company_name, theme, created_at`;
+      updateParams = [userPerms, targetUsername, companyId];
+    }
+
+    const result = await pool.query(updateQuery, updateParams);
 
     res.json(result.rows[0]);
   } catch (err) {

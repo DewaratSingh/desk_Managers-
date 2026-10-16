@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, FileText, RefreshCw, Tag, Check, Loader2 } from 'lucide-react';
 
 import RfqPanel       from '../panel/RfqPanel';
+import ProcessRfqPanel from '../panel/ProcessRfqPanel';
 import QuotationPanel from '../panel/QuotationPanel';
 import ReceivedQuotationPanel from '../panel/ReceivedQuotationPanel';
 import ProcessRqPanel from '../panel/ProcessRqPanel';
@@ -31,6 +32,7 @@ const statusStyle = (s) => {
 const tradeTypeStyle = (type) => {
   const t = (type || '').toUpperCase();
   if (t === 'SELL' || t === 'SELLARC') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
+  if (t === 'SELL_PROCESS' || t === 'SELL PROCESS') return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
   if (t === 'BUY' || t === 'BUYARC')   return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
   if (t === 'ARC')                     return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
   if (t === 'PROCESS')                 return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
@@ -198,6 +200,7 @@ export default function TradeView() {
 
   const [trade, setTrade]               = useState(null);
   const [rfq, setRfq]                   = useState(null);
+  const [processRfq, setProcessRfq]     = useState(null);
   const [quotation, setQuotation]       = useState(null);
   const [receivedQuotation, setReceivedQuotation] = useState(null);
   const [processRq, setProcessRq]       = useState(null);
@@ -226,6 +229,7 @@ export default function TradeView() {
       // Derive which documents exist from the DB array
       const docs   = tradeData.documents || [];
       const rfqDoc = docs.find(d => d.type?.toUpperCase() === 'RFQ');
+      const processRfqDoc = docs.find(d => d.type?.toUpperCase() === 'PROCESS_RFQ');
       const qtnDoc = docs.find(d => d.type?.toUpperCase() === 'QUOTATION');
       const recQtnDoc = docs.find(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
       const prDoc  = docs.find(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
@@ -238,6 +242,7 @@ export default function TradeView() {
 
       await Promise.all([
         rfqDoc?.id ? fetchRFQ(rfqDoc.id)   : Promise.resolve(setRfq(null)),
+        processRfqDoc?.id ? fetchProcessRFQ(processRfqDoc.id) : Promise.resolve(setProcessRfq(null)),
         qtnDoc?.id ? fetchQTN(qtnDoc.id)   : Promise.resolve(setQuotation(null)),
         recQtnDoc?.id ? fetchReceivedQTN(recQtnDoc.id) : Promise.resolve(setReceivedQuotation(null)),
         prDoc?.id ? fetchProcessRQ(prDoc.id) : Promise.resolve(setProcessRq(null)),
@@ -268,6 +273,13 @@ export default function TradeView() {
     try {
       const res = await fetch(`/api/rfqs/${encodeURIComponent(id)}`);
       if (res.ok) setRfq(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchProcessRFQ = async (id) => {
+    try {
+      const res = await fetch(`/api/process-rfqs/${encodeURIComponent(id)}`);
+      if (res.ok) setProcessRfq(await res.json());
     } catch (err) { console.error(err); }
   };
 
@@ -410,6 +422,14 @@ export default function TradeView() {
   const isProcessTrade = (trade.trade_type || '').toUpperCase() === 'PROCESS';
 
   const panels = [];
+
+  if (processRfq) {
+    panels.push({
+      key: 'process-rfq',
+      label: '① Process RFQ',
+      component: <ProcessRfqPanel rfq={processRfq} tradeId={trade.trade_id} />
+    });
+  }
 
   if (rfq) {
     panels.push({

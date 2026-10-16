@@ -128,3 +128,102 @@
 		border-color: var(--border-color) !important;
 	}
 }
+
+/* ==========================================================================
+   Sidebar & Custom Scrollbar Redesign (Sleek, Small, Minimalist)
+   ========================================================================== */
+
+aside nav,
+.sidebar-scrollbar {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+	scrollbar-color: color-mix(in srgb, var(--text-sidebar, #ffffff) 20%, transparent) transparent;
+}
+
+aside nav:hover,
+.sidebar-scrollbar:hover {
+	scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
+	scrollbar-color: color-mix(in srgb, var(--text-sidebar, #ffffff) 45%, transparent) transparent;
+}
+
+aside nav::-webkit-scrollbar,
+.sidebar-scrollbar::-webkit-scrollbar {
+	width: 5px;
+	height: 5px;
+}
+
+aside nav::-webkit-scrollbar-track,
+.sidebar-scrollbar::-webkit-scrollbar-track {
+	background: transparent;
+	margin: 6px 0;
+}
+
+aside nav::-webkit-scrollbar-thumb,
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+	background-color: rgba(255, 255, 255, 0.18);
+	background-color: color-mix(in srgb, var(--text-sidebar, #ffffff) 18%, transparent);
+	border-radius: 9999px;
+	transition: background-color 0.2s ease;
+}
+
+aside nav:hover::-webkit-scrollbar-thumb,
+.sidebar-scrollbar:hover::-webkit-scrollbar-thumb {
+	background-color: rgba(255, 255, 255, 0.35);
+	background-color: color-mix(in srgb, var(--text-sidebar, #ffffff) 35%, transparent);
+}
+
+aside nav::-webkit-scrollbar-thumb:hover,
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+	background-color: rgba(255, 255, 255, 0.6);
+	background-color: color-mix(in srgb, var(--text-sidebar, #ffffff) 60%, transparent);
+}
+
+aside nav::-webkit-scrollbar-thumb:active,
+.sidebar-scrollbar::-webkit-scrollbar-thumb:active {
+	background-color: var(--theme-secondary, #D9352D);
+}
+
+aside nav::-webkit-scrollbar-corner,
+.sidebar-scrollbar::-webkit-scrollbar-corner {
+	background: transparent;
+}
+
+/* General thin scrollbar utility */
+.scrollbar-thin,
+.custom-scrollbar {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}
+
+.scrollbar-thin:hover,
+.custom-scrollbar:hover {
+	scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+	width: 5px;
+	height: 5px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
+	background-color: rgba(148, 163, 184, 0.25);
+	border-radius: 9999px;
+	transition: background-color 0.2s ease;
+}
+
+.scrollbar-thin:hover::-webkit-scrollbar-thumb,
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+	background-color: rgba(148, 163, 184, 0.4);
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+	background-color: rgba(148, 163, 184, 0.6);
+}

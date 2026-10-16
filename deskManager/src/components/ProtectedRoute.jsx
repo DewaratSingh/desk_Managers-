@@ -42,15 +42,41 @@ export default function ProtectedRoute() {
 
   if (path === '/dashboard' || path.startsWith('/dashboard')) {
     requiredPermission = 'view_dashboard';
+  } else if (path.startsWith('/addRfq')) {
+    requiredPermission = 'sell_rfq:create';
+  } else if (path.startsWith('/updateRfq')) {
+    requiredPermission = 'sell_rfq:update';
+  } else if (path.startsWith('/addQuotation')) {
+    requiredPermission = 'sell_quotation:create';
+  } else if (path.startsWith('/updateQuotation')) {
+    requiredPermission = 'sell_quotation:update';
+  } else if (path.startsWith('/addPurchaseOrder')) {
+    requiredPermission = 'sell_po:create';
+  } else if (path.startsWith('/updatePurchaseOrder')) {
+    requiredPermission = 'sell_po:update';
+  } else if (path.startsWith('/addReleaseOrder')) {
+    requiredPermission = 'ro:create';
+  } else if (path.startsWith('/updateReleaseOrder')) {
+    requiredPermission = 'ro:update';
+  } else if (path.startsWith('/addReceivedQuotation')) {
+    requiredPermission = 'buy_rq:create';
+  } else if (path.startsWith('/updateReceivedQuotation')) {
+    requiredPermission = 'buy_rq:update';
+  } else if (path.startsWith('/addContractOrder')) {
+    requiredPermission = 'buy_contract_order:create';
+  } else if (path.startsWith('/updateContractOrder')) {
+    requiredPermission = 'buy_contract_order:update';
+  } else if (path.startsWith('/addProcessRq')) {
+    requiredPermission = 'process_rq:create';
+  } else if (path.startsWith('/updateProcessRq')) {
+    requiredPermission = 'process_rq:update';
+  } else if (path.startsWith('/addProcessPurchaseOrder')) {
+    requiredPermission = 'process_order:create';
   } else if (
     path.startsWith('/order') ||
-    path.startsWith('/addPurchaseOrder') ||
-    path.startsWith('/updatePurchaseOrder') ||
     path.startsWith('/addReceivedPurchaseOrder') ||
     path.startsWith('/updateReceivedPurchaseOrder') ||
     path.startsWith('/release-order') ||
-    path.startsWith('/addReleaseOrder') ||
-    path.startsWith('/updateReleaseOrder') ||
     path.startsWith('/addDeliveryNote') ||
     path.startsWith('/updateDeliveryNote') ||
     path.startsWith('/addInvoice') ||
@@ -59,15 +85,6 @@ export default function ProtectedRoute() {
     requiredPermission = 'manage_orders';
   } else if (path.startsWith('/arc')) {
     requiredPermission = 'manage_arc';
-  } else if (path.startsWith('/addRfq') || path.startsWith('/updateRfq')) {
-    requiredPermission = 'manage_rfqs';
-  } else if (
-    path.startsWith('/addQuotation') ||
-    path.startsWith('/updateQuotation') ||
-    path.startsWith('/addReceivedQuotation') ||
-    path.startsWith('/updateReceivedQuotation')
-  ) {
-    requiredPermission = 'manage_quotations';
   } else if (path.startsWith('/inventory')) {
     requiredPermission = 'manage_inventory';
   } else if (path.startsWith('/item')) {
@@ -75,10 +92,7 @@ export default function ProtectedRoute() {
   } else if (
     path.startsWith('/manufacture') ||
     path.startsWith('/manufactures') ||
-    path.startsWith('/addProcessRq') ||
-    path.startsWith('/process-rq') ||
-    path.startsWith('/updateProcessRq') ||
-    path.startsWith('/addProcessPurchaseOrder')
+    path.startsWith('/process-rq')
   ) {
     requiredPermission = 'manage_manufacture';
   } else if (path.startsWith('/party')) {

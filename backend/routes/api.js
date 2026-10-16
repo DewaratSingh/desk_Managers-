@@ -27,6 +27,7 @@ const manufactureRouter = require('./manufacture');
 
 const rqProcessRouter = require('./rq-process');
 const processPORouter = require('./process-po');
+const processRfqRouter = require('./process-rfq');
 
 // Simple health check for API
 router.get('/health', (req, res) => {
@@ -64,5 +65,7 @@ router.use('/manufacture', manufactureRouter);
 
 router.use('/rq-process', rqProcessRouter);
 router.use('/process-po', processPORouter);
+router.use('/process-rfqs', processRfqRouter);
+router.use('/process-rfq', processRfqRouter);
 
 module.exports = router;
