@@ -30,10 +30,10 @@ const statusStyle = (s) => {
 
 const tradeTypeStyle = (type) => {
   const t = (type || '').toUpperCase();
-  if (t === 'SELL')    return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
-  if (t === 'BUY')     return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
-  if (t === 'ARC')     return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
-  if (t === 'PROCESS') return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
+  if (t === 'SELL' || t === 'SELLARC') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
+  if (t === 'BUY' || t === 'BUYARC')   return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
+  if (t === 'ARC')                     return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
+  if (t === 'PROCESS')                 return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
   return { color: '#475569', borderColor: '#cbd5e1', backgroundColor: '#f8fafc' };
 };
 
@@ -230,7 +230,7 @@ export default function TradeView() {
       const recQtnDoc = docs.find(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
       const prDoc  = docs.find(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
       const poDoc  = docs.find(d => d.type?.toUpperCase() === 'PURCHASE_ORDER' || d.type?.toUpperCase() === 'PO');
-      const roDoc  = docs.find(d => d.type?.toUpperCase() === 'RO');
+      const roDoc  = docs.find(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO');
       const dnDocs = docs.filter(d => d.type?.toUpperCase() === 'DN' || d.type?.toUpperCase() === 'DELIVERY_NOTE');
       const invDocs = docs.filter(d => d.type?.toUpperCase() === 'INVOICE');
       const grnDocs = docs.filter(d => d.type?.toUpperCase() === 'GRN');
@@ -405,7 +405,7 @@ export default function TradeView() {
   const hasQuotationDoc = docs.some(d => d.type?.toUpperCase() === 'QUOTATION');
   const hasRecQtnDoc = docs.some(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
   const hasPoDoc = docs.some(d => d.type?.toUpperCase() === 'PURCHASE_ORDER' || d.type?.toUpperCase() === 'PO');
-  const hasRoDoc = docs.some(d => d.type?.toUpperCase() === 'RO');
+  const hasRoDoc = docs.some(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO');
   const hasProcessRqDoc = docs.some(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
   const isProcessTrade = (trade.trade_type || '').toUpperCase() === 'PROCESS';
 
@@ -478,7 +478,7 @@ export default function TradeView() {
     });
   }
 
-  const isArc = trade.trade_type === 'ARC';
+  const isArc = (trade.trade_type || '').toUpperCase() === 'ARC' || (trade.trade_type || '').toUpperCase() === 'BUYARC' || (trade.trade_type || '').toUpperCase() === 'SELLARC';
 
   if (isArc || hasRoDoc) {
     panels.push({

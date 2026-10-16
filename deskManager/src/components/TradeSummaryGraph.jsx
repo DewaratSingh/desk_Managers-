@@ -137,7 +137,7 @@ export default function TradeSummaryGraph({
 
   // ── Node Definitions for Graph ──────────────────────────────────────────────
   const isProcessTrade = (trade?.trade_type || '').toUpperCase() === 'PROCESS';
-  const isArcTrade = (trade?.trade_type || '').toUpperCase() === 'ARC';
+  const isArcTrade = (trade?.trade_type || '').toUpperCase() === 'ARC' || (trade?.trade_type || '').toUpperCase() === 'BUYARC' || (trade?.trade_type || '').toUpperCase() === 'SELLARC';
 
   const graphNodes = [];
 

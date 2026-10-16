@@ -5,8 +5,8 @@ import { toast } from 'react-toastify';
 
 const tradeTypeStyle = (type) => {
   const t = (type || '').toUpperCase();
-  if (t === 'SELL') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
-  if (t === 'BUY')  return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
+  if (t === 'SELL' || t === 'SELLARC') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
+  if (t === 'BUY' || t === 'BUYARC')   return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
   if (t === 'ARC')  return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
   return { color: '#475569', borderColor: '#cbd5e1', backgroundColor: '#f8fafc' };
 };

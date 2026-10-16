@@ -59,16 +59,20 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get next RO reference number
+// Get next RO / CO reference number
 router.get('/next-no', async (req, res) => {
   try {
-    const result = await pool.query('SELECT COUNT(*) FROM release_orders WHERE company_id = $1', [req.user.company_id]);
+    const prefix = (req.query.prefix || 'RO').toString().trim().toUpperCase();
+    const result = await pool.query(
+      'SELECT COUNT(*) FROM release_orders WHERE company_id = $1 AND ro_no LIKE $2',
+      [req.user.company_id, `${prefix}-%`]
+    );
     const count = parseInt(result.rows[0].count) || 0;
-    const nextNo = `RO-${String(count + 1).padStart(4, '0')}`;
+    const nextNo = `${prefix}-${String(count + 1).padStart(4, '0')}`;
     res.json({ nextNo });
   } catch (err) {
     console.error('Error fetching next RO no:', err.message);
-    res.status(500).json({ error: 'Failed to generate next RO number' });
+    res.status(500).json({ error: 'Failed to generate next reference number' });
   }
 });
 
@@ -174,13 +178,17 @@ router.post('/', async (req, res) => {
       // Check duplicate trade_id
       const tradeDupCheck = await client.query('SELECT id FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_code, req.user.company_id]);
       if (tradeDupCheck.rows.length > 0) {
-        throw new Error('Trade ID already exists for this Release Order');
+        throw new Error('Trade ID already exists for this order');
       }
 
-      // Insert new trade of type 'ARC'
+      // Determine trade type: sellARC for RO, buyARC for ContractOrder
+      const isCO = (ro_no || '').trim().toUpperCase().startsWith('CO-');
+      const resolvedTradeType = req.body?.trade_type || (isCO ? 'buyARC' : 'sellARC');
+
+      // Insert new trade
       const tradeRes = await client.query(
-        "INSERT INTO trades (trade_id, status, trade_type, documents, company_id) VALUES ($1, 'ro', 'ARC', $2, $3) RETURNING id",
-        [trade_code, JSON.stringify([{ type: 'RO', id: ro_no }]), req.user.company_id]
+        "INSERT INTO trades (trade_id, status, trade_type, documents, company_id) VALUES ($1, 'ro', $2, $3, $4) RETURNING id",
+        [trade_code, resolvedTradeType, JSON.stringify([{ type: 'RO', id: ro_no }]), req.user.company_id]
       );
       tradeDbId = tradeRes.rows[0].id;
     }

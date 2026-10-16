@@ -5,6 +5,16 @@ import { AlertCircle, ArrowLeft, RefreshCw, Tag, Package, X } from 'lucide-react
 const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider";
 const inputCls = "w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs placeholder:text-slate-400 font-semibold focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
+const isSellSideTrade = (t) => {
+  const norm = (t || '').toLowerCase().replace(/\s+/g, '');
+  return norm === 'sell' || norm === 'sellarc';
+};
+
+const isBuySideTrade = (t) => {
+  const norm = (t || '').toLowerCase().replace(/\s+/g, '');
+  return norm === 'buy' || norm === 'buyarc' || norm === 'process' || norm === 'arc';
+};
+
 export default function DeliveryNoteForm() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
@@ -123,7 +133,7 @@ export default function DeliveryNoteForm() {
           const currentTradeType = noteData.trade_type || 'sell';
           let inventory_qty = 0;
           let inventory_price = 0;
-          if (currentTradeType === 'sell') {
+          if (isSellSideTrade(currentTradeType)) {
             try {
               const res = await fetch(`/api/inventory/item/${encodeURIComponent(lookupItem.item_code)}/availability`);
               if (res.ok) {
@@ -171,7 +181,7 @@ export default function DeliveryNoteForm() {
           
           let inventory_qty = 0;
           let inventory_price = 0;
-          if (detectedTradeType === 'sell') {
+          if (isSellSideTrade(detectedTradeType)) {
             try {
               const res = await fetch(`/api/inventory/item/${encodeURIComponent(item.item_code)}/availability`);
               if (res.ok) {
@@ -320,7 +330,7 @@ export default function DeliveryNoteForm() {
       };
     }));
 
-    if (newSelected && tradeType === 'sell') {
+    if (newSelected && isSellSideTrade(tradeType)) {
       fetchStockForItem(targetItem);
     }
   };
@@ -330,8 +340,8 @@ export default function DeliveryNoteForm() {
     setItems(prev => prev.map((item, idx) => {
       if (idx !== index) return item;
       
-      // For SELL/ARC trades, validate against inventory level
-      if (tradeType === 'sell') {
+      // For SELL / sellARC trades, validate against inventory level
+      if (isSellSideTrade(tradeType)) {
         if (parsedVal > (item.inventory_qty || 0)) {
           alert(`Quantity for item ${item.item_code} cannot exceed available stock of ${item.inventory_qty || 0}.`);
           return item; // Do not update
@@ -409,7 +419,7 @@ export default function DeliveryNoteForm() {
         setError(`Quantity for item ${item.item_code} cannot exceed remaining limit of ${item.remaining_qty}.`);
         return;
       }
-      if (tradeType === 'sell') {
+      if (isSellSideTrade(tradeType)) {
         if (item.delivery_qty > (item.inventory_qty || 0)) {
           setError(`Quantity for item ${item.item_code} cannot exceed available stock of ${item.inventory_qty || 0}.`);
           return;
@@ -432,7 +442,7 @@ export default function DeliveryNoteForm() {
           inv_details: item.inv_details || null,
           process_target_trace_item_id: item.process_target_trace_item_id || null,
           process_name: item.process_name || null,
-          stock_allocations: tradeType === 'sell' && Array.isArray(item.stock_allocations)
+          stock_allocations: isSellSideTrade(tradeType) && Array.isArray(item.stock_allocations)
             ? item.stock_allocations
             : []
         }))
@@ -651,7 +661,8 @@ export default function DeliveryNoteForm() {
                     <th className="px-3 py-2 text-right w-16">Remaining</th>
                     <th className="px-3 py-2 text-right w-20">Delivery Qty</th>
                     <th className="px-3 py-2 text-right w-20">Price</th>
-                    {(tradeType === 'buy' || tradeType === 'process' || tradeType === 'ARC') && <th className="px-3 py-2 text-center w-[320px]">Action</th>}
+                    {isSellSideTrade(tradeType) && <th className="px-3 py-2 text-center w-28">Stock Action</th>}
+                    {isBuySideTrade(tradeType) && <th className="px-3 py-2 text-center w-[320px]">Action</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -694,7 +705,7 @@ export default function DeliveryNoteForm() {
                         )}
                         {/* Display allocations preview */}
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {tradeType === 'sell' && (
+                          {isSellSideTrade(tradeType) && (
                             <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm ${
                               item.inventory_qty > 0 
                                 ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' 
@@ -734,7 +745,7 @@ export default function DeliveryNoteForm() {
                           value={item.delivery_qty}
                            
                           max={item.remaining_qty}
-                          disabled={tradeType === 'buy' || tradeType === 'process' || tradeType === 'ARC'}
+                          disabled={isBuySideTrade(tradeType)}
                           onChange={(e) => handleItemQtyChange(idx, e.target.value)}
                           className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                         />
@@ -742,7 +753,7 @@ export default function DeliveryNoteForm() {
                       <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-800">
                         ₹{parseFloat(item.rate_per_piece || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
-                      {tradeType === 'sell' && (
+                      {isSellSideTrade(tradeType) && (
                         <td className="px-3 py-1.5 text-center">
                           <button
                             type="button"
@@ -754,7 +765,7 @@ export default function DeliveryNoteForm() {
                           </button>
                         </td>
                       )}
-                      {(tradeType === 'buy' || tradeType === 'process' || tradeType === 'ARC') && (
+                      {isBuySideTrade(tradeType) && (
                         <td className="px-3 py-1.5 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button
@@ -772,7 +783,7 @@ export default function DeliveryNoteForm() {
                   ))}
                   {items.length === 0 && (
                     <tr>
-                      <td colSpan="9" className="px-3 py-6 text-center text-slate-400 text-xs font-semibold">
+                      <td colSpan={tradeType === 'process' ? 11 : 10} className="px-3 py-6 text-center text-slate-400 text-xs font-semibold">
                         No items found in linked PO/RO.
                       </td>
                     </tr>

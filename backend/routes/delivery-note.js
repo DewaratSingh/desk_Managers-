@@ -269,8 +269,8 @@ router.post('/', async (req, res) => {
     const trade = tradeRes.rows[0];
     const tradeDbId = trade.id;
     const trade_code = trade.trade_id;
-    const rawTradeType = (trade.trade_type || 'sell').toLowerCase();
-    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'arc';
+    const rawTradeType = (trade.trade_type || 'sell').toLowerCase().replace(/\s+/g, '');
+    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'buyarc';
 
     const docs = trade.documents || [];
     const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
@@ -644,8 +644,8 @@ router.put('/:delivery_note_no', async (req, res) => {
         ppoJobIds = ppoRes.rows[0].job_ids;
       }
     }
-    const rawTradeType = (tradeRes.rows[0]?.trade_type || 'sell').toLowerCase();
-    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'arc';
+    const rawTradeType = (tradeRes.rows[0]?.trade_type || 'sell').toLowerCase().replace(/\s+/g, '');
+    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'buyarc';
 
     // 3. Rewrite items
     await client.query('DELETE FROM delivery_note_items WHERE delivery_note_id = $1 AND company_id = $2', [dnDbId, companyId]);

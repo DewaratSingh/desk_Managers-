@@ -160,7 +160,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
             {/* List all trade at bottom */}
             {(() => {
-              const staticTypes = ['Sell', 'Buy', 'ARC', 'Process'];
+              const staticTypes = ['Sell', 'Buy', 'ARC', 'buyARC', 'sellARC', 'Process'];
               const filterOptions = [
                 ...staticTypes.map(t => ({ label: `Type: ${t}`, type: 'trade_type', value: t })),
                 ...allStatuses.map(s => ({ label: `Status: ${s.toUpperCase()}`, type: 'status', value: s }))

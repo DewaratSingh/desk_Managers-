@@ -1,19 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
 const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
-export default function PurchaseOrderForm() {
-  const { id } = useParams();
+export default function CreatePurchaseOrderForm() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const queryQuotationNo = searchParams.get('quotation_no');
   const queryTradeId     = searchParams.get('trade_id');
-  const editingNo        = id || null;
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError]         = useState(null);
@@ -40,8 +38,6 @@ export default function PurchaseOrderForm() {
 
   // PO items
   const [poItems, setPoItems] = useState([]);
-
-
 
   const [gstSuggestions, setGstSuggestions]   = useState({});  // { item_code: array }
   const [shipSuggestions, setShipSuggestions]   = useState({});  // { item_code: array }
@@ -89,20 +85,14 @@ export default function PurchaseOrderForm() {
   }, [qtnInput]);
 
   useEffect(() => {
-    if (editingNo) {
-      fetchPoDetails(editingNo);
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        quotation_no: queryQuotationNo || '',
-        po_date: new Date().toISOString().split('T')[0]
-      }));
-      setQtnInput(queryQuotationNo || '');
-      if (queryQuotationNo) fetchQuotationDetails(queryQuotationNo);
-    }
-  }, [editingNo, queryQuotationNo]);
-
-
+    setFormData(prev => ({
+      ...prev,
+      quotation_no: queryQuotationNo || '',
+      po_date: new Date().toISOString().split('T')[0]
+    }));
+    setQtnInput(queryQuotationNo || '');
+    if (queryQuotationNo) fetchQuotationDetails(queryQuotationNo);
+  }, [queryQuotationNo]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -126,65 +116,11 @@ export default function PurchaseOrderForm() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-
-
   const fetchQuotationDetails = async (qNo) => {
     try {
       const res = await fetch(`/api/quotations/${encodeURIComponent(qNo)}`);
       if (res.ok) selectQuotation(await res.json());
     } catch (err) { console.error(err); }
-  };
-
-  const fetchPoDetails = async (poNo) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/purchase-orders/${encodeURIComponent(poNo)}`);
-      if (!res.ok) throw new Error('Failed to fetch purchase order details');
-      const po = await res.json();
-
-      setFormData({
-        po_no:           po.po_no,
-        quotation_no:    po.quotation_no || '',
-        po_date:         po.po_date ? po.po_date.split('T')[0] : '',
-        delivery_date:   po.delivery_date ? po.delivery_date.split('T')[0] : '',
-        transport:       String(po.transport       || 0),
-        other:           String(po.other           || 0),
-        basic_value:     String(po.basic_value     || 0),
-        packing_forward: String(po.packing_forward || 0),
-      });
-      setQtnInput(po.quotation_no || '');
-
-      if (Array.isArray(po.items)) {
-        const items = po.items.map(item => ({
-          item_code:        item.item_code,
-          quantity:         item.quantity,
-          unit_price:       item.unit_price,
-          gst_type:         item.gst_type  || '',
-          gst_rate:         item.gst_rate  != null ? String(item.gst_rate) : '',
-          shipping_address: item.shipping_address || '',
-          delivery_date:    item.delivery_date ? item.delivery_date.split('T')[0] : '',
-          description:      item.description  || '',
-          drawing_number:   item.drawing_number || '',
-          selected:         true
-        }));
-        setPoItems(items);
-
-        // Pre-fill gst + shipping inputs from saved data
-        const initGstInputs  = {};
-        const initShipInputs = {};
-        items.forEach(i => {
-          if (i.gst_type)         initGstInputs[i.item_code]  = `${i.gst_type} (${i.gst_rate}%)`;
-          if (i.shipping_address) initShipInputs[i.item_code] = i.shipping_address;
-        });
-        setGstSearchInput(initGstInputs);
-        setShipInput(initShipInputs);
-      }
-    } catch (err) {
-      setError(err.message || 'Connection error while fetching PO details.');
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const set = (field) => (e) =>
@@ -310,13 +246,9 @@ export default function PurchaseOrderForm() {
   const updateItem = (itemCode, field, value) =>
     setPoItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, [field]: value } : i));
 
-
-
   const removePoItem = (itemCode) => {
     setPoItems(prev => prev.filter(i => i.item_code !== itemCode));
   };
-
-  const removeRoItem = removePoItem;
 
   // Calculations
   const calcItemBasic   = (item) => (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
@@ -357,7 +289,7 @@ export default function PurchaseOrderForm() {
     }
 
     const payload = {
-      po_no:           editingNo || formData.po_no.trim(),
+      po_no:           formData.po_no.trim(),
       quotation_no:    formData.quotation_no || null,
       po_date:         formData.po_date,
       delivery_date:   formData.delivery_date || null,
@@ -377,16 +309,14 @@ export default function PurchaseOrderForm() {
     };
 
     try {
-      const url    = editingNo ? `/api/purchase-orders/${encodeURIComponent(editingNo)}` : '/api/purchase-orders';
-      const method = editingNo ? 'PUT' : 'POST';
-      const res    = await fetch(url, {
-        method,
+      const res = await fetch('/api/purchase-orders', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
       if (res.ok) {
-        toast.success(`Purchase Order ${editingNo ? 'updated' : 'created'} successfully!`);
+        toast.success('Purchase Order created successfully!');
         const destTradeId = queryTradeId || selectedQuotation?.trade_id;
         navigate(destTradeId ? `/trade/${destTradeId}` : '/');
       } else {
@@ -407,12 +337,10 @@ export default function PurchaseOrderForm() {
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-slate-900 m-0">
-            {editingNo ? 'Modify Purchase Order' : 'New Purchase Order'}
+            New Purchase Order
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            {editingNo
-              ? 'Update the details of an existing purchase order.'
-              : 'Raise a purchase order linked to a commercial quotation.'}
+            Raise a purchase order linked to a commercial quotation.
           </p>
         </div>
 
@@ -436,13 +364,11 @@ export default function PurchaseOrderForm() {
                 placeholder="e.g. PO-2024-001"
                 value={formData.po_no}
                 onChange={(e) => { setFormData(prev => ({ ...prev, po_no: e.target.value })); setPoNoError(''); }}
-                disabled={!!editingNo}
                 className={inputCls}
-                onFocus={(e) => !editingNo && (e.target.style.borderColor = 'var(--theme-color)')}
-                onBlur={(e)  => !editingNo && (e.target.style.borderColor = 'rgb(203, 213, 225)')}
+                onFocus={(e) => (e.target.style.borderColor = 'var(--theme-color)')}
+                onBlur={(e)  => (e.target.style.borderColor = 'rgb(203, 213, 225)')}
               />
               {poNoError && <p className="text-[10px] text-red-500 font-semibold mt-1 pl-1">{poNoError}</p>}
-              {editingNo  && <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">PO No. cannot be changed after creation.</p>}
             </div>
 
             {/* PO Date & Delivery Date */}
@@ -460,7 +386,7 @@ export default function PurchaseOrderForm() {
                 />
               </div>
               <div>
-                <label className={labelCls}>Expected Delivery Date <span className="text-slate-400 font-semibold normal-case">(Optional)</span></label>
+                <label className={labelCls}>Delivery Date</label>
                 <input
                   type="date"
                   value={formData.delivery_date}
@@ -472,303 +398,337 @@ export default function PurchaseOrderForm() {
               </div>
             </div>
 
-            {/* Quotation Autocomplete */}
+            {/* Quotation No Autocomplete */}
             <div ref={qtnRef} className="relative">
-              <label className={labelCls}>Link to Quotation No. <span className="text-slate-400 font-semibold normal-case">(Optional)</span></label>
+              <label className={labelCls}>Quotation Reference</label>
               <input
                 type="text"
-                disabled={!!editingNo || !!queryQuotationNo}
-                placeholder="Type Quotation No. to link..."
+                placeholder="Start typing quotation number..."
                 value={qtnInput}
                 onChange={(e) => handleQtnInput(e.target.value)}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--theme-color)';
+                  qtnManualRef.current = true;
+                  if (qtnInput.trim()) setShowQtnDropdown(true);
+                }}
                 className={inputCls}
-                onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                onBlur={(e)  => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 autoComplete="off"
               />
+
               {showQtnDropdown && qtnSuggestions.length > 0 && (
                 <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                  {qtnSuggestions.map((qtn) => (
+                  {qtnSuggestions.map(q => (
                     <button
-                      key={qtn.quotation_no}
+                      key={q.quotation_no}
                       type="button"
-                      onClick={() => selectQuotation(qtn)}
+                      onClick={() => selectQuotation(q)}
                       className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
                     >
-                      <div className="font-bold text-xs text-slate-900">{qtn.quotation_no}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">
-                        RFQ: {qtn.rfq_no || '—'} &bull; Customer: {qtn.customer_id || '—'} &bull; {Array.isArray(qtn.items) ? qtn.items.length : 0} items
+                      <div className="font-bold text-xs text-slate-900">{q.quotation_no}</div>
+                      <div className="text-[10px] text-slate-500">
+                        RFQ: {q.rfq_no || '—'} &bull; Date: {q.quotation_date ? q.quotation_date.split('T')[0] : '—'} &bull; Items: {q.items?.length || 0}
                       </div>
                     </button>
                   ))}
                 </div>
               )}
+
               {qtnNotFound && (
-                <div className="mt-2 flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                <div className="mt-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
                   <AlertCircle size={13} className="shrink-0" />
-                  No Quotation found for "{qtnInput}".
+                  <span>No quotation found for "{qtnInput}".</span>
                 </div>
               )}
+
               {selectedQuotation && (
                 <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
                   <span className="text-emerald-600">✓ Quotation Linked</span>
-                  {selectedQuotation.rfq_no      && <><span className="text-slate-300">|</span><span>RFQ: {selectedQuotation.rfq_no}</span></>}
-                  {selectedQuotation.customer_id && <><span className="text-slate-300">|</span><span>Customer: {selectedQuotation.customer_id}</span></>}
+                  <span className="text-slate-300">|</span>
+                  <span>{selectedQuotation.quotation_no}</span>
+                  {selectedQuotation.rfq_no && (
+                    <>
+                      <span className="text-slate-300">|</span>
+                      <span>RFQ: {selectedQuotation.rfq_no}</span>
+                    </>
+                  )}
+                  {selectedQuotation.customer_id && (
+                    <>
+                      <span className="text-slate-300">|</span>
+                      <span>Cust: {selectedQuotation.customer_id}</span>
+                    </>
+                  )}
                 </div>
-              )}
-              {(editingNo || queryQuotationNo) && (
-                <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
-                  Quotation link cannot be modified for existing purchase orders.
-                </p>
               )}
             </div>
 
             {/* Items Section */}
-            <div className="border-t border-slate-200 pt-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-extrabold text-slate-800 m-0 uppercase tracking-wider">PO Items &amp; Pricing</h3>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-bold text-slate-400">{poItems.filter(i=>i.selected).length} of {poItems.length} selected</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const allSelected = poItems.every(i => i.selected);
-                      setPoItems(prev => prev.map(i => ({ ...i, selected: !allSelected })));
-                    }}
-                    className="text-[10px] text-blue-600 hover:text-blue-700 font-bold hover:underline cursor-pointer"
-                  >
-                    {poItems.every(i => i.selected) ? 'Deselect All' : 'Select All'}
-                  </button>
+            {poItems.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className={labelCls}>Items ({poItems.filter(i => i.selected).length} selected)</label>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    Basic: ₹{fmt(calcBasicTotal())} &bull; GST: ₹{fmt(calcGstTotal())}
+                  </span>
                 </div>
-              </div>
 
-              {/* Items List */}
-              {poItems.length === 0 ? (
-                <div className="text-center py-6 border border-dashed border-slate-300 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-400 font-semibold m-0">No items linked to this Quotation. Please link a valid Quotation above.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {poItems.map((item) => {
-                    const basic = calcItemBasic(item);
-                    const gstVal = calcItemGst(item);
-                    const total  = calcItemTotal(item);
-
-                    return (
+                <div className="border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
+                  <div className="divide-y divide-slate-200">
+                    {poItems.map(item => (
                       <div
                         key={item.item_code}
-                        className={`border rounded-lg p-4 transition-all duration-150 ${item.selected ? 'bg-slate-50/50 border-slate-300 shadow-sm' : 'bg-slate-100/50 border-slate-200 opacity-60'}`}
+                        className={`px-4 py-3 bg-white transition-colors ${!item.selected ? 'opacity-50 bg-slate-50' : ''}`}
                       >
-                        {/* Header: Checkbox + Code + Details */}
+                        {/* Row 1: Checkbox + Item Info */}
                         <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
                             <button
                               type="button"
                               onClick={() => toggleItem(item.item_code)}
-                              className="text-slate-600 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
+                              className="mt-0.5 text-slate-500 hover:text-slate-800 focus:outline-none shrink-0"
                             >
-                              {item.selected ? <CheckSquare size={17} style={{ color: 'var(--theme-color)' }} /> : <Square size={17} />}
+                              {item.selected
+                                ? <CheckSquare size={16} className="text-blue-600" />
+                                : <Square size={16} />}
                             </button>
-                            <div>
-                              <span className="font-mono font-black text-xs px-2 py-0.5 border rounded"
-                                style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' }}>
-                                {item.item_code}
-                              </span>
-                              <p className="text-xs font-bold text-slate-700 mt-1">{item.description}</p>
-                              {item.drawing_number && (
-                                <p className="text-[9px] font-mono font-semibold text-slate-400 mt-0.5">Dwg No: {item.drawing_number}</p>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className="font-mono font-bold text-xs border px-1.5 py-0.25 rounded"
+                                  style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}
+                                >
+                                  {item.item_code}
+                                </span>
+                                {item.drawing_number && (
+                                  <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
+                                    DRW: {item.drawing_number}
+                                  </span>
+                                )}
+                              </div>
+                              {item.description && (
+                                <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
                               )}
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeRoItem(item.item_code)}
-                            className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded border border-transparent hover:border-red-100 transition-colors cursor-pointer shrink-0"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-400 font-bold block uppercase">Total</span>
+                              <span className="font-mono font-bold text-xs text-slate-800">₹{fmt(calcItemTotal(item))}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removePoItem(item.item_code)}
+                              className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
+                              title="Remove item"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Fields (only enabled if item selected) */}
+                        {/* Row 2: Editable fields */}
                         {item.selected && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 border-t border-slate-200 pt-3">
-                            {/* Quantity & Unit Price */}
+                          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100">
                             <div>
-                              <label className={labelCls}>Quantity</label>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Qty *</label>
                               <input
                                 type="number"
                                 step="any"
+                                min="0.01"
                                 required
                                 value={item.quantity}
                                 onChange={(e) => updateItem(item.item_code, 'quantity', e.target.value)}
-                                className={inputCls}
-                              />
-                            </div>
-                            <div>
-                              <label className={labelCls}>Unit Price (₹)</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                 
-                                required
-                                value={item.unit_price}
-                                onChange={(e) => updateItem(item.item_code, 'unit_price', e.target.value)}
-                                className={inputCls}
+                                className="w-full px-2 py-1 font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                               />
                             </div>
 
-                            {/* GST search-based autocomplete */}
-                            <div ref={el => gstItemRefs.current[item.item_code] = el} className="relative">
-                              <label className={labelCls}>GST Category</label>
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Unit Price (₹) *</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                required
+                                value={item.unit_price}
+                                onChange={(e) => updateItem(item.item_code, 'unit_price', e.target.value)}
+                                className="w-full px-2 py-1 font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                              />
+                            </div>
+
+                            {/* GST Rate search */}
+                            <div
+                              className="relative"
+                              ref={el => gstItemRefs.current[item.item_code] = el}
+                            >
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">GST Rate</label>
                               <div className="relative">
                                 <input
                                   type="text"
-                                  placeholder="Type GST rate or type..."
-                                  value={gstSearchInput[item.item_code] || ''}
+                                  placeholder="e.g. GST 18"
+                                  value={gstSearchInput[item.item_code] ?? (item.gst_type ? `${item.gst_type} (${item.gst_rate}%)` : '')}
                                   onChange={(e) => handleGstSearch(item.item_code, e.target.value)}
                                   onFocus={() => {
-                                    const currentVal = gstSearchInput[item.item_code] || '';
                                     setGstDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
-                                    fetchGstSuggestions(item.item_code, currentVal);
+                                    fetchGstSuggestions(item.item_code, gstSearchInput[item.item_code] || '');
                                   }}
-                                  className={inputCls + " pr-7"}
+                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
+                                  autoComplete="off"
                                 />
                                 {item.gst_type && (
                                   <button
                                     type="button"
                                     onClick={() => clearItemGst(item.item_code)}
-                                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
                                   >
-                                    <X size={12} />
+                                    <X size={11} />
                                   </button>
                                 )}
                               </div>
+
                               {gstDropdownOpen[item.item_code] && (gstSuggestions[item.item_code] || []).length > 0 && (
-                                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-40 overflow-y-auto">
+                                <div className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
                                   {(gstSuggestions[item.item_code] || []).map(g => (
                                     <button
                                       key={g.id}
                                       type="button"
                                       onClick={() => selectItemGst(item.item_code, g)}
-                                      className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-slate-800 hover:bg-blue-50 border-b border-slate-100 last:border-0 cursor-pointer"
+                                      className="w-full text-left px-2.5 py-1.5 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
                                     >
-                                      {g.type} ({g.rate}%)
+                                      <span className="font-bold text-xs text-slate-900">{g.type}</span>
+                                      <span className="text-[10px] text-slate-500 ml-1.5">({g.rate}%)</span>
                                     </button>
                                   ))}
                                 </div>
                               )}
                             </div>
 
-                            {/* Shipping address autocomplete */}
-                            <div ref={el => shipItemRefs.current[item.item_code] = el} className="relative">
-                              <label className={labelCls}>Shipping Address</label>
+                            {/* Per-item Delivery Date */}
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Delivery Date</label>
+                              <input
+                                type="date"
+                                value={item.delivery_date}
+                                onChange={(e) => updateItem(item.item_code, 'delivery_date', e.target.value)}
+                                className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                              />
+                            </div>
+
+                            {/* Shipping Address autocomplete — spans all 4 cols */}
+                            <div
+                              className="col-span-2 sm:col-span-4 relative mt-1"
+                              ref={el => shipItemRefs.current[item.item_code] = el}
+                            >
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Shipping Address</label>
                               <div className="relative">
                                 <input
                                   type="text"
-                                  placeholder="Type address or search customer..."
-                                  value={shipInput[item.item_code] || ''}
+                                  placeholder="Type customer name to pick address..."
+                                  value={shipInput[item.item_code] ?? item.shipping_address}
                                   onChange={(e) => handleShipInput(item.item_code, e.target.value)}
                                   onFocus={() => {
-                                    const currentVal = shipInput[item.item_code] || '';
                                     setShipDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
-                                    fetchShipSuggestions(item.item_code, currentVal);
+                                    fetchShipSuggestions(item.item_code, shipInput[item.item_code] || '');
                                   }}
-                                  className={inputCls + " pr-7"}
+                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
+                                  autoComplete="off"
                                 />
-                                {shipInput[item.item_code] && (
+                                {item.shipping_address && (
                                   <button
                                     type="button"
                                     onClick={() => clearShip(item.item_code)}
-                                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
                                   >
-                                    <X size={12} />
+                                    <X size={11} />
                                   </button>
                                 )}
                               </div>
+
                               {shipDropdownOpen[item.item_code] && (shipSuggestions[item.item_code] || []).length > 0 && (
-                                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-40 overflow-y-auto">
-                                  {(shipSuggestions[item.item_code] || []).slice(0, 5).map(c => (
+                                <div className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
+                                  {(shipSuggestions[item.item_code] || []).map(c => (
                                     <button
                                       key={c.id}
                                       type="button"
                                       onClick={() => selectShipCustomer(item.item_code, c)}
-                                      className="w-full text-left px-3 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-pointer"
+                                      className="w-full text-left px-2.5 py-1.5 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
                                     >
-                                      <div className="font-bold text-[10px] text-slate-900 leading-tight">[{c.id}] {c.name}</div>
-                                      <div className="text-[9px] text-slate-500 truncate mt-0.5">{c.address}</div>
+                                      <span className="font-bold text-xs text-slate-900">{c.name}</span>
+                                      <p className="text-[10px] text-slate-500 truncate">{c.address}</p>
                                     </button>
                                   ))}
                                 </div>
                               )}
                             </div>
-
-                            {/* Delivery Date */}
-                            <div className="sm:col-span-2">
-                              <label className={labelCls}>Expected Delivery Date</label>
-                              <input
-                                type="date"
-                                value={item.delivery_date || ''}
-                                onChange={(e) => updateItem(item.item_code, 'delivery_date', e.target.value)}
-                                className={inputCls}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* pricing footer snippet */}
-                        {item.selected && (
-                          <div className="mt-3.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
-                            <div>
-                              <span>Basic: ₹{fmt(basic)}</span>
-                              {gstVal > 0 && <span className="ml-3">GST ({item.gst_rate}%): ₹{fmt(gstVal)}</span>}
-                            </div>
-                            <span className="text-slate-800 font-extrabold">Item Total: ₹{fmt(total)}</span>
                           </div>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Other Charges */}
-            <div>
-              <label className={labelCls}>Other Charges</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {[
-                  { field: 'transport',       label: 'Transport (₹)' },
-                  { field: 'packing_forward', label: 'Packing & Fwd (₹)' },
-                  { field: 'other',           label: 'Other (₹)' },
-                  { field: 'basic_value',     label: 'Add. Basic Value (₹)' },
-                ].map(({ field, label }) => (
-                  <div key={field}>
-                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                       
-                      placeholder="0.00"
-                      value={formData[field]}
-                      onChange={set(field)}
-                      className="w-full px-2.5 py-1.5 text-sm bg-white border border-slate-300 rounded font-medium focus:outline-none text-slate-800"
-                      onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                      onBlur={(e)  => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                    />
+                    ))}
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Summary Footer */}
-            <div className="border-t border-slate-200 pt-5 space-y-2">
-              <div className="flex justify-between text-xs font-bold text-slate-500">
-                <span>Items Total:</span>
-                <span className="font-mono">₹{fmt(calcBasicTotal() + calcGstTotal())}</span>
+            {/* Additional Charges */}
+            <div className="border-t border-slate-200 pt-3">
+              <label className={labelCls}>Additional Charges &amp; Summary</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Transport (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.transport}
+                    onChange={set('transport')}
+                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Packing &amp; Fwd (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.packing_forward}
+                    onChange={set('packing_forward')}
+                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Basic Extra (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.basic_value}
+                    onChange={set('basic_value')}
+                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Other (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.other}
+                    onChange={set('other')}
+                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                  />
+                </div>
               </div>
-              <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-100">
-                <span>Grand Total:</span>
-                <span className="font-mono text-lg" style={{ color: 'var(--theme-color)' }}>₹{fmt(calcGrandTotal())}</span>
+
+              {/* Grand Total Bar */}
+              <div className="mt-3 flex items-center justify-between bg-slate-100 border border-slate-300 rounded-lg px-4 py-2.5">
+                <div className="text-xs text-slate-600 font-medium space-x-3">
+                  <span>Basic: <b>₹{fmt(calcBasicTotal())}</b></span>
+                  <span>GST: <b>₹{fmt(calcGstTotal())}</b></span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Grand Total</span>
+                  <span className="text-base font-extrabold text-slate-900 font-mono">₹{fmt(calcGrandTotal())}</span>
+                </div>
               </div>
             </div>
 
@@ -777,7 +737,7 @@ export default function PurchaseOrderForm() {
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-4 py-2 border border-slate-300 hover:bg-slate-50 rounded-lg font-semibold text-sm text-slate-700 transition-colors cursor-pointer"
+                className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -790,11 +750,9 @@ export default function PurchaseOrderForm() {
                 onMouseLeave={(e) => e.target.style.filter = 'none'}
               >
                 {isLoading ? (
-                  <><RefreshCw size={14} className="animate-spin" /> Processing...</>
-                ) : editingNo ? (
-                  <><RefreshCw size={14} /> Update PO</>
+                  <><RefreshCw size={14} className="animate-spin" /> Saving...</>
                 ) : (
-                  <><Plus size={14} /> Save Purchase Order</>
+                  <><Plus size={14} /> Raise Purchase Order</>
                 )}
               </button>
             </div>

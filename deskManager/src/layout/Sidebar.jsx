@@ -40,7 +40,7 @@ import {
 import logoImg from "../assets/image.jpeg";
 import { hasPermission } from "../utils/permissions";
 
-// ─── Operations section data ────────────────────────────────────────────────
+// ───   section data ────────────────────────────────────────────────
 
 const OPERATIONS = [
   {
@@ -315,7 +315,7 @@ export default function Sidebar({ user, onLogout }) {
         <div className="mb-1">
           <button
             onClick={() => { setIsShrunk(false); setOpsOpen(true); }}
-            title="Operations"
+            title="Opetions"
             className={`group w-full flex items-center justify-center px-1 py-2 rounded-lg font-semibold text-sm transition-all duration-150 cursor-pointer ${
               isOpsActive
                 ? "text-[var(--text-sidebar)] shadow-md"
@@ -494,11 +494,11 @@ export default function Sidebar({ user, onLogout }) {
               {dashboardItem && <NavItem item={dashboardItem} />}
 
               {/* ── Operations section ── */}
-              {!isShrunk && (
+              {/* {!isShrunk && (
                 <div className="mt-1 mb-0.5 px-2">
                   <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 mb-1.5">Operations</p>
                 </div>
-              )}
+              )} */}
               <OperationsSection />
 
               {/* Divider */}

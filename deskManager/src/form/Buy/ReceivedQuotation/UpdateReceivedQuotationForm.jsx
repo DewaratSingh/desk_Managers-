@@ -1,0 +1,668 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AlertCircle, ArrowLeft, RefreshCw, X, History } from 'lucide-react';
+import { toast } from 'react-toastify';
+import ItemQuoteHistory from '../../../components/ItemQuoteHistory.jsx';
+import { useReceivedQuotation } from '../../../context/ReceivedQuotationContext.jsx';
+
+const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
+const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+
+export default function UpdateReceivedQuotationForm() {
+  const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const queryTradeId = searchParams.get('trade_id');
+  const editingNo = id;
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const {
+    activeRqId,
+    setActiveRqId,
+    formData,
+    setFormData,
+    selectedItems,
+    setSelectedItems,
+    buyerInput,
+    setBuyerInput,
+    customerInput,
+    setCustomerInput,
+    itemInput,
+    setItemInput,
+    historyItem,
+    setHistoryItem,
+    resetRqState
+  } = useReceivedQuotation();
+
+  // Buyer Autocomplete state
+  const [buyerSuggestions, setBuyerSuggestions] = useState([]);
+  const [showBuyerDropdown, setShowBuyerDropdown] = useState(false);
+  const [buyerNotFound, setBuyerNotFound] = useState(false);
+
+  // Customer Autocomplete state
+  const [customerSuggestions, setCustomerSuggestions] = useState([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [customerNotFound, setCustomerNotFound] = useState(false);
+
+  // Item Autocomplete state
+  const [itemSuggestions, setItemSuggestions] = useState([]);
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
+
+  const buyerRef = useRef(null);
+  const customerRef = useRef(null);
+  const itemRef = useRef(null);
+
+  // Handle click outside dropdowns
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (buyerRef.current && !buyerRef.current.contains(event.target)) {
+        setShowBuyerDropdown(false);
+      }
+      if (customerRef.current && !customerRef.current.contains(event.target)) {
+        setShowCustomerDropdown(false);
+      }
+      if (itemRef.current && !itemRef.current.contains(event.target)) {
+        setShowItemDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (editingNo) {
+      fetchQuotationDetails(editingNo);
+    }
+  }, [editingNo]);
+
+  // Debounced search for buyers (limit 5)
+  useEffect(() => {
+    const trimmed = buyerInput.trim();
+    if (!trimmed || formData.buyer_id) {
+      setBuyerSuggestions([]);
+      setShowBuyerDropdown(false);
+      setBuyerNotFound(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/buyers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setBuyerSuggestions(data);
+          setBuyerNotFound(data.length === 0);
+          setShowBuyerDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [buyerInput, formData.buyer_id]);
+
+  // Debounced search for customers (limit 5)
+  useEffect(() => {
+    const trimmed = customerInput.trim();
+    if (!trimmed || formData.customer_id) {
+      setCustomerSuggestions([]);
+      setShowCustomerDropdown(false);
+      setCustomerNotFound(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setCustomerSuggestions(data);
+          setCustomerNotFound(data.length === 0);
+          setShowCustomerDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerInput, formData.customer_id]);
+
+  // Debounced search for items (limit 5)
+  useEffect(() => {
+    const trimmed = itemInput.trim();
+    if (!trimmed) {
+      setItemSuggestions([]);
+      setShowItemDropdown(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setItemSuggestions(data);
+          setShowItemDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [itemInput]);
+
+  const fetchQuotationDetails = async (rqNo) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/received-quotations/${encodeURIComponent(rqNo)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveRqId(rqNo);
+        setFormData({
+          received_quotation_no: data.received_quotation_no,
+          buyer_id: data.buyer_id || '',
+          buyer_email: data.buyer_email || '',
+          buyer_phone: data.buyer_phone || '',
+          customer_id: data.customer_id || '',
+          quotation_date: data.quotation_date ? data.quotation_date.split('T')[0] : '',
+          terms_and_conditions: data.terms_and_conditions || ''
+        });
+        setSelectedItems(data.items || []);
+        setBuyerInput(data.buyer_name || '');
+        setCustomerInput(data.customer_name || data.customer_id || '');
+      } else {
+        setError('Failed to fetch received quotation details.');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Connection error while fetching received quotation.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const set = (field) => (e) =>
+    setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+
+  // Autocomplete Handlers
+  const handleBuyerInput = (value) => {
+    setBuyerInput(value);
+    setFormData(prev => ({ ...prev, buyer_id: '', buyer_email: '', buyer_phone: '' }));
+    setShowBuyerDropdown(true);
+  };
+
+  const selectBuyer = (b) => {
+    setFormData(prev => ({
+      ...prev,
+      buyer_id: b.id,
+      buyer_email: b.email,
+      buyer_phone: b.phone
+    }));
+    setBuyerInput(b.name);
+    setShowBuyerDropdown(false);
+    setBuyerNotFound(false);
+  };
+
+  const handleCustomerInput = (value) => {
+    setCustomerInput(value);
+    setFormData(prev => ({ ...prev, customer_id: '' }));
+    setShowCustomerDropdown(true);
+  };
+
+  const selectCustomer = (c) => {
+    setFormData(prev => ({ ...prev, customer_id: c.id }));
+    setCustomerInput(c.name);
+    setShowCustomerDropdown(false);
+    setCustomerNotFound(false);
+  };
+
+  const handleItemInput = (value) => {
+    setItemInput(value);
+    setShowItemDropdown(true);
+  };
+
+  const addItem = (item) => {
+    if (selectedItems.some(i => i.item_code === item.item_code)) return;
+
+    setSelectedItems(prev => [
+      ...prev,
+      {
+        item_code: item.item_code,
+        drawing_number: item.drawing_number || '',
+        description: item.description || '',
+        quantity: 1,
+        unit_price: 0
+      }
+    ]);
+    setItemInput('');
+    setItemSuggestions([]);
+    setShowItemDropdown(false);
+  };
+
+  const removeItem = (itemCode) => {
+    setSelectedItems(prev => prev.filter(i => i.item_code !== itemCode));
+  };
+
+  const handleItemValueChange = (itemCode, key, val) => {
+    setSelectedItems(prev => prev.map(item => {
+      if (item.item_code === itemCode) {
+        return { ...item, [key]: val };
+      }
+      return item;
+    }));
+  };
+
+  const calculateBasicValue = (items) => {
+    return items.reduce((sum, item) => sum + (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0), 0);
+  };
+
+  const handleBackToDirectory = () => {
+    navigate('/');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    if (!formData.buyer_id) {
+      setError('Please select a valid vendor Name.');
+      setIsLoading(false);
+      return;
+    }
+    if (!formData.customer_id) {
+      setError('Please select a valid Seller vendor.');
+      setIsLoading(false);
+      return;
+    }
+    if (selectedItems.length === 0) {
+      setError('Please add at least one item to the quotation.');
+      setIsLoading(false);
+      return;
+    }
+
+    const payload = {
+      received_quotation_no: editingNo,
+      buyer_id: parseInt(formData.buyer_id),
+      customer_id: formData.customer_id,
+      quotation_date: formData.quotation_date,
+      terms_and_conditions: formData.terms_and_conditions,
+      items: selectedItems.map(item => ({
+        item_code: item.item_code,
+        quantity: parseFloat(item.quantity) || 1,
+        unit_price: parseFloat(item.unit_price) || 0
+      }))
+    };
+
+    try {
+      const res = await fetch(`/api/received-quotations/${encodeURIComponent(editingNo)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        resetRqState(undefined);
+        toast.success('Received Quotation updated successfully!');
+        const destTradeId = queryTradeId;
+        if (destTradeId) {
+          navigate(`/trade/${destTradeId}`);
+        } else {
+          navigate('/');
+        }
+      } else {
+        const errData = await res.json();
+        setError(errData.error || 'Failed to save received quotation.');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Server connection error while saving quotation.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 p-6 bg-slate-100 text-slate-900 font-sans">
+      <div className={historyItem ? "max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6 items-start" : "max-w-2xl mx-auto space-y-5"}>
+        <div className={historyItem ? "lg:col-span-3 space-y-5 flex flex-col w-full" : "space-y-5 flex flex-col w-full"}>
+          <button
+            type="button"
+            onClick={handleBackToDirectory}
+            className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
+          >
+            <ArrowLeft size={14} />
+            Back
+          </button>
+        
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg flex items-center gap-1.5">
+              <AlertCircle size={14} /> {error}
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="pb-2 border-b border-slate-300">
+            <h1 className="text-2xl font-bold text-slate-900 m-0">
+              Modify Received Quotation
+            </h1>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
+              Update incoming commercial details and terms.
+            </p>
+          </div>
+
+          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-4">
+                
+                {/* Quotation No & Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Quotation ID</label>
+                    <input
+                      type="text"
+                      disabled={true}
+                      value={formData.received_quotation_no}
+                      className={inputCls}
+                    />
+                    <p className="text-[10px] text-slate-400 font-semibold mt-1.5 pl-1">
+                      Reference ID cannot be modified.
+                    </p>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Quotation Date <b className="text-red-500">*</b></label>
+                    <input
+                      type="date"
+                      required
+                      value={formData.quotation_date}
+                      onChange={set('quotation_date')}
+                      className={inputCls}
+                      onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                      onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    />
+                  </div>
+                </div>
+
+                {/* Buyer (Vendor Name) Autocomplete */}
+                <div ref={buyerRef} className="relative">
+                  <label className={labelCls}>Vendor Buyer Name <b className="text-red-500">*</b></label>
+                  <input
+                    type="text"
+                    placeholder="Search vendor buyer profile..."
+                    value={buyerInput}
+                    onChange={(e) => handleBuyerInput(e.target.value)}
+                    onFocus={() => setShowBuyerDropdown(true)}
+                    className={inputCls}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    autoComplete="off"
+                  />
+                  {showBuyerDropdown && buyerSuggestions.length > 0 && (
+                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {buyerSuggestions.map(b => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => selectBuyer(b)}
+                          className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                        >
+                          <div className="font-bold text-xs text-slate-900">{b.name}</div>
+                          <div className="text-[10px] text-slate-500">{b.email} &bull; {b.phone}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {buyerNotFound && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No vendor buyer found for "{buyerInput}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/buyer/form')}
+                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                      >
+                        Add Buyer
+                      </button>
+                    </div>
+                  )}
+                  {formData.buyer_id && (
+                    <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
+                      <span className="text-emerald-600">✓ Buyer Linked</span>
+                      <span className="text-slate-300">|</span>
+                      <span>{formData.buyer_email}</span>
+                      <span className="text-slate-300">|</span>
+                      <span>{formData.buyer_phone}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Customer (Selling Entity) Autocomplete */}
+                <div ref={customerRef} className="relative">
+                  <label className={labelCls}>Customer Vendor (Seller) <b className="text-red-500">*</b></label>
+                  <input
+                    type="text"
+                    placeholder="Search source entity/vendor..."
+                    value={customerInput}
+                    onChange={(e) => handleCustomerInput(e.target.value)}
+                    onFocus={() => setShowCustomerDropdown(true)}
+                    className={inputCls}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    autoComplete="off"
+                  />
+                  {showCustomerDropdown && customerSuggestions.length > 0 && (
+                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {customerSuggestions.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectCustomer(c)}
+                          className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                        >
+                          <div className="font-bold text-xs text-slate-900">{c.name}</div>
+                          <div className="text-[10px] text-slate-500">ID: {c.id} &bull; {c.address}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {customerNotFound && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No customer found for "{customerInput}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/party/form')}
+                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                      >
+                        Add Customer
+                      </button>
+                    </div>
+                  )}
+                  {formData.customer_id && (
+                    <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
+                      <span className="text-emerald-600">✓ Customer Linked</span>
+                      <span className="text-slate-300">|</span>
+                      <span>ID: {formData.customer_id}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Items Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className={labelCls}>Quotation Line Items</label>
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Total: ₹{calculateBasicValue(selectedItems).toFixed(2)}
+                    </span>
+                  </div>
+
+                  {selectedItems.length > 0 && (
+                    <div className="mb-3 border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
+                      <div className="divide-y divide-slate-200">
+                        {selectedItems.map((item) => (
+                          <div key={item.item_code} className="px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="min-w-0 flex-1 mr-4">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                                    {item.item_code}
+                                  </span>
+                                  {item.drawing_number && (
+                                    <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
+                                      DRW: {item.drawing_number}
+                                    </span>
+                                  )}
+                                </div>
+                                {item.description && (
+                                  <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-3 shrink-0">
+                                <div className="flex flex-col items-end">
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Qty *</label>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    required
+                                    value={item.quantity}
+                                    onChange={(e) => handleItemValueChange(item.item_code, 'quantity', e.target.value)}
+                                    className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  />
+                                </div>
+                                <div className="flex flex-col items-end">
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Unit Price (₹) *</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    required
+                                    placeholder="0.00"
+                                    value={item.unit_price}
+                                    onChange={(e) => handleItemValueChange(item.item_code, 'unit_price', e.target.value)}
+                                    className="w-24 px-1.5 py-1 text-right font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setHistoryItem(item.item_code)}
+                                  className="p-1 mt-3.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
+                                  title="View Quote History"
+                                >
+                                  <History size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeItem(item.item_code)}
+                                  className="p-1 mt-3.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
+                                  title="Remove item"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Inline history panel for mobile/small screen */}
+                            {historyItem === item.item_code && (
+                              <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
+                                <ItemQuoteHistory
+                                  code={historyItem}
+                                  excludeRfq={null}
+                                  onClose={() => setHistoryItem(null)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add item input */}
+                  <div ref={itemRef} className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search and attach inventory catalog items..."
+                      value={itemInput}
+                      onChange={(e) => handleItemInput(e.target.value)}
+                      onFocus={() => setShowItemDropdown(true)}
+                      className={inputCls}
+                      onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                      autoComplete="off"
+                    />
+                    {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
+                      <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                        {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
+                          <button
+                            key={item.item_code}
+                            type="button"
+                            onClick={() => addItem(item)}
+                            className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                          >
+                            <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                              {item.item_code}
+                            </span>
+                            {item.drawing_number && <span className="text-[10px] text-slate-400 ml-2">DRW: {item.drawing_number}</span>}
+                            <div className="text-[10px] text-slate-500 mt-1">{item.description}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Terms and Conditions */}
+                <div>
+                  <label className={labelCls}>Terms and Conditions</label>
+                  <textarea
+                    rows={4}
+                    value={formData.terms_and_conditions}
+                    onChange={set('terms_and_conditions')}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-xs placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] font-mono leading-relaxed"
+                    placeholder="Enter standard payment terms, delivery period, price validity..."
+                  />
+                </div>
+
+                {/* Form Buttons */}
+                <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBackToDirectory}
+                    className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: 'var(--theme-color)' }}
+                    onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
+                    onMouseLeave={(e) => e.target.style.filter = 'none'}
+                  >
+                    {isLoading ? (
+                      <><RefreshCw size={14} className="animate-spin" /> Saving...</>
+                    ) : (
+                      <><RefreshCw size={14} /> Update Quotation</>
+                    )}
+                  </button>
+                </div>
+
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {/* Right side history panel */}
+        {historyItem && (
+          <div className="hidden lg:block lg:col-span-2 bg-white border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
+            <ItemQuoteHistory
+              code={historyItem}
+              excludeRfq={editingNo}
+              onClose={() => setHistoryItem(null)}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

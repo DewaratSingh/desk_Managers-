@@ -1,0 +1,762 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { AlertCircle, ArrowLeft, RefreshCw, X, History } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { useRfq } from '../../../context/RfqContext.jsx';
+import ItemQuoteHistory from '../../../components/ItemQuoteHistory.jsx';
+
+const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
+const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+
+export default function UpdateRfqForm() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const editingRFQ = id;
+
+  const {
+    activeRfqId,
+    setActiveRfqId,
+    formData,
+    setFormData,
+    selectedItems,
+    setSelectedItems,
+    buyerInput,
+    setBuyerInput,
+    customerInput,
+    setCustomerInput,
+    tradeId,
+    setTradeId,
+    itemSearch,
+    setItemSearch,
+    resetRfqState
+  } = useRfq();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [historyItem, setHistoryItem] = useState(null);
+
+  // Auto-complete resources from DB
+  const [buyers, setBuyers] = useState([]);
+  const [customers, setCustomers] = useState([]);
+
+  // Buyer Auto-complete state
+  const [buyerSuggestions, setBuyerSuggestions] = useState([]);
+  const [showBuyerDropdown, setShowBuyerDropdown] = useState(false);
+  const [buyerNotFound, setBuyerNotFound] = useState(false);
+
+  // Customer Auto-complete state
+  const [customerSuggestions, setCustomerSuggestions] = useState([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [customerNotFound, setCustomerNotFound] = useState(false);
+
+  // Item Auto-complete state
+  const [itemSuggestions, setItemSuggestions] = useState([]);
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
+
+  // Dropdown reference refs for click outside
+  const buyerRef = useRef(null);
+  const customerRef = useRef(null);
+  const itemRef = useRef(null);
+  const isQuotateRedirectRef = useRef(false);
+
+  const buyerManualRef = useRef(false);
+  const customerManualRef = useRef(false);
+
+  const units = ['Piece', 'Kg', 'Meter', 'Box', 'Set', 'Liter', 'Ton', 'Nos'];
+
+  useEffect(() => {
+    if (activeRfqId !== editingRFQ) {
+      if (editingRFQ) {
+        fetchRFQDetails(editingRFQ);
+      }
+    }
+  }, [editingRFQ, activeRfqId]);
+
+  // Handle click outside dropdowns to close them
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (buyerRef.current && !buyerRef.current.contains(event.target)) {
+        setShowBuyerDropdown(false);
+      }
+      if (customerRef.current && !customerRef.current.contains(event.target)) {
+        setShowCustomerDropdown(false);
+      }
+      if (itemRef.current && !itemRef.current.contains(event.target)) {
+        setShowItemDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const fetchBuyers = (query) => {
+    fetch(`/api/buyers?q=${encodeURIComponent(query)}&limit=5`)
+      .then(r => r.json())
+      .then(data => {
+        setBuyerSuggestions(data);
+        setBuyerNotFound(data.length === 0);
+      })
+      .catch(console.error);
+  };
+
+  const fetchCustomers = (query) => {
+    fetch(`/api/customers?q=${encodeURIComponent(query)}&limit=5`)
+      .then(r => r.json())
+      .then(data => {
+        setCustomerSuggestions(data);
+        setCustomerNotFound(data.length === 0);
+      })
+      .catch(console.error);
+  };
+
+  const fetchItems = (query) => {
+    fetch(`/api/items?q=${encodeURIComponent(query)}&limit=5`)
+      .then(r => r.json())
+      .then(data => {
+        setItemSuggestions(data);
+      })
+      .catch(console.error);
+  };
+
+  // Debounced search for buyers (limit 5)
+  useEffect(() => {
+    if (!buyerManualRef.current) return;
+    const delayDebounceFn = setTimeout(() => {
+      fetchBuyers(buyerInput.trim());
+    }, 200);
+    return () => clearTimeout(delayDebounceFn);
+  }, [buyerInput]);
+
+  // Debounced search for customers (limit 5)
+  useEffect(() => {
+    if (!customerManualRef.current) return;
+    const delayDebounceFn = setTimeout(() => {
+      fetchCustomers(customerInput.trim());
+    }, 200);
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerInput]);
+
+  // Debounced search for items (limit 5)
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchItems(itemSearch.trim());
+    }, 200);
+    return () => clearTimeout(delayDebounceFn);
+  }, [itemSearch]);
+
+  const fetchRFQDetails = async (rfqNo) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/rfqs/${encodeURIComponent(rfqNo)}`);
+      if (res.ok) {
+        const rfq = await res.json();
+        setActiveRfqId(rfqNo);
+        setFormData({
+          rfq_no: rfq.rfq_no || '',
+          rfq_date: rfq.rfq_date ? rfq.rfq_date.split('T')[0] : '',
+          commercial_bid_due_date: rfq.commercial_bid_due_date ? rfq.commercial_bid_due_date.split('T')[0] : '',
+          technical_bid_due_date: rfq.technical_bid_due_date ? rfq.technical_bid_due_date.split('T')[0] : '',
+          buyer_id: rfq.buyer_id || '',
+          buyer_email: rfq.buyer_email || '',
+          buyer_phone: rfq.buyer_phone || '',
+          customer_id: rfq.customer_id || ''
+        });
+        setBuyerInput(rfq.buyer_name || '');
+        setCustomerInput(rfq.customer_id || '');
+        setSelectedItems(rfq.items || []);
+        setTradeId(rfq.trade_id || '');
+      } else {
+        setError('Failed to fetch RFQ details');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Connection error while fetching RFQ');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const set = (field) => (e) =>
+    setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+
+  // Autocomplete Handlers
+  const handleBuyerInput = (value) => {
+    buyerManualRef.current = true;
+    setBuyerInput(value);
+    setFormData(prev => ({ ...prev, buyer_id: '', buyer_email: '', buyer_phone: '' }));
+    setShowBuyerDropdown(true);
+  };
+
+  const selectBuyer = (b) => {
+    buyerManualRef.current = false;
+    setFormData(prev => ({
+      ...prev,
+      buyer_id: b.id,
+      buyer_email: b.email,
+      buyer_phone: b.phone
+    }));
+    setBuyerInput(b.name);
+    setShowBuyerDropdown(false);
+    setBuyerNotFound(false);
+  };
+
+  const handleCustomerInput = (value) => {
+    customerManualRef.current = true;
+    setCustomerInput(value);
+    setFormData(prev => ({ ...prev, customer_id: '' }));
+    setShowCustomerDropdown(true);
+  };
+
+  const selectCustomer = (c) => {
+    customerManualRef.current = false;
+    setFormData(prev => ({ ...prev, customer_id: c.id }));
+    setCustomerInput(c.id);
+    setShowCustomerDropdown(false);
+    setCustomerNotFound(false);
+  };
+
+  const handleItemSearch = (value) => {
+    setItemSearch(value);
+    setShowItemDropdown(true);
+  };
+
+  const addItem = (item) => {
+    if (selectedItems.some(i => i.item_code === item.item_code)) return;
+
+    setSelectedItems(prev => [
+      ...prev,
+      {
+        item_code: item.item_code,
+        drawing_number: item.drawing_number || '',
+        description: item.description || '',
+        quantity: 1,
+        unit: 'Piece',
+        unit_price: '0'
+      }
+    ]);
+    setItemSearch('');
+    setItemSuggestions([]);
+    setShowItemDropdown(false);
+  };
+
+  const removeItem = (itemCode) => {
+    setSelectedItems(prev => prev.filter(i => i.item_code !== itemCode));
+  };
+
+  const handleQuantityChange = (itemCode, value) => {
+    const qty = parseFloat(value) || 1;
+    setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, quantity: qty } : i));
+  };
+
+  const handleUnitChange = (itemCode, value) => {
+    setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, unit: value } : i));
+  };
+
+  const handlePriceChange = (itemCode, value) => {
+    setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, unit_price: value } : i));
+  };
+
+  const backToList = () => {
+    navigate('/');
+  };
+
+  const handleCancel = () => {
+    resetRfqState(undefined);
+    navigate('/');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!formData.rfq_no.trim() || !formData.rfq_date || !formData.commercial_bid_due_date || !formData.technical_bid_due_date) {
+      setError('Please fill in all required RFQ header fields');
+      return;
+    }
+
+    if (!formData.buyer_id) {
+      setError('Please select and link a valid Buyer');
+      return;
+    }
+
+    if (!formData.customer_id) {
+      setError('Please select and link a valid Customer');
+      return;
+    }
+
+    if (selectedItems.length === 0) {
+      setError('Please attach at least one Item to this RFQ');
+      return;
+    }
+
+    setIsLoading(true);
+    const payload = {
+      rfq_no: formData.rfq_no.trim(),
+      rfq_date: formData.rfq_date,
+      commercial_bid_due_date: formData.commercial_bid_due_date,
+      technical_bid_due_date: formData.technical_bid_due_date,
+      buyer_id: parseInt(formData.buyer_id),
+      customer_id: formData.customer_id,
+      items: selectedItems.map(item => ({
+        item_code: item.item_code,
+        quantity: parseFloat(item.quantity) || 1,
+        unit: item.unit || 'Piece',
+        unit_price: parseFloat(item.unit_price) || 0
+      }))
+    };
+
+    try {
+      const res = await fetch(`/api/rfqs/${encodeURIComponent(editingRFQ)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        resetRfqState(undefined);
+
+        if (isQuotateRedirectRef.current) {
+          toast.success('RFQ saved successfully!');
+        } else {
+          toast.success('RFQ updated successfully!');
+        }
+        
+        if (tradeId) {
+          navigate(`/trade/${tradeId}`);
+        } else {
+          navigate('/');
+        }
+      } else {
+        const errData = await res.json();
+        setError(errData.error || 'Failed to update RFQ');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Server connection error while saving RFQ');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 p-6 bg-slate-100 text-slate-900">
+      <div className={historyItem ? "max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6 items-start" : "max-w-2xl mx-auto space-y-5"}>
+        <div className={historyItem ? "lg:col-span-3 space-y-5 flex flex-col w-full" : "space-y-5 flex flex-col w-full"}>
+          <button
+            type="button"
+            onClick={backToList}
+            className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
+          >
+            <ArrowLeft size={14} />
+            Back to Dashboard
+          </button>
+          {/* Header */}
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 m-0">
+              Modify RFQ Record
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Update the details of an existing RFQ.
+            </p>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg flex items-center gap-1.5">
+              <AlertCircle size={14} />
+              {error}
+            </div>
+          )}
+
+          {/* Form Card */}
+          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              
+              {/* RFQ No */}
+              <div>
+                <label className={labelCls}>RFQ No. <b className="text-red-500">*</b></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. RFQ-2024-001"
+                  value={formData.rfq_no}
+                  onChange={set('rfq_no')}
+                  disabled={true}
+                  className={inputCls}
+                />
+                <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
+                  RFQ No. cannot be changed after creation.
+                </p>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className={labelCls}>RFQ Date <b className="text-red-500">*</b></label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.rfq_date}
+                    onChange={set('rfq_date')}
+                    className={inputCls}
+                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Commercial Bid Due <b className="text-red-500">*</b></label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.commercial_bid_due_date}
+                    onChange={set('commercial_bid_due_date')}
+                    className={inputCls}
+                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Technical Bid Due <b className="text-red-500">*</b></label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.technical_bid_due_date}
+                    onChange={set('technical_bid_due_date')}
+                    className={inputCls}
+                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                  />
+                </div>
+              </div>
+
+              {/* Buyer */}
+              <div ref={buyerRef} className="relative">
+                <label className={labelCls}>Buyer Name <b className="text-red-500">*</b></label>
+                <input
+                  type="text"
+                  placeholder="Start typing buyer name..."
+                  value={buyerInput}
+                  onChange={(e) => handleBuyerInput(e.target.value)}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = 'var(--theme-color)';
+                    buyerManualRef.current = true;
+                    setShowBuyerDropdown(true);
+                    fetchBuyers(buyerInput);
+                  }}
+                  className={inputCls}
+                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                  autoComplete="off"
+                />
+                {showBuyerDropdown && buyerSuggestions.length > 0 && (
+                  <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                    {buyerSuggestions.slice(0, 6).map(b => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => selectBuyer(b)}
+                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                      >
+                        <div className="font-bold text-xs text-slate-900">{b.name}</div>
+                        <div className="text-[10px] text-slate-500">{b.email} &bull; {b.phone}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {buyerNotFound && (
+                  <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                    <div className="flex items-center gap-1.5">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>No buyer found for "{buyerInput}".</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/buyer/form')}
+                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                    >
+                      Add Buyer
+                    </button>
+                  </div>
+                )}
+                {formData.buyer_id && (
+                  <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
+                    <span className="text-emerald-600">✓ Buyer Linked</span>
+                    <span className="text-slate-300">|</span>
+                    <span>{formData.buyer_email}</span>
+                    <span className="text-slate-300">|</span>
+                    <span>{formData.buyer_phone}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Customer */}
+              <div ref={customerRef} className="relative">
+                <label className={labelCls}>Customer ID <b className="text-red-500">*</b></label>
+                <input
+                  type="text"
+                  placeholder="Start typing customer ID or name..."
+                  value={customerInput}
+                  onChange={(e) => handleCustomerInput(e.target.value)}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = 'var(--theme-color)';
+                    customerManualRef.current = true;
+                    setShowCustomerDropdown(true);
+                    fetchCustomers(customerInput);
+                  }}
+                  className={inputCls}
+                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                  autoComplete="off"
+                />
+                {showCustomerDropdown && customerSuggestions.length > 0 && (
+                  <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                    {customerSuggestions.slice(0, 6).map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => selectCustomer(c)}
+                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                      >
+                        <div className="font-bold text-xs text-slate-900">{c.id}</div>
+                        <div className="text-[10px] text-slate-500">{c.name} &bull; {c.address}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {customerNotFound && (
+                  <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                    <div className="flex items-center gap-1.5">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>No customer found for "{customerInput}".</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/party/form')}
+                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                    >
+                      Add Customer
+                    </button>
+                  </div>
+                )}
+                {formData.customer_id && customers.find(c => c.id === formData.customer_id) && (
+                  <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
+                    <span className="text-emerald-600">✓ Customer Linked</span>
+                    <span className="text-slate-300">|</span>
+                    <span>{customers.find(c => c.id === formData.customer_id)?.name}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Items Section */}
+              <div>
+                <label className={labelCls}>Items</label>
+
+                {/* Selected Items */}
+                {selectedItems.length > 0 && (
+                  <div className="mb-3 border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
+                    <div className="bg-slate-100 px-4 py-2 border-b border-slate-300">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Attached Items ({selectedItems.length})
+                      </span>
+                    </div>
+                    <div className="divide-y divide-slate-200">
+                      {selectedItems.map((item) => (
+                        <div key={item.item_code} className="px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1 mr-4">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                                  {item.item_code}
+                                </span>
+                                {item.drawing_number && (
+                                  <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
+                                    DRW: {item.drawing_number}
+                                  </span>
+                                )}
+                              </div>
+                              {item.description && (
+                                <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="flex flex-col items-end">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Qty *</label>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  required
+                                  value={item.quantity}
+                                  onChange={(e) => handleQuantityChange(item.item_code, e.target.value)}
+                                  className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                />
+                              </div>
+                              <div className="flex flex-col items-end">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Unit *</label>
+                                <input
+                                  type="text"
+                                  list="rfq-units-list"
+                                  required
+                                  placeholder="e.g. Piece"
+                                  value={item.unit || ''}
+                                  onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
+                                  className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  autoComplete="off"
+                                />
+                              </div>
+                              <div className="flex flex-col items-end">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Price *</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  required
+                                  placeholder="0.00"
+                                  value={item.unit_price || '0'}
+                                  onChange={(e) => handlePriceChange(item.item_code, e.target.value)}
+                                  className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setHistoryItem(item.item_code)}
+                                className="p-1 mt-3.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
+                                title="View Quote History"
+                              >
+                                <History size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeItem(item.item_code)}
+                                className="p-1 mt-3.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
+                                title="Remove item"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Inline history panel for mobile/small screen */}
+                          {historyItem === item.item_code && (
+                            <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
+                              <ItemQuoteHistory
+                                code={historyItem}
+                                excludeRfq={editingRFQ}
+                                onClose={() => setHistoryItem(null)}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Item search autocomplete */}
+                <div ref={itemRef} className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search item by code or description to attach..."
+                    value={itemSearch}
+                    onChange={(e) => handleItemSearch(e.target.value)}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = 'var(--theme-color)';
+                      setShowItemDropdown(true);
+                      fetchItems(itemSearch);
+                    }}
+                    className={inputCls}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    autoComplete="off"
+                  />
+
+                  {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
+                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
+                        <button
+                          key={item.item_code}
+                          type="button"
+                          onClick={() => addItem(item)}
+                          className="w-full text-left px-3.5 py-2 border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                        >
+                          <div>
+                            <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                              {item.item_code}
+                            </span>
+                            {item.drawing_number && <span className="text-[10px] text-slate-400 ml-2">DRW: {item.drawing_number}</span>}
+                            <div className="text-[10px] text-slate-500 mt-1">{item.description}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {itemSearch.trim().length > 0 && itemSuggestions.length === 0 && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No item found for "{itemSearch}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/item/form')}
+                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                      >
+                        Add Item
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {selectedItems.length === 0 && (
+                  <p className="mt-2 text-xs text-slate-400 font-medium pl-1">No items added yet. Search below to attach items to this RFQ.</p>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                
+                <button
+                  type="submit"
+                  onClick={() => { isQuotateRedirectRef.current = false; }}
+                  disabled={isLoading}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: 'var(--theme-color)' }}
+                  onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
+                  onMouseLeave={(e) => e.target.style.filter = 'none'}
+                >
+                  {isLoading ? (
+                    <><RefreshCw size={14} className="animate-spin" /> Processing...</>
+                  ) : (
+                    <><RefreshCw size={14} /> Update RFQ</>
+                  )}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+
+        {/* Right side history panel */}
+        {historyItem && (
+          <div className="hidden lg:block lg:col-span-2 bg-white border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
+            <ItemQuoteHistory
+              code={historyItem}
+              excludeRfq={editingRFQ}
+              onClose={() => setHistoryItem(null)}
+            />
+          </div>
+        )}
+      </div>
+
+      <datalist id="rfq-units-list">
+        {units.map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
+    </div>
+  );
+}

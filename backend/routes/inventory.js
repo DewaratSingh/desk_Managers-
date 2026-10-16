@@ -146,7 +146,7 @@ router.get('/sell/eligible-trades', async (req, res) => {
       LEFT JOIN release_orders ro ON ro.trade_id = t.id AND ro.company_id = t.company_id
       LEFT JOIN release_order_items roi ON roi.ro_id = ro.id AND roi.company_id = t.company_id AND roi.item_id = (SELECT id FROM items WHERE item_code = $1 AND company_id = $2)
       WHERE t.company_id = $2
-        AND LOWER(t.trade_type) IN ('sell', 'arc')
+        AND LOWER(t.trade_type) IN ('sell', 'arc', 'buyarc', 'sellarc')
         AND (poi.item_id IS NOT NULL OR roi.item_id IS NOT NULL)
         AND COALESCE(poi.quantity, roi.quantity) > COALESCE((
           SELECT SUM(dni.quantity)

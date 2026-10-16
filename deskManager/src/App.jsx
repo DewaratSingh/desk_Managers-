@@ -8,12 +8,20 @@ import Dashboard from './pages/Dashboard'
 import AddUserView from './pages/AddUser'
 import TradeView from './pages/Trade'
 import './App.css'
-import PurchaseOrderForm from './form/Sell/PurchaseOrderForm'
-import ReleaseOrderForm from './form/Sell/ReleaseOrderForm'
-import RfqForm from './form/Sell/RfqForm'
-import QuotationForm from './form/Sell/QuotationForm'
-import ReceivedQuotationForm from './form/Buy/ReceivedQuotationForm'
-import ReceivedPurchaseOrderForm from './form/Buy/ReceivedPurchaseOrderForm'
+import CreatePurchaseOrderForm from './form/Sell/PurchaseOrder/CreatePurchaseOrderForm'
+import UpdatePurchaseOrderForm from './form/Sell/PurchaseOrder/UpdatePurchaseOrderForm'
+import CreateReleaseOrderForm from './form/Sell/ReleaseOrder/CreateReleaseOrderForm'
+import UpdateReleaseOrderForm from './form/Sell/ReleaseOrder/UpdateReleaseOrderForm'
+import CreateRfqForm from './form/Sell/RFQ/CreateRfqForm'
+import UpdateRfqForm from './form/Sell/RFQ/UpdateRfqForm'
+import CreateQuotationForm from './form/Sell/Quotation/CreateQuotationForm'
+import UpdateQuotationForm from './form/Sell/Quotation/UpdateQuotationForm'
+import CreateReceivedQuotationForm from './form/Buy/ReceivedQuotation/CreateReceivedQuotationForm'
+import UpdateReceivedQuotationForm from './form/Buy/ReceivedQuotation/UpdateReceivedQuotationForm'
+import CreateReceivedPurchaseOrderForm from './form/Buy/ReceivedPurchaseOrder/CreateReceivedPurchaseOrderForm'
+import UpdateReceivedPurchaseOrderForm from './form/Buy/ReceivedPurchaseOrder/UpdateReceivedPurchaseOrderForm'
+import CreateContractOrderForm from './form/Buy/ContractOrder/CreateContractOrderForm'
+import UpdateContractOrderForm from './form/Buy/ContractOrder/UpdateContractOrderForm'
 import ProcessRqForm from './form/ProcessRqForm'
 import ProcessPoForm from './form/ProcessPoForm'
 import DeliveryNoteForm from './form/DeliveryNoteForm'
@@ -48,10 +56,12 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/addPurchaseOrder" element={<PurchaseOrderForm />} />
-            <Route path="/updatePurchaseOrder/:id" element={<PurchaseOrderForm />} />
-            <Route path="/addReceivedPurchaseOrder" element={<ReceivedPurchaseOrderForm />} />
-            <Route path="/updateReceivedPurchaseOrder/:id" element={<ReceivedPurchaseOrderForm />} />
+            <Route path="/addPurchaseOrder" element={<CreatePurchaseOrderForm />} />
+            <Route path="/updatePurchaseOrder/:id" element={<UpdatePurchaseOrderForm />} />
+            <Route path="/addReceivedPurchaseOrder" element={<CreateReceivedPurchaseOrderForm />} />
+            <Route path="/updateReceivedPurchaseOrder/:id" element={<UpdateReceivedPurchaseOrderForm />} />
+            <Route path="/addContractOrder" element={<CreateContractOrderForm />} />
+            <Route path="/updateContractOrder/:id" element={<UpdateContractOrderForm />} />
             <Route path="/addDeliveryNote" element={<DeliveryNoteForm />} />
             <Route path="/updateDeliveryNote/:id" element={<DeliveryNoteForm />} />
             <Route path="/addInvoice" element={<InvoiceForm />} />
@@ -77,14 +87,14 @@ function App() {
             <Route path="/users" element={<AddUserView />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
-          <Route path="/addRfq" element={<RfqForm />} />
-          <Route path="/updateRfq/:id" element={<RfqForm />} />
-          <Route path="/addQuotation" element={<QuotationForm />} />
-          <Route path="/updateQuotation/:id" element={<QuotationForm />} />
-          <Route path="/addReleaseOrder" element={<ReleaseOrderForm />} />
-          <Route path="/updateReleaseOrder/*" element={<ReleaseOrderForm />} />
-          <Route path="/addReceivedQuotation" element={<ReceivedQuotationForm />} />
-          <Route path="/updateReceivedQuotation/:id" element={<ReceivedQuotationForm />} />
+          <Route path="/addRfq" element={<CreateRfqForm />} />
+          <Route path="/updateRfq/:id" element={<UpdateRfqForm />} />
+          <Route path="/addQuotation" element={<CreateQuotationForm />} />
+          <Route path="/updateQuotation/:id" element={<UpdateQuotationForm />} />
+          <Route path="/addReleaseOrder" element={<CreateReleaseOrderForm />} />
+          <Route path="/updateReleaseOrder/*" element={<UpdateReleaseOrderForm />} />
+          <Route path="/addReceivedQuotation" element={<CreateReceivedQuotationForm />} />
+          <Route path="/updateReceivedQuotation/:id" element={<UpdateReceivedQuotationForm />} />
           <Route path="/addProcessPurchaseOrder" element={<ProcessPoForm />} />
           <Route path="/party/form" element={<AddCustomerView />} />
           <Route path="/buyer/form" element={<AddBuyerView />} />
