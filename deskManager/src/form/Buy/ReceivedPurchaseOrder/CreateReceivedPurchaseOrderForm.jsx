@@ -4,7 +4,7 @@ import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, Search, Trash2, CheckSquare
 import { toast } from 'react-toastify';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
-const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
 export default function CreateReceivedPurchaseOrderForm() {
   const [searchParams] = useSearchParams();
@@ -170,6 +170,12 @@ export default function CreateReceivedPurchaseOrderForm() {
   const set = (field) => (e) =>
     setFormData(prev => ({ ...prev, [field]: e.target.value }));
 
+  const handleCommonDeliveryDateChange = (e) => {
+    const val = e.target.value;
+    setFormData(prev => ({ ...prev, delivery_date: val }));
+    setPoItems(prev => prev.map(item => ({ ...item, delivery_date: val })));
+  };
+
   // Received Quotation autocomplete
   const handleQtnInput = (value) => {
     qtnManualRef.current = true;
@@ -196,7 +202,7 @@ export default function CreateReceivedPurchaseOrderForm() {
         gst_type:         '',
         gst_rate:         '',
         shipping_address: '',
-        delivery_date:    '',
+        delivery_date:    formData.delivery_date || '',
         description:      i.description    || '',
         drawing_number:   i.drawing_number || '',
         selected:         true
@@ -308,7 +314,7 @@ export default function CreateReceivedPurchaseOrderForm() {
         gst_type:         '',
         gst_rate:         '',
         shipping_address: '',
-        delivery_date:    '',
+        delivery_date:    formData.delivery_date || '',
         description:      item.description || '',
         drawing_number:   item.drawing_number || '',
         selected:         true
@@ -356,6 +362,13 @@ export default function CreateReceivedPurchaseOrderForm() {
       return;
     }
 
+    const hasMissingDeliveryDate = activeItems.some(i => !(i.delivery_date || formData.delivery_date));
+    if (hasMissingDeliveryDate) {
+      setError('Delivery Date is compulsory. Please select a common delivery date or enter a delivery date for each item.');
+      setIsLoading(false);
+      return;
+    }
+
     const payload = {
       po_no:           finalPoNo,
       quotation_no:    formData.quotation_no || null,
@@ -372,7 +385,7 @@ export default function CreateReceivedPurchaseOrderForm() {
         gst_type:         i.gst_type  || null,
         gst_rate:         parseFloat(i.gst_rate)  || 0,
         shipping_address: i.shipping_address || null,
-        delivery_date:    i.delivery_date    || null
+        delivery_date:    i.delivery_date || formData.delivery_date || null
       }))
     };
 
@@ -426,7 +439,7 @@ export default function CreateReceivedPurchaseOrderForm() {
         </div>
 
         {/* Form Card */}
-        <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+        <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
 
             {/* PO No */}
@@ -465,7 +478,7 @@ export default function CreateReceivedPurchaseOrderForm() {
               <input
                 type="date"
                 value={formData.delivery_date}
-                onChange={set('delivery_date')}
+                onChange={handleCommonDeliveryDateChange}
                 className={inputCls}
                 onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                 onBlur={(e)  => e.target.style.borderColor = 'rgb(203, 213, 225)'}
@@ -491,7 +504,7 @@ export default function CreateReceivedPurchaseOrderForm() {
               />
 
               {showQtnDropdown && qtnSuggestions.length > 0 && (
-                <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                   {qtnSuggestions.map(q => (
                     <button
                       key={q.received_quotation_no}
@@ -547,7 +560,7 @@ export default function CreateReceivedPurchaseOrderForm() {
               </div>
 
               {showItemDropdown && itemSuggestions.length > 0 && (
-                <div className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                <div className="absolute z-40 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                   {itemSuggestions.map(item => (
                     <button
                       key={item.item_code}
@@ -578,13 +591,18 @@ export default function CreateReceivedPurchaseOrderForm() {
                   </span>
                 </div>
 
-                <div className="border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
+                <div className="border border-slate-300 rounded-lg bg-slate-50">
                   <div className="divide-y divide-slate-200">
-                    {poItems.map(item => (
-                      <div
-                        key={item.item_code}
-                        className={`px-4 py-3 bg-white transition-colors ${!item.selected ? 'opacity-50 bg-slate-50' : ''}`}
-                      >
+                    {poItems.map((item, index) => {
+                      const isDropdownActive = shipDropdownOpen[item.item_code] || gstDropdownOpen[item.item_code];
+                      return (
+                        <div
+                          key={item.item_code}
+                          className={`px-4 py-3  bg-[white] transition-colors relative ${
+                            !item.selected ? 'opacity-50 bg-slate-50' : ''
+                          }`}
+                          style={{ zIndex: isDropdownActive ? 50 : (poItems.length - index) }}
+                        >
                         {/* Row 1: Checkbox + Item Info */}
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-start gap-2.5 min-w-0 flex-1">
@@ -645,7 +663,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                                 required
                                 value={item.quantity}
                                 onChange={(e) => updateItem(item.item_code, 'quantity', e.target.value)}
-                                className="w-full px-2 py-1 font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                className="w-full px-2 py-1 font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                               />
                             </div>
 
@@ -658,7 +676,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                                 required
                                 value={item.unit_price}
                                 onChange={(e) => updateItem(item.item_code, 'unit_price', e.target.value)}
-                                className="w-full px-2 py-1 font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                className="w-full px-2 py-1 font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                               />
                             </div>
 
@@ -678,7 +696,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                                     setGstDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
                                     fetchGstSuggestions(item.item_code, gstSearchInput[item.item_code] || '');
                                   }}
-                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
+                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
                                   autoComplete="off"
                                 />
                                 {item.gst_type && (
@@ -693,7 +711,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                               </div>
 
                               {gstDropdownOpen[item.item_code] && (gstSuggestions[item.item_code] || []).length > 0 && (
-                                <div className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
+                                <div className="absolute z-50 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
                                   {(gstSuggestions[item.item_code] || []).map(g => (
                                     <button
                                       key={g.id}
@@ -711,12 +729,15 @@ export default function CreateReceivedPurchaseOrderForm() {
 
                             {/* Per-item Delivery Date */}
                             <div>
-                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Delivery Date</label>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                                Delivery Date <b className="text-red-500">*</b>
+                              </label>
                               <input
                                 type="date"
-                                value={item.delivery_date}
+                                required={!formData.delivery_date}
+                                value={item.delivery_date || formData.delivery_date || ''}
                                 onChange={(e) => updateItem(item.item_code, 'delivery_date', e.target.value)}
-                                className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                               />
                             </div>
 
@@ -736,7 +757,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                                     setShipDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
                                     fetchShipSuggestions(item.item_code, shipInput[item.item_code] || '');
                                   }}
-                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
+                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
                                   autoComplete="off"
                                 />
                                 {item.shipping_address && (
@@ -751,7 +772,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                               </div>
 
                               {shipDropdownOpen[item.item_code] && (shipSuggestions[item.item_code] || []).length > 0 && (
-                                <div className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
+                                <div className="absolute z-50 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
                                   {(shipSuggestions[item.item_code] || []).map(c => (
                                     <button
                                       key={c.id}
@@ -769,7 +790,8 @@ export default function CreateReceivedPurchaseOrderForm() {
                           </div>
                         )}
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 </div>
               </div>
@@ -787,7 +809,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                     min="0"
                     value={formData.transport}
                     onChange={set('transport')}
-                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                    className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                   />
                 </div>
                 <div>
@@ -798,7 +820,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                     min="0"
                     value={formData.packing_forward}
                     onChange={set('packing_forward')}
-                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                    className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                   />
                 </div>
                 <div>
@@ -809,7 +831,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                     min="0"
                     value={formData.basic_value}
                     onChange={set('basic_value')}
-                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                    className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                   />
                 </div>
                 <div>
@@ -820,7 +842,7 @@ export default function CreateReceivedPurchaseOrderForm() {
                     min="0"
                     value={formData.other}
                     onChange={set('other')}
-                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                    className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                   />
                 </div>
               </div>

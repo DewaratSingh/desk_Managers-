@@ -121,7 +121,7 @@ function GrnForm({ tradeId, deliveryNoteNo, dnItems, existingGrn, onSaved }) {
       {/* Rejection Checkbox */}
       <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer"
         onClick={() => setHasRejection(v => !v)}>
-        <div className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-colors ${hasRejection ? 'bg-amber-500 border-amber-500' : 'border-slate-400 bg-white'}`}>
+        <div className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-colors ${hasRejection ? 'bg-amber-500 border-amber-500' : 'border-slate-400  bg-[white]'}`}>
           {hasRejection && <span className="text-white text-[10px] font-black">✓</span>}
         </div>
         <span className="text-xs font-bold text-amber-800">Is there any rejection?</span>
@@ -147,7 +147,7 @@ function GrnForm({ tradeId, deliveryNoteNo, dnItems, existingGrn, onSaved }) {
                 <select
                   value={row.item_code}
                   onChange={e => updateRejection(idx, 'item_code', e.target.value)}
-                  className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400 bg-white font-mono"
+                  className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400  bg-[white] font-mono"
                 >
                   <option value="">Select Item</option>
                   {dnItems.map(item => (
@@ -277,7 +277,7 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
   // ── Already submitted GRN view ──
   if (noteGrn && !showForm) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         {/* Header */}
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
@@ -285,12 +285,12 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
             Goods Received Note
           </span>
           <div className="flex items-center gap-3">
-            <span className="font-mono text-xs font-bold text-slate-800 bg-white border border-slate-200 px-2 py-0.5 rounded">
+            <span className="font-mono text-xs font-bold text-slate-800  bg-[white] border border-slate-200 px-2 py-0.5 rounded">
               {noteGrn.grn_no}
             </span>
             <button
               onClick={handleShowForm}
-              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
             >
               <Edit2 size={10} /> Edit GRN
             </button>
@@ -327,7 +327,7 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
                       <th className="px-4 py-2.5">Reason</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-red-100 bg-white">
+                  <tbody className="divide-y divide-red-100  bg-[white]">
                     {noteGrn.rejection_items.map((item, idx) => (
                       <tr key={idx} className="hover:bg-red-50 transition-colors">
                         <td className="px-4 py-3">
@@ -361,7 +361,7 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
   if (!noteGrn) {
     if (showForm) {
       return (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
             <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
               <ClipboardCheck size={14} style={{ color: 'var(--theme-color)' }} />
@@ -389,7 +389,7 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
     }
 
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm space-y-4">
+      <div className=" bg-[white] border border-slate-200 rounded-xl p-6 text-center shadow-sm space-y-4">
         <div className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center mx-auto" style={{ color: 'var(--theme-color)' }}>
           <ClipboardCheck size={20} />
         </div>
@@ -412,7 +412,7 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
 
   // ── Edit mode ──
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
           <ClipboardCheck size={14} style={{ color: 'var(--theme-color)' }} />
@@ -487,7 +487,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
   // Render when no Delivery Notes exist yet
   if (deliveryNotes.length === 0) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
+      <div className=" bg-[white] border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
         <div className="w-12 h-12 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center mx-auto" style={{ color: 'var(--theme-color)' }}>
           <Truck size={24} />
         </div>
@@ -550,7 +550,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
               className={`flex flex-col items-start min-w-[150px] p-3.5 rounded-xl border text-left transition-all duration-150 cursor-pointer ${
                 isSelected
                   ? 'border-[var(--theme-color)] bg-indigo-50/5 text-indigo-700 ring-1 ring-[var(--theme-color)] shadow-xs'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  : 'border-slate-200  bg-[white] text-slate-600 hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
               <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Dispatch #{idx + 1}</span>
@@ -563,7 +563,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
         {/* Log Dispatch Box */}
         <button
           onClick={handleCreateRedirect}
-          className="flex flex-col items-center justify-center min-w-[150px] p-3.5 rounded-xl border border-dashed border-slate-300 hover:border-slate-400 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-50 hover:shadow-xs transition-all cursor-pointer"
+          className="flex flex-col items-center justify-center min-w-[150px] p-3.5 rounded-xl border border-dashed border-slate-300 hover:border-slate-400  bg-[white] text-slate-500 hover:text-slate-700 hover:bg-slate-50 hover:shadow-xs transition-all cursor-pointer"
         >
           <Plus size={16} />
           <span className="text-[9px] font-black uppercase tracking-wider mt-1.5">Log Dispatch</span>
@@ -575,7 +575,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
         <div className="space-y-4">
           <div
             ref={containerRef}
-            className={`bg-white border rounded-xl overflow-hidden shadow-sm transition-all duration-500 ${
+            className={` bg-[white] border rounded-xl overflow-hidden shadow-sm transition-all duration-500 ${
               focusedDeliveryId && activeNote.delivery_note_no === focusedDeliveryId
                 ? 'ring-2 ring-[var(--theme-color)] shadow-lg scale-[1.01]'
                 : 'border-slate-200'
@@ -598,7 +598,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                 </span>
                 <Link
                   to={`/updateDeliveryNote/${encodeURIComponent(activeNote.delivery_note_no)}`}
-                  className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   <Edit2 size={10} /> Edit Delivery
                 </Link>
@@ -643,7 +643,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                         <th className="px-4 py-2.5 text-center">Next Activity</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
+                    <tbody className="divide-y divide-slate-100  bg-[white]">
                       {activeItems.map((item, idx) => {
                         const total = (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0);
                         const hasActivity = item.next_activity && (item.next_activity.inventory || item.next_activity.sell || item.next_activity.process);
@@ -736,7 +736,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                   return (
                     <div
                       key={inv.invoice_no}
-                      className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"
+                      className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm"
                     >
                       {/* Header */}
                       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
@@ -745,13 +745,13 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                             <FileText size={14} style={{ color: 'var(--theme-color)' }} />
                             Commercial Invoice
                           </span>
-                          <span className="font-mono text-xs font-bold text-slate-800 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                          <span className="font-mono text-xs font-bold text-slate-800  bg-[white] border border-slate-200 px-2 py-0.5 rounded">
                             {inv.invoice_no}
                           </span>
                         </div>
                         <Link
                           to={`/updateInvoice/${encodeURIComponent(inv.invoice_no)}`}
-                          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
                         >
                           <Edit2 size={10} /> Edit Invoice
                         </Link>
@@ -790,7 +790,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                                   <th className="px-4 py-2.5 text-right">Total</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-100 bg-white">
+                              <tbody className="divide-y divide-slate-100  bg-[white]">
                                 {invItems.map((item, idx) => {
                                   const total = (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0);
                                   return (
@@ -851,7 +851,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
               </div>
             ) : (
               /* Prompt when no invoices exist yet for the active Delivery Note */
-              <div className="bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm space-y-4">
+              <div className=" bg-[white] border border-slate-200 rounded-xl p-6 text-center shadow-sm space-y-4">
                 <div className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center mx-auto" style={{ color: 'var(--theme-color)' }}>
                   <FileText size={20} />
                 </div>

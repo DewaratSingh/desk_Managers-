@@ -193,7 +193,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
                       {/* Filter Option Input (Suggests type/status) */}
                       <div className="relative w-full sm:w-56" ref={filterRef}>
-                        <div className="flex items-center gap-2 border border-slate-300 rounded-xl px-3 py-2 bg-white shadow-sm transition-colors focus-within:border-[var(--theme-color)]">
+                        <div className="flex items-center gap-2 border border-slate-300 rounded-xl px-3 py-2  bg-[white] shadow-sm transition-colors focus-within:border-[var(--theme-color)]">
                           <input
                             type="text"
                             placeholder="Filter by type or status..."
@@ -222,7 +222,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                           )}
                         </div>
                         {showSuggestions && suggestions.length > 0 && (
-                          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto animate-fade-in">
+                          <div className="absolute z-20 top-full left-0 right-0 mt-1  bg-[white] border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto animate-fade-in">
                             {suggestions.map((opt) => (
                               <button
                                 key={opt.label}
@@ -263,7 +263,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                           <th className="px-4 py-2.5">Created Date</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200 bg-white">
+                      <tbody className="divide-y divide-slate-200  bg-[white]">
                         {trades.map((trade) => (
                           <tr 
                             key={trade.trade_id} 

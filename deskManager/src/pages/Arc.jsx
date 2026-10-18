@@ -422,7 +422,7 @@ export default function ArcView() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm">
+          <div className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2  bg-[white] shadow-sm">
             <Search size={18} className="text-slate-400 shrink-0" />
             <input
               type="text"
@@ -449,7 +449,7 @@ export default function ArcView() {
                     setSelectedContract(contract);
                     fetchContractDetails(contract);
                   }}
-                  className="bg-white border border-slate-300 rounded-xl p-5 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all group relative"
+                  className=" bg-[white] border border-slate-300 rounded-xl p-5 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all group relative"
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div className="bg-blue-50 text-blue-700 p-2 rounded-lg">
@@ -522,7 +522,7 @@ export default function ArcView() {
             </div>
           )}
 
-          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSaveContract} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
@@ -551,10 +551,10 @@ export default function ArcView() {
                   ].map(({ value, label, color }) => {
                     const active = contractType === value;
                     const styles = {
-                      blue:    active ? 'bg-blue-600 text-white border-blue-600'           : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-50',
-                      emerald: active ? 'bg-emerald-600 text-white border-emerald-600'     : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50',
-                      violet:  active ? 'bg-violet-600 text-white border-violet-600'       : 'bg-white text-violet-700 border-violet-300 hover:bg-violet-50',
-                      amber:   active ? 'bg-amber-500 text-white border-amber-500'         : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50',
+                      blue:    active ? 'bg-blue-600 text-white border-blue-600'           : ' bg-[white] text-blue-700 border-blue-300 hover:bg-blue-50',
+                      emerald: active ? 'bg-emerald-600 text-white border-emerald-600'     : ' bg-[white] text-emerald-700 border-emerald-300 hover:bg-emerald-50',
+                      violet:  active ? 'bg-violet-600 text-white border-violet-600'       : ' bg-[white] text-violet-700 border-violet-300 hover:bg-violet-50',
+                      amber:   active ? 'bg-amber-500 text-white border-amber-500'         : ' bg-[white] text-amber-700 border-amber-300 hover:bg-amber-50',
                     };
                     return (
                       <button
@@ -591,7 +591,7 @@ export default function ArcView() {
                   required
                 />
                 {showBuyerDropdown && buyerSuggestions.length > 0 && (
-                  <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                     {buyerSuggestions.slice(0, 6).map(b => (
                       <button
                         key={b.id}
@@ -659,7 +659,7 @@ export default function ArcView() {
             Back to Contracts
           </button>
           
-          <div className="bg-white border border-slate-300 rounded-xl p-6 flex justify-between items-start shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-xl p-6 flex justify-between items-start shadow-sm">
             <div>
               <h1 className="text-2xl font-bold text-slate-900 m-0">{selectedContract.company_name}</h1>
               {selectedContract.buyer_name && (
@@ -718,7 +718,7 @@ export default function ArcView() {
                       autoComplete="off"
                     />
                     {showDropdown && suggestions.length > 0 && (
-                      <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                         {suggestions.map(i => (
                           <button
                             key={i.item_code} type="button" onClick={() => handleSelectItem(i)}
@@ -778,7 +778,7 @@ export default function ArcView() {
                   </div>
 
                   <div className="flex gap-2">
-                    <button type="button" onClick={resetItemForm} className="px-4 py-2 border border-slate-300 bg-white rounded text-sm font-bold text-slate-700">
+                    <button type="button" onClick={resetItemForm} className="px-4 py-2 border border-slate-300  bg-[white] rounded text-sm font-bold text-slate-700">
                       Cancel
                     </button>
                     <button
@@ -795,7 +795,7 @@ export default function ArcView() {
           })()}
 
           {/* Items Table */}
-          <div className="bg-white border border-slate-300 rounded-lg overflow-hidden shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-lg overflow-hidden shadow-sm">
             <div className="bg-slate-100 px-5 py-3 border-b border-slate-300 font-bold text-xs text-slate-700 uppercase flex items-center gap-1.5">
               <Package size={14} className="text-blue-600" /> Contract Items ({contractItems.length})
             </div>
@@ -886,7 +886,7 @@ export default function ArcView() {
       )}
       {historyItem && (
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+          <div className=" bg-[white] rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
             <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-lg text-slate-900">Price History</h3>

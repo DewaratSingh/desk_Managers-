@@ -2,6 +2,50 @@ const express = require('express');
 const router = express.Router();
 const { pool, appendDocToTrade } = require('../db');
 
+/**
+ * Computes margin for a sold item based on selling price and inventory cost price,
+ * averages it with the existing margin in items table, and updates items.margin.
+ */
+async function updateItemMarginOnDelivery(client, itemDbId, sellPrice, costPrice, companyId) {
+  try {
+    if (sellPrice <= 0 && costPrice <= 0) return;
+
+    // Calculate current margin percentage
+    let currentMargin = 0;
+    if (costPrice > 0) {
+      currentMargin = ((sellPrice - costPrice) / costPrice) * 100;
+    } else if (sellPrice > 0) {
+      currentMargin = 100; // 100% margin when cost is zero
+    }
+
+    // Retrieve existing margin from items table
+    const itemRes = await client.query(
+      'SELECT margin FROM items WHERE id = $1 AND company_id = $2',
+      [itemDbId, companyId]
+    );
+
+    let newMargin = currentMargin;
+    if (itemRes.rows.length > 0 && itemRes.rows[0].margin !== null) {
+      const existingMargin = parseFloat(itemRes.rows[0].margin);
+      // Average with existing margin if an existing non-zero margin is present
+      if (!isNaN(existingMargin) && existingMargin !== 0) {
+        newMargin = (existingMargin + currentMargin) / 2;
+      } else {
+        newMargin = currentMargin;
+      }
+    }
+
+    newMargin = parseFloat(newMargin.toFixed(2));
+
+    await client.query(
+      'UPDATE items SET margin = $1 WHERE id = $2 AND company_id = $3',
+      [newMargin, itemDbId, companyId]
+    );
+  } catch (err) {
+    console.error(`Failed to update item margin for item ID ${itemDbId}:`, err.message);
+  }
+}
+
 // GET a single Delivery Note details by delivery_note_no
 router.get('/:delivery_note_no', async (req, res) => {
   const { delivery_note_no } = req.params;
@@ -341,11 +385,26 @@ router.post('/', async (req, res) => {
       if (!isBuyTrade) {
         // SELL / ARC TRADE: deduct from existing trace rows
         const allocations = Array.isArray(item.stock_allocations) ? item.stock_allocations : [];
+        let totalAllocCost = 0;
+        let totalAllocQty = 0;
+
         for (const alloc of allocations) {
           const allocQty = parseFloat(alloc.qty) || 0;
           const targetTraceId = parseInt(alloc.trace_id);
 
           if (targetTraceId && allocQty > 0) {
+            // Retrieve cost price from trace before updating or deleting
+            const traceFetch = await client.query(
+              'SELECT cost_price FROM trace WHERE id = $1 AND company_id = $2',
+              [targetTraceId, companyId]
+            );
+            const traceCost = traceFetch.rows.length > 0
+              ? (parseFloat(traceFetch.rows[0].cost_price) || 0)
+              : (parseFloat(alloc.cost_price) || 0);
+
+            totalAllocCost += allocQty * traceCost;
+            totalAllocQty += allocQty;
+
             const traceUpdate = await client.query(
               `UPDATE trace SET qty = GREATEST(qty - $1, 0) WHERE id = $2 AND company_id = $3 RETURNING qty`,
               [allocQty, targetTraceId, companyId]
@@ -357,6 +416,42 @@ router.post('/', async (req, res) => {
             }
           }
         }
+
+        // Determine cost price
+        let costPrice = 0;
+        if (totalAllocQty > 0) {
+          costPrice = totalAllocCost / totalAllocQty;
+        } else if (item.inv_details && item.inv_details.cost_price) {
+          costPrice = parseFloat(item.inv_details.cost_price) || 0;
+        } else {
+          const avgTraceRes = await client.query(
+            'SELECT COALESCE(AVG(cost_price), 0.00) AS avg_cost FROM trace WHERE item_code = $1 AND company_id = $2',
+            [itemDbId, companyId]
+          );
+          if (avgTraceRes.rows.length > 0) {
+            costPrice = parseFloat(avgTraceRes.rows[0].avg_cost) || 0;
+          }
+        }
+
+        // Determine sell price
+        let sellPrice = parseFloat(item.rate_per_piece) || 0;
+        if (sellPrice <= 0 && roDbId) {
+          const roPriceRes = await client.query(
+            'SELECT unit_price FROM release_order_items WHERE ro_id = $1 AND item_id = $2 AND company_id = $3 LIMIT 1',
+            [roDbId, itemDbId, companyId]
+          );
+          if (roPriceRes.rows.length > 0) sellPrice = parseFloat(roPriceRes.rows[0].unit_price) || 0;
+        }
+        if (sellPrice <= 0 && poDbId) {
+          const poPriceRes = await client.query(
+            'SELECT unit_price FROM purchase_order_items WHERE po_id = $1 AND item_id = $2 AND company_id = $3 LIMIT 1',
+            [poDbId, itemDbId, companyId]
+          );
+          if (poPriceRes.rows.length > 0) sellPrice = parseFloat(poPriceRes.rows[0].unit_price) || 0;
+        }
+
+        // Update item margin in items table
+        await updateItemMarginOnDelivery(client, itemDbId, sellPrice, costPrice, companyId);
       } else {
         // BUY TRADE: create or merge trace row in an inventory location
         const invQty = parseFloat(item.inv_qty) || 0;
@@ -632,10 +727,13 @@ router.put('/:delivery_note_no', async (req, res) => {
     let trade_code = null;
     let ppoDbId = null;
     let ppoMessage = null, ppoNo = null, ppoJobIds = null;
-    const tradeRes = await client.query('SELECT t.id, t.trade_id, t.trade_type FROM delivery_notes dn JOIN trades t ON dn.trade_id = t.id WHERE dn.delivery_note_no = $1 AND dn.company_id = $2', [delivery_note_no, companyId]);
+    let poDbId = null, roDbId = null;
+    const tradeRes = await client.query('SELECT t.id, t.trade_id, t.trade_type, dn.po_id, dn.ro_id FROM delivery_notes dn JOIN trades t ON dn.trade_id = t.id WHERE dn.delivery_note_no = $1 AND dn.company_id = $2', [delivery_note_no, companyId]);
     if (tradeRes.rows.length > 0) {
       tradeDbId = tradeRes.rows[0].id;
       trade_code = tradeRes.rows[0].trade_id;
+      poDbId = tradeRes.rows[0].po_id;
+      roDbId = tradeRes.rows[0].ro_id;
       const ppoRes = await client.query('SELECT pp.id, pp.message, pp.po_no, pp.job_ids FROM process_po pp WHERE pp.trade_id = $1 AND pp.company_id = $2', [tradeDbId, companyId]);
       if (ppoRes.rows.length > 0) {
         ppoDbId = ppoRes.rows[0].id;
@@ -660,10 +758,25 @@ router.put('/:delivery_note_no', async (req, res) => {
       if (!isBuyTrade) {
         // SELL / ARC TRADE
         const allocations = Array.isArray(item.stock_allocations) ? item.stock_allocations : [];
+        let totalAllocCost = 0;
+        let totalAllocQty = 0;
+
         for (const alloc of allocations) {
           const allocQty = parseFloat(alloc.qty) || 0;
           const targetTraceId = parseInt(alloc.trace_id);
           if (targetTraceId && allocQty > 0) {
+            // Retrieve cost price from trace before updating or deleting
+            const traceFetch = await client.query(
+              'SELECT cost_price FROM trace WHERE id = $1 AND company_id = $2',
+              [targetTraceId, companyId]
+            );
+            const traceCost = traceFetch.rows.length > 0
+              ? (parseFloat(traceFetch.rows[0].cost_price) || 0)
+              : (parseFloat(alloc.cost_price) || 0);
+
+            totalAllocCost += allocQty * traceCost;
+            totalAllocQty += allocQty;
+
             const traceUpdate = await client.query(
               `UPDATE trace SET qty = GREATEST(qty - $1, 0) WHERE id = $2 AND company_id = $3 RETURNING qty`,
               [allocQty, targetTraceId, companyId]
@@ -673,6 +786,42 @@ router.put('/:delivery_note_no', async (req, res) => {
             }
           }
         }
+
+        // Determine cost price
+        let costPrice = 0;
+        if (totalAllocQty > 0) {
+          costPrice = totalAllocCost / totalAllocQty;
+        } else if (item.inv_details && item.inv_details.cost_price) {
+          costPrice = parseFloat(item.inv_details.cost_price) || 0;
+        } else {
+          const avgTraceRes = await client.query(
+            'SELECT COALESCE(AVG(cost_price), 0.00) AS avg_cost FROM trace WHERE item_code = $1 AND company_id = $2',
+            [itemDbId, companyId]
+          );
+          if (avgTraceRes.rows.length > 0) {
+            costPrice = parseFloat(avgTraceRes.rows[0].avg_cost) || 0;
+          }
+        }
+
+        // Determine sell price
+        let sellPrice = parseFloat(item.rate_per_piece) || 0;
+        if (sellPrice <= 0 && roDbId) {
+          const roPriceRes = await client.query(
+            'SELECT unit_price FROM release_order_items WHERE ro_id = $1 AND item_id = $2 AND company_id = $3 LIMIT 1',
+            [roDbId, itemDbId, companyId]
+          );
+          if (roPriceRes.rows.length > 0) sellPrice = parseFloat(roPriceRes.rows[0].unit_price) || 0;
+        }
+        if (sellPrice <= 0 && poDbId) {
+          const poPriceRes = await client.query(
+            'SELECT unit_price FROM purchase_order_items WHERE po_id = $1 AND item_id = $2 AND company_id = $3 LIMIT 1',
+            [poDbId, itemDbId, companyId]
+          );
+          if (poPriceRes.rows.length > 0) sellPrice = parseFloat(poPriceRes.rows[0].unit_price) || 0;
+        }
+
+        // Update item margin in items table
+        await updateItemMarginOnDelivery(client, itemDbId, sellPrice, costPrice, companyId);
       } else {
         // BUY TRADE
         const invQty = parseFloat(item.inv_qty) || 0;

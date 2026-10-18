@@ -414,7 +414,7 @@ export default function InventoryView() {
 
           {/* Search Bar */}
           <div 
-            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2.5 bg-white shadow-sm transition-colors"
+            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2.5  bg-[white] shadow-sm transition-colors"
             style={{ borderColor: searchFocused ? 'var(--theme-color)' : 'rgb(203, 213, 225)' }}
           >
             <Search size={18} className="text-slate-400 shrink-0" />
@@ -430,7 +430,7 @@ export default function InventoryView() {
           </div>
 
           {/* Directory Grid */}
-          <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-sm">
+          <div className="border border-slate-300 rounded-lg overflow-hidden  bg-[white] shadow-sm">
             <div className="bg-slate-50 px-5 py-3.5 border-b border-slate-300 flex justify-between items-center">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <ListFilter size={14} style={{ color: 'var(--theme-color)' }} />
@@ -457,13 +457,13 @@ export default function InventoryView() {
                         <th className="px-5 py-3">Item Details</th>
                         <th className="px-5 py-3">Location Details</th>
                         <th className="px-5 py-3 text-right">Quantity</th>
-                        <th className="px-5 py-3 text-right">Price</th>
+                        <th className="px-5 py-3 text-right">Unit Price</th>
                         <th className="px-5 py-3">Status</th>
                         <th className="px-5 py-3">Trace</th>
                         <th className="px-5 py-3 text-center">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
+                    <tbody className="divide-y divide-slate-200  bg-[white]">
                       {inventoryList.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                           {/* Item details */}
@@ -534,14 +534,14 @@ export default function InventoryView() {
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 onClick={() => handleEditClick(item)}
-                                className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-[var(--theme-color)] hover:border-[var(--theme-color)] bg-white transition-colors cursor-pointer"
+                                className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-[var(--theme-color)] hover:border-[var(--theme-color)]  bg-[white] transition-colors cursor-pointer"
                                 title="Edit Stock"
                               >
                                 <Edit2 size={12} />
                               </button>
                               <button
                                 onClick={() => navigate(`/inventory/trace-history/${item.id}`)}
-                                className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-purple-600 hover:border-purple-600 bg-white transition-colors cursor-pointer"
+                                className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-purple-600 hover:border-purple-600  bg-[white] transition-colors cursor-pointer"
                                 title="View Trace History"
                               >
                                 <GitCommit size={12} />
@@ -561,7 +561,7 @@ export default function InventoryView() {
                       type="button"
                       onClick={() => fetchInventory(true, searchQuery)}
                       disabled={isLoading}
-                      className="flex items-center gap-1.5 px-5 py-2.5 bg-white border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-1.5 px-5 py-2.5  bg-[white] border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isLoading ? (
                         <><RefreshCw size={12} className="animate-spin text-slate-400" /> Loading...</>
@@ -595,7 +595,7 @@ export default function InventoryView() {
             </h1>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-200 rounded-xl p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-5">
               {linkMetadata && (
                 <div
@@ -631,11 +631,11 @@ export default function InventoryView() {
                       onChange={(e) => handleItemInput(e.target.value)}
                       onFocus={() => !editingId && (!linkMetadata || !linkMetadata.item_code) && setShowItemDropdown(true)}
                       disabled={!!editingId || (!!linkMetadata && !!linkMetadata.item_code)}
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                      className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                       autoComplete="off"
                     />
                     {showItemDropdown && items.length > 0 && (
-                      <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto overflow-x-hidden animate-fade-in divide-y divide-slate-100">
+                      <div className="absolute z-30 top-full left-0 right-0 mt-1  bg-[white] border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto overflow-x-hidden animate-fade-in divide-y divide-slate-100">
                         {items.map((item) => (
                           <button
                             key={item.item_code}
@@ -670,11 +670,11 @@ export default function InventoryView() {
                       onChange={(e) => handleTradeInput(e.target.value)}
                       onFocus={() => !editingId && !linkMetadata && setShowTradeDropdown(true)}
                       disabled={!!editingId || !!linkMetadata}
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                      className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                       autoComplete="off"
                     />
                     {showTradeDropdown && trades.length > 0 && (
-                      <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto overflow-x-hidden animate-fade-in divide-y divide-slate-100">
+                      <div className="absolute z-30 top-full left-0 right-0 mt-1  bg-[white] border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto overflow-x-hidden animate-fade-in divide-y divide-slate-100">
                         {trades.map((t) => (
                           <button
                             key={t.trade_id}
@@ -711,7 +711,7 @@ export default function InventoryView() {
                     value={formData.qty}
                     onChange={set('qty')}
                     disabled={!!editingId}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                   {editingId && (
                     <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
@@ -733,7 +733,7 @@ export default function InventoryView() {
                     value={formData.cost_price || ''}
                     onChange={set('cost_price')}
                     disabled={!!editingId || (!!linkMetadata && linkMetadata.returnUrl !== '/manufacture')}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   />
                   {(editingId || (linkMetadata && linkMetadata.returnUrl !== '/manufacture')) && (
                     <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
@@ -795,7 +795,7 @@ export default function InventoryView() {
                         className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
                           selectedPositionId === null
                             ? 'shadow-2xs'
-                            : 'border-dashed border-slate-300 hover:border-slate-400 bg-white'
+                            : 'border-dashed border-slate-300 hover:border-slate-400  bg-[white]'
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -806,7 +806,7 @@ export default function InventoryView() {
                               backgroundColor: selectedPositionId === null ? 'var(--theme-color)' : 'white'
                             }}
                           >
-                            {selectedPositionId === null && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            {selectedPositionId === null && <div className="w-1.5 h-1.5 rounded-full  bg-[white]" />}
                           </div>
                           <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
                             <Plus size={14} style={{ color: 'var(--theme-color)' }} />
@@ -832,7 +832,7 @@ export default function InventoryView() {
                             className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
                               isSelected
                                 ? 'shadow-2xs'
-                                : 'border-slate-200 hover:border-slate-300 bg-white'
+                                : 'border-slate-200 hover:border-slate-300  bg-[white]'
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -844,7 +844,7 @@ export default function InventoryView() {
                                     backgroundColor: isSelected ? 'var(--theme-color)' : 'white'
                                   }}
                                 >
-                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full  bg-[white]" />}
                                 </div>
                                 <div>
                                   <div className="text-xs font-bold text-slate-900 flex items-center gap-1">
@@ -901,14 +901,14 @@ export default function InventoryView() {
                       setShowLocationDropdown(true);
                     }}
                     onFocus={() => setShowLocationDropdown(true)}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                   />
                   {showLocationDropdown && existingPositions.length > 0 && (() => {
                     const filtered = existingPositions.filter(pos =>
                       !formData.location || (pos.location || '').toLowerCase().includes(formData.location.toLowerCase())
                     );
                     return filtered.length > 0 ? (
-                      <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto animate-fade-in divide-y divide-slate-100">
+                      <div className="absolute z-30 top-full left-0 right-0 mt-1  bg-[white] border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto animate-fade-in divide-y divide-slate-100">
                         {filtered.map((pos) => (
                           <button
                             key={pos.id}
@@ -957,7 +957,7 @@ export default function InventoryView() {
                           Selected Location Merger & Weighted Average Price Preview
                         </span>
                         <span
-                          className="text-[10px] font-mono font-bold bg-white border px-2 py-0.5 rounded shadow-2xs"
+                          className="text-[10px] font-mono font-bold  bg-[white] border px-2 py-0.5 rounded shadow-2xs"
                           style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
                         >
                           Merging into TR-{selectedPos.id}
@@ -965,21 +965,21 @@ export default function InventoryView() {
                       </div>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
-                        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                        <div className=" bg-[white] p-2 rounded-lg border border-slate-200 shadow-2xs">
                           <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Existing Stock</div>
                           <div className="font-black text-slate-900">{fmtQty(existingQty)} pcs</div>
                           <div className="text-[10px] text-slate-600">@ ₹{existingPrice.toFixed(2)}</div>
                         </div>
-                        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                        <div className=" bg-[white] p-2 rounded-lg border border-slate-200 shadow-2xs">
                           <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Added Stock</div>
                           <div className="font-black" style={{ color: 'var(--theme-color)' }}>+{fmtQty(addedQty)} pcs</div>
                           <div className="text-[10px] text-slate-600">@ ₹{addedPrice.toFixed(2)}</div>
                         </div>
-                        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                        <div className=" bg-[white] p-2 rounded-lg border border-slate-200 shadow-2xs">
                           <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Updated Total Qty</div>
                           <div className="font-black text-emerald-700">{fmtQty(finalQty)} pcs</div>
                         </div>
-                        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                        <div className=" bg-[white] p-2 rounded-lg border border-slate-200 shadow-2xs">
                           <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Weighted Avg Price</div>
                           <div className="font-black text-slate-900">₹{avgPrice.toFixed(2)} / pc</div>
                         </div>
@@ -1001,7 +1001,7 @@ export default function InventoryView() {
                       placeholder="e.g. For process, For Sell, In Inventory, manufacturing, active..."
                       value={formData.status || ''}
                       onChange={set('status')}
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
+                      className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                     />
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -1018,7 +1018,7 @@ export default function InventoryView() {
                         className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
                           formData.status === preset
                             ? 'shadow-xs'
-                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            : ' bg-[white] text-slate-700 border-slate-300 hover:bg-slate-50'
                         }`}
                       >
                         {preset}
@@ -1041,7 +1041,7 @@ export default function InventoryView() {
                   placeholder="Enter any specific storage instructions or details..."
                   value={formData.message}
                   onChange={set('message')}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all resize-y"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all resize-y"
                 />
               </div>
 

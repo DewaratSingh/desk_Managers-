@@ -6,6 +6,59 @@ const { pool } = require('../db');
 //  JOB routes  /api/manufacture/jobs
 // ─────────────────────────────────────────────
 
+// Helper: Enrich source items with trace prices if missing
+async function enrichJobsWithPrices(jobs, companyId) {
+  if (!Array.isArray(jobs) || jobs.length === 0) return jobs;
+
+  const traceIds = new Set();
+  for (const job of jobs) {
+    const sItems = Array.isArray(job.source_items)
+      ? job.source_items
+      : (typeof job.source_items === 'string' ? JSON.parse(job.source_items) : []);
+
+    for (const item of sItems) {
+      const tid = item.trace_id || item.trace_item_id;
+      if (tid && (item.price === undefined || item.price === null || item.price === '')) {
+        const parsedTid = parseInt(tid, 10);
+        if (!isNaN(parsedTid)) traceIds.add(parsedTid);
+      }
+    }
+  }
+
+  if (traceIds.size > 0) {
+    const traceIdArray = Array.from(traceIds);
+    try {
+      const traceRes = await pool.query(
+        'SELECT id, cost_price FROM trace WHERE id = ANY($1) AND company_id = $2',
+        [traceIdArray, companyId]
+      );
+      const traceMap = {};
+      for (const row of traceRes.rows) {
+        traceMap[row.id] = row.cost_price;
+      }
+
+      for (const job of jobs) {
+        let sItems = Array.isArray(job.source_items)
+          ? job.source_items
+          : (typeof job.source_items === 'string' ? JSON.parse(job.source_items) : []);
+
+        job.source_items = sItems.map(item => {
+          const tid = item.trace_id || item.trace_item_id;
+          const cost = tid && traceMap[tid] !== undefined ? traceMap[tid] : 0;
+          return {
+            ...item,
+            price: (item.price !== undefined && item.price !== null && item.price !== '') ? item.price : cost
+          };
+        });
+      }
+    } catch (err) {
+      console.error('Error enriching jobs with trace prices:', err.message);
+    }
+  }
+
+  return jobs;
+}
+
 // GET all jobs
 router.get('/jobs', async (req, res) => {
   try {
@@ -31,7 +84,8 @@ router.get('/jobs', async (req, res) => {
        ORDER BY j.created_at DESC`,
       [req.user.company_id]
     );
-    res.json(result.rows);
+    const enriched = await enrichJobsWithPrices(result.rows, req.user.company_id);
+    res.json(enriched);
   } catch (err) {
     console.error('GET /jobs error:', err.message);
     res.status(500).json({ error: 'Failed to fetch jobs' });
@@ -61,7 +115,8 @@ router.get('/jobs/:id', async (req, res) => {
       [id, req.user.company_id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Job not found' });
-    res.json(result.rows[0]);
+    const enriched = await enrichJobsWithPrices(result.rows, req.user.company_id);
+    res.json(enriched[0]);
   } catch (err) {
     console.error('GET /jobs/:id error:', err.message);
     res.status(500).json({ error: 'Failed to fetch job' });
@@ -297,8 +352,10 @@ router.put('/jobs/:id/complete-production', async (req, res) => {
     }
 
     for (const tgt of target_items) {
-      const { item_code, completed_qty, location, target_status, cost_price } = tgt;
+      const { item_code, completed_qty, location, target_status, cost_price, price } = tgt;
       if (!item_code || !completed_qty || completed_qty <= 0) continue;
+
+      const itemPrice = parseFloat(cost_price !== undefined ? cost_price : (price !== undefined ? price : 0)) || 0;
 
       if (target_status === 'Scrapped') {
         const mRes = await client.query('SELECT loss_qty FROM manufacture WHERE job_id = $1 AND company_id = $2 FOR UPDATE', [id, companyId]);
@@ -346,6 +403,7 @@ router.put('/jobs/:id/complete-production', async (req, res) => {
             trace: jobProcessName,
             date: new Date().toISOString(),
             job_id: id,
+            price: itemPrice,
             remarks: remarks,
             sources: sourceHistories
           }
@@ -357,7 +415,7 @@ router.put('/jobs/:id/complete-production', async (req, res) => {
           [
             itemDbId,
             completed_qty,
-            cost_price || 0,
+            itemPrice,
             invId,
             target_status || 'In Inventory',
             JSON.stringify(finalHistory),
@@ -366,10 +424,11 @@ router.put('/jobs/:id/complete-production', async (req, res) => {
         );
       }
 
-      // 4. Update the delivered_qty in the target_item array
+      // 4. Update the delivered_qty and price in the target_item array
       for (const dbItem of dbTargetItems) {
         if (dbItem.item_code === item_code) {
           dbItem.delivered_qty = (dbItem.delivered_qty || 0) + completed_qty;
+          dbItem.price = itemPrice;
         }
       }
     }

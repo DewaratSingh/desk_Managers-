@@ -23,7 +23,7 @@ export default function ReceivedQuotationPanel({ receivedQuotation, tradeId, has
       : `/addPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
@@ -36,7 +36,7 @@ export default function ReceivedQuotationPanel({ receivedQuotation, tradeId, has
           </span>
           <Link
             to={`/updateReceivedQuotation/${receivedQuotation.received_quotation_no}?trade_id=${tradeId}`}
-            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <Edit2 size={10} /> Edit
           </Link>
@@ -97,7 +97,7 @@ export default function ReceivedQuotationPanel({ receivedQuotation, tradeId, has
                   <th className="px-4 py-2.5 text-right">Line Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-slate-100  bg-[white]">
                 {(receivedQuotation.items || []).map((item, idx) => {
                   const lineTotal = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
                   return (

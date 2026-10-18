@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { FileText, ArrowLeft, Layers, Package, RefreshCw, Trash2, Building2, User, Truck, Box, DollarSign, Search, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import InventoryTraceSelectorModal from '../components/InventoryTraceSelectorModal';
 import TargetItemSelectorModal from '../components/TargetItemSelectorModal';
 
-export default function ProcessPoForm() {
+export default function ProcessPoForm({ isContractOrder }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+
+  const isContractOrderMode = Boolean(
+    isContractOrder ||
+    location.pathname.startsWith('/addProcessContractOrder') ||
+    searchParams.get('mode') === 'contract'
+  );
 
   const queryTradeId = searchParams.get('trade_id');
   const queryRqId = searchParams.get('received_q_id') || searchParams.get('rq_id') || searchParams.get('number') || searchParams.get('rq_process_id');
@@ -142,6 +149,66 @@ export default function ProcessPoForm() {
     }
   };
 
+  // Populate form fields from a Buy Process Received Quotation record object
+  const populateFromProcessReceivedQuotation = (prq) => {
+    if (!prq) return;
+    if (prq.id) setReceivedQId(String(prq.id));
+    const qtnNo = prq.quotation_number || prq.quotation_no || prq.received_quotation_no;
+    if (qtnNo) {
+      setLinkedRqLabel(qtnNo);
+      setRqSearchInput(qtnNo);
+    }
+    // In Buy Process, Customer/Supplier is the Processor Vendor (Seller), Buyer is our Party (Client)
+    if (prq.customer_name) {
+      setSeller(prq.customer_name);
+      setSellerInput(prq.customer_name);
+    } else if (prq.customer_code) {
+      setSeller(prq.customer_code);
+      setSellerInput(prq.customer_code);
+    }
+    if (prq.buyer_name) {
+      setParty(prq.buyer_name);
+      setPartyInput(prq.buyer_name);
+    }
+    if (prq.quotation_date) {
+      setDateOfStart(prq.quotation_date.split('T')[0]);
+    }
+    if (prq.commercial_bid_due_date) {
+      setDateOfEnd(prq.commercial_bid_due_date.split('T')[0]);
+    } else if (prq.technical_bid_due_date) {
+      setDateOfEnd(prq.technical_bid_due_date.split('T')[0]);
+    }
+
+    const items = Array.isArray(prq.items) ? prq.items : [];
+    if (items.length > 0) {
+      const procNames = [...new Set(items.map(i => i.process_name).filter(Boolean))].join(', ');
+      if (procNames) {
+        setMessage(procNames);
+      }
+
+      // Auto-fill Target Items
+      setTargetItems(items.map(t => ({
+        item_code: t.item_code,
+        description: t.description || '',
+        qty: String(t.quantity || 1),
+        price: String(t.price || 0),
+        process_name: t.process_name || ''
+      })));
+
+      // Auto-fill Source Items with SAME item codes (same material to be processed)
+      const itemCodes = items.map(s => s.item_code).filter(Boolean);
+      setRqSourceItemCodes(itemCodes);
+
+      setSourceItems(items.map(s => ({
+        item_code: s.item_code || '',
+        description: s.description || '',
+        trace_item_id: null,
+        qty: String(s.quantity || 1),
+        available_qty: ''
+      })));
+    }
+  };
+
   // Populate form fields from a Received Quotation record object
   const populateFromReceivedQuotation = (rq) => {
     if (!rq) return;
@@ -162,32 +229,48 @@ export default function ProcessPoForm() {
         item_code: t.item_code,
         description: t.description || '',
         qty: String(t.quantity || 1),
-        price: String(t.unit_price || 0)
+        price: String(t.unit_price || 0),
+        process_name: t.process_name || ''
+      })));
+
+      // Also set allowed source item codes to same codes
+      const itemCodes = rq.items.map(s => s.item_code).filter(Boolean);
+      setRqSourceItemCodes(itemCodes);
+      setSourceItems(rq.items.map(s => ({
+        item_code: s.item_code || '',
+        description: s.description || '',
+        trace_item_id: null,
+        qty: String(s.quantity || 1),
+        available_qty: ''
       })));
     }
   };
 
   // Initial Pre-fill Logic from Query Params (trade_id, received_q_id, number, received_quotation_no)
   useEffect(() => {
-    if (queryRqId) {
-      fetch(`/api/rq-process/${encodeURIComponent(queryRqId)}`)
+    if (isContractOrderMode) return;
+
+    const qtnIdentifier = queryRqId || queryRecQtnNo;
+
+    if (qtnIdentifier) {
+      fetch(`/api/process-received-quotations/${encodeURIComponent(qtnIdentifier)}`)
         .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (data) {
-            populateFromProcessRq(data);
-          } else if (queryRecQtnNo) {
-            return fetch(`/api/received-quotation/${encodeURIComponent(queryRecQtnNo)}`).then(r => r.ok ? r.json() : null);
+        .then(prqData => {
+          if (prqData) {
+            populateFromProcessReceivedQuotation(prqData);
+            return null;
           }
+          return fetch(`/api/rq-process/${encodeURIComponent(qtnIdentifier)}`).then(r => r.ok ? r.json() : null);
+        })
+        .then(rqData => {
+          if (rqData) {
+            populateFromProcessRq(rqData);
+            return null;
+          }
+          return fetch(`/api/received-quotations/${encodeURIComponent(qtnIdentifier)}`).then(r => r.ok ? r.json() : null);
         })
         .then(recData => {
           if (recData) populateFromReceivedQuotation(recData);
-        })
-        .catch(console.error);
-    } else if (queryRecQtnNo) {
-      fetch(`/api/received-quotation/${encodeURIComponent(queryRecQtnNo)}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (data) populateFromReceivedQuotation(data);
         })
         .catch(console.error);
     }
@@ -198,16 +281,22 @@ export default function ProcessPoForm() {
         .then(tradeData => {
           if (tradeData) {
             const docs = tradeData.documents || [];
+            const procRecDoc = docs.find(d => d.type?.toUpperCase() === 'PROCESS_RECEIVED_QUOTATION');
             const prDoc = docs.find(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
             const recDoc = docs.find(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
 
-            if (prDoc && prDoc.id) {
+            if (procRecDoc && procRecDoc.id) {
+              fetch(`/api/process-received-quotations/${encodeURIComponent(procRecDoc.id)}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => data && populateFromProcessReceivedQuotation(data))
+                .catch(console.error);
+            } else if (prDoc && prDoc.id) {
               fetch(`/api/rq-process/${encodeURIComponent(prDoc.id)}`)
                 .then(r => r.ok ? r.json() : null)
                 .then(data => data && populateFromProcessRq(data))
                 .catch(console.error);
             } else if (recDoc && recDoc.id) {
-              fetch(`/api/received-quotation/${encodeURIComponent(recDoc.id)}`)
+              fetch(`/api/received-quotations/${encodeURIComponent(recDoc.id)}`)
                 .then(r => r.ok ? r.json() : null)
                 .then(data => data && populateFromReceivedQuotation(data))
                 .catch(console.error);
@@ -231,9 +320,18 @@ export default function ProcessPoForm() {
     }
     const timer = setTimeout(() => {
       Promise.all([
+        fetch(`/api/process-received-quotations?q=${encodeURIComponent(trimmed)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
         fetch('/api/rq-process').then(r => r.ok ? r.json() : []).catch(() => []),
         fetch(`/api/received-quotations?q=${encodeURIComponent(trimmed)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => [])
-      ]).then(([rqList, recList]) => {
+      ]).then(([prqList, rqList, recList]) => {
+        const filteredPrq = (Array.isArray(prqList) ? prqList : []).map(r => ({
+          ...r,
+          _type: 'PROCESS_RECEIVED_QUOTATION',
+          label: r.quotation_number,
+          seller: r.customer_name,
+          party: r.buyer_name
+        }));
+
         const filteredRq = (Array.isArray(rqList) ? rqList : []).filter(r =>
           (r.number && r.number.toLowerCase().includes(trimmed.toLowerCase())) ||
           (r.party_name && r.party_name.toLowerCase().includes(trimmed.toLowerCase())) ||
@@ -248,7 +346,7 @@ export default function ProcessPoForm() {
           party: r.customer_name
         }));
 
-        setRqSuggestions([...filteredRq, ...filteredRec]);
+        setRqSuggestions([...filteredPrq, ...filteredRq, ...filteredRec]);
         setShowRqDropdown(true);
       });
     }, 200);
@@ -415,8 +513,9 @@ export default function ProcessPoForm() {
         po_no: poNo.trim(),
         date_of_start: dateOfStart,
         date_of_end: dateOfEnd || null,
-        received_q_id: receivedQId || queryRqId || null,
-        trade_id: queryTradeId || null,
+        received_q_id: isContractOrderMode ? null : (receivedQId || queryRqId || null),
+        trade_id: isContractOrderMode ? null : (queryTradeId || null),
+        trade_type: 'BUY_PROCESS',
         seller: seller.trim(),
         party: party.trim(),
         gst_type: gstType,
@@ -442,16 +541,20 @@ export default function ProcessPoForm() {
 
       if (res.ok) {
         const data = await res.json();
-        toast.success(`Process Purchase Order ${data.po_no || ''} created successfully!`);
-        const destTradeId = queryTradeId || data.trade_id;
+        toast.success(
+          isContractOrderMode
+            ? `Buy Process Contract Order ${data.po_no || ''} created successfully!`
+            : `Process Purchase Order ${data.po_no || ''} created successfully!`
+        );
+        const destTradeId = data.trade_id || queryTradeId;
         navigate(destTradeId ? `/trade/${encodeURIComponent(destTradeId)}` : '/dashboard');
       } else {
         const errData = await res.json();
-        toast.error(errData.error || 'Failed to create Process Purchase Order');
+        toast.error(errData.error || (isContractOrderMode ? 'Failed to create Contract Order' : 'Failed to create Process Purchase Order'));
       }
     } catch (err) {
       console.error(err);
-      toast.error('Error creating Process Purchase Order');
+      toast.error(isContractOrderMode ? 'Error creating Contract Order' : 'Error creating Process Purchase Order');
     } finally {
       setIsSaving(false);
     }
@@ -468,9 +571,13 @@ export default function ProcessPoForm() {
               <FileText size={22} />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Create Process Purchase Order</h1>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                {isContractOrderMode ? 'Buy Process Contract Order' : 'Create Process Purchase Order'}
+              </h1>
               <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                Raise an official Process PO for processing raw materials into target items with pricing, vendor details & tax structure.
+                {isContractOrderMode
+                  ? 'Raise a direct Process Contract Order for processing raw materials into target products with auto-registered trade.'
+                  : 'Raise an official Process PO for processing raw materials into target items with pricing, vendor details & tax structure.'}
               </p>
             </div>
           </div>
@@ -478,16 +585,31 @@ export default function ProcessPoForm() {
           <button
             type="button"
             onClick={() => navigate(queryTradeId ? `/trade/${queryTradeId}` : '/dashboard')}
-            className="px-3.5 py-2 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-50 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+            className="px-3.5 py-2  bg-[white] border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-50 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
           >
             <ArrowLeft size={15} /> Back
           </button>
         </div>
 
         {/* FORM CONTAINER CARD */}
-        <div className="border border-slate-300 rounded-3xl bg-white p-6 shadow-sm space-y-6">
+        <div className="border border-slate-300 rounded-3xl  bg-[white] p-6 shadow-sm space-y-6">
 
-          {/* LINKED RECEIVED QUOTATION / PROCESS RQ BANNER & SELECTOR */}
+          {/* LINKED RECEIVED QUOTATION / PROCESS RQ BANNER & SELECTOR OR CONTRACT ORDER BADGE */}
+          {isContractOrderMode ? (
+            <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                  <FileText size={12} className="text-amber-600" /> Direct Buy Process Contract Order
+                </span>
+                <p className="text-xs text-amber-800 font-semibold m-0">
+                  Direct entry mode (no auto-fill). Enter processor seller, client party, output products and raw materials. A new trade will be automatically registered with next-step delivery.
+                </p>
+              </div>
+              <span className="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-lg border border-amber-300 whitespace-nowrap">
+                Direct Trade Mode
+              </span>
+            </div>
+          ) : (
           <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="space-y-0.5">
               <span className="text-[10px] font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1">
@@ -516,20 +638,22 @@ export default function ProcessPoForm() {
                 onFocus={() => {
                   if (rqSearchInput.trim()) setShowRqDropdown(true);
                 }}
-                className="w-full pl-8 pr-3.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                className="w-full pl-8 pr-3.5 py-2  bg-[white] border border-indigo-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
                 autoComplete="off"
               />
               <Search size={14} className="absolute left-2.5 top-2.5 text-indigo-400" />
 
               {showRqDropdown && rqSuggestions.length > 0 && (
-                <div className="absolute right-0 z-50 w-full sm:w-80 mt-1 bg-white border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto text-xs">
+                <div className="absolute right-0 z-50 w-full sm:w-80 mt-1  bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto text-xs">
                   {rqSuggestions.map((item, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onMouseDown={(e) => {
                         e.preventDefault();
-                        if (item._type === 'PROCESS_RQ') {
+                        if (item._type === 'PROCESS_RECEIVED_QUOTATION') {
+                          populateFromProcessReceivedQuotation(item);
+                        } else if (item._type === 'PROCESS_RQ') {
                           populateFromProcessRq(item);
                         } else {
                           populateFromReceivedQuotation(item);
@@ -541,8 +665,18 @@ export default function ProcessPoForm() {
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-slate-900">{item.label}</span>
-                        <span className="text-[9px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded">
-                          {item._type === 'PROCESS_RQ' ? 'Process RQ' : 'Rec Quotation'}
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                          item._type === 'PROCESS_RECEIVED_QUOTATION'
+                            ? 'bg-amber-50 text-amber-800 border-amber-300'
+                            : item._type === 'PROCESS_RQ'
+                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              : 'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}>
+                          {item._type === 'PROCESS_RECEIVED_QUOTATION'
+                            ? 'Process Received Quotation'
+                            : item._type === 'PROCESS_RQ'
+                              ? 'Process RQ'
+                              : 'Rec Quotation'}
                         </span>
                       </div>
                       {(item.seller || item.party) && (
@@ -556,6 +690,7 @@ export default function ProcessPoForm() {
               )}
             </div>
           </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
 
@@ -573,7 +708,7 @@ export default function ProcessPoForm() {
                   placeholder="e.g. PPO-0001"
                   value={poNo}
                   onChange={(e) => setPoNo(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
@@ -587,7 +722,7 @@ export default function ProcessPoForm() {
                   required
                   value={dateOfStart}
                   onChange={(e) => setDateOfStart(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
@@ -600,7 +735,7 @@ export default function ProcessPoForm() {
                   type="date"
                   value={dateOfEnd}
                   onChange={(e) => setDateOfEnd(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
@@ -614,7 +749,7 @@ export default function ProcessPoForm() {
                   placeholder="e.g. Precision machining & polishing"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
@@ -636,11 +771,11 @@ export default function ProcessPoForm() {
                   onFocus={() => {
                     if (sellerInput.trim()) setShowSellerDropdown(true);
                   }}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   autoComplete="off"
                 />
                 {showSellerDropdown && sellerSuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
+                  <div className="absolute z-50 w-full mt-1  bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
                     {sellerSuggestions.map((b) => (
                       <button
                         key={b.id}
@@ -686,11 +821,11 @@ export default function ProcessPoForm() {
                   onFocus={() => {
                     if (partyInput.trim()) setShowPartyDropdown(true);
                   }}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   autoComplete="off"
                 />
                 {showPartyDropdown && partySuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
+                  <div className="absolute z-50 w-full mt-1  bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
                     {partySuggestions.map((c) => (
                       <button
                         key={c.id}
@@ -728,7 +863,7 @@ export default function ProcessPoForm() {
                   placeholder="Factory site address or delivery location"
                   value={shippingAddress}
                   onChange={(e) => setShippingAddress(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
@@ -759,7 +894,7 @@ export default function ProcessPoForm() {
               {sourceItems.length > 0 ? (
                 <div className="space-y-2">
                   {sourceItems.map((src, idx) => (
-                    <div key={idx} className="bg-white border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                    <div key={idx} className=" bg-[white] border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
                       <div className="space-y-0.5 flex-1">
                         <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
                           <span>{src.item_code}</span>
@@ -794,7 +929,7 @@ export default function ProcessPoForm() {
                   ))}
                 </div>
               ) : (
-                <div className="p-6 text-center border border-dashed border-amber-300/80 rounded-xl bg-white text-slate-400 text-xs font-medium">
+                <div className="p-6 text-center border border-dashed border-amber-300/80 rounded-xl  bg-[white] text-slate-400 text-xs font-medium">
                   No Source Items selected. Click "Select Source Trace Items" to pick stock items to process.
                 </div>
               )}
@@ -830,7 +965,7 @@ export default function ProcessPoForm() {
                     const itemTotal = itemQty * itemPrice;
 
                     return (
-                      <div key={idx} className="bg-white border border-emerald-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                      <div key={idx} className=" bg-[white] border border-emerald-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
                         <div className="space-y-0.5 flex-1">
                           <div className="font-bold text-slate-900 text-xs">{tgt.item_code}</div>
                           {tgt.description && <div className="text-[10px] text-slate-500 truncate">{tgt.description}</div>}
@@ -872,7 +1007,7 @@ export default function ProcessPoForm() {
                   })}
                 </div>
               ) : (
-                <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl bg-white text-slate-400 text-xs font-medium">
+                <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl  bg-[white] text-slate-400 text-xs font-medium">
                   No Target Items added. Click "Add Target Item" to select target product code, quantity & price.
                 </div>
               )}
@@ -894,7 +1029,7 @@ export default function ProcessPoForm() {
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                     Basic Value (₹)
                   </label>
-                  <div className="px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800">
+                  <div className="px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800">
                     ₹{calcTargetBasicTotal().toFixed(2)}
                   </div>
                 </div>
@@ -907,7 +1042,7 @@ export default function ProcessPoForm() {
                   <select
                     value={gstType}
                     onChange={(e) => setGstType(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                    className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   >
                     <option value="CGST + SGST">CGST + SGST</option>
                     <option value="IGST">IGST</option>
@@ -926,7 +1061,7 @@ export default function ProcessPoForm() {
                     placeholder="18"
                     value={gstRate}
                     onChange={(e) => setGstRate(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   />
                   <div className="text-[10px] text-slate-500 mt-1 font-mono">
                     GST Amount: ₹{calcGstAmount().toFixed(2)}
@@ -944,7 +1079,7 @@ export default function ProcessPoForm() {
                     placeholder="0.00"
                     value={transport}
                     onChange={(e) => setTransport(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   />
                 </div>
 
@@ -959,7 +1094,7 @@ export default function ProcessPoForm() {
                     placeholder="0.00"
                     value={packingForward}
                     onChange={(e) => setPackingForward(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   />
                 </div>
 
@@ -977,7 +1112,7 @@ export default function ProcessPoForm() {
                     placeholder="0.00"
                     value={other}
                     onChange={(e) => setOther(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   />
                 </div>
 
@@ -1013,9 +1148,9 @@ export default function ProcessPoForm() {
                 onMouseLeave={(e) => e.target.style.filter = 'none'}
               >
                 {isSaving ? (
-                  <><RefreshCw size={15} className="animate-spin" /> Creating Process PO...</>
+                  <><RefreshCw size={15} className="animate-spin" /> {isContractOrderMode ? 'Creating Contract Order...' : 'Creating Process PO...'}</>
                 ) : (
-                  'Create Process Purchase Order'
+                  isContractOrderMode ? 'Create Process Contract Order' : 'Create Process Purchase Order'
                 )}
               </button>
             </div>

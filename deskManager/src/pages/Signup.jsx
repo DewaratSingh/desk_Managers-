@@ -93,7 +93,7 @@ export default function SignupView({ onLogin = () => {} }) {
       <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-red-400/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-2xl relative z-10 my-8 transition-all duration-300">
-        <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-2xl p-6 md:p-8 shadow-md shadow-slate-200/30">
+        <div className=" bg-[white]/80 backdrop-blur-xl border border-slate-200/60 rounded-2xl p-6 md:p-8 shadow-md shadow-slate-200/30">
           <div className="flex flex-col items-center mb-6 text-center">
             <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-1">Sign Up</h2>
           </div>
@@ -127,7 +127,7 @@ export default function SignupView({ onLogin = () => {} }) {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Enter username"
-                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                   />
                 </div>
 
@@ -140,7 +140,7 @@ export default function SignupView({ onLogin = () => {} }) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="name@email.com"
-                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -156,7 +156,7 @@ export default function SignupView({ onLogin = () => {} }) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                   />
                 </div>
 
@@ -170,7 +170,7 @@ export default function SignupView({ onLogin = () => {} }) {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -190,7 +190,7 @@ export default function SignupView({ onLogin = () => {} }) {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="John"
-                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                   />
                 </div>
 
@@ -203,7 +203,7 @@ export default function SignupView({ onLogin = () => {} }) {
                     value={surname}
                     onChange={(e) => setSurname(e.target.value)}
                     placeholder="Doe"
-                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -218,7 +218,7 @@ export default function SignupView({ onLogin = () => {} }) {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="e.g. +91 9876543210"
-                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                    className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -255,7 +255,7 @@ export default function SignupView({ onLogin = () => {} }) {
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       placeholder="e.g. Shreeji Ltd"
-                      className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                      className="block w-full px-3 py-2  bg-[white] border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                     />
                   </div>
 
@@ -268,7 +268,7 @@ export default function SignupView({ onLogin = () => {} }) {
                       value={companyOwnerName}
                       onChange={(e) => setCompanyOwnerName(e.target.value)}
                       placeholder="e.g. John Doe"
-                      className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                      className="block w-full px-3 py-2  bg-[white] border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                     />
                   </div>
                 </div>
@@ -283,7 +283,7 @@ export default function SignupView({ onLogin = () => {} }) {
                       value={companyEmail}
                       onChange={(e) => setCompanyEmail(e.target.value)}
                       placeholder="info@company.com"
-                      className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                      className="block w-full px-3 py-2  bg-[white] border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                     />
                   </div>
 
@@ -296,7 +296,7 @@ export default function SignupView({ onLogin = () => {} }) {
                       value={companyPhone}
                       onChange={(e) => setCompanyPhone(e.target.value)}
                       placeholder="Company Phone"
-                      className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                      className="block w-full px-3 py-2  bg-[white] border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
                     />
                   </div>
                 </div>
@@ -310,7 +310,7 @@ export default function SignupView({ onLogin = () => {} }) {
                     value={companyAddress}
                     onChange={(e) => setCompanyAddress(e.target.value)}
                     placeholder="123 Industrial Area, Phase 1"
-                    className="block w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60 resize-none"
+                    className="block w-full px-3 py-2  bg-[white] border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60 resize-none"
                   />
                 </div>
               </div>

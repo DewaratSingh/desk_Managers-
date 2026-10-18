@@ -123,7 +123,7 @@ export default function ItemQuoteHistory({ code, excludeRfq, onClose }) {
             No past quote history found for this item.
           </div>
         ) : (
-          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-2xs">
+          <div className="overflow-x-auto border border-slate-200 rounded-lg  bg-[white] shadow-2xs">
             <table className="w-full border-collapse text-left text-[10px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
@@ -134,7 +134,7 @@ export default function ItemQuoteHistory({ code, excludeRfq, onClose }) {
                   <th className="px-2.5 py-2 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-slate-100  bg-[white]">
                 {historyData.map((row, idx) => (
                   <tr
                     key={idx}
@@ -193,7 +193,7 @@ export default function ItemQuoteHistory({ code, excludeRfq, onClose }) {
             No active inventory stock records for this item.
           </div>
         ) : (
-          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-2xs">
+          <div className="overflow-x-auto border border-slate-200 rounded-lg  bg-[white] shadow-2xs">
             <table className="w-full border-collapse text-left text-[10px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">

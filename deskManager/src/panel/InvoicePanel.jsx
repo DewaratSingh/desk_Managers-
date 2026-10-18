@@ -84,7 +84,7 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
             {eligibleDns.map(({ note, status }) => (
               <div
                 key={note.delivery_note_no}
-                className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-between shadow-xs"
+                className=" bg-[white] border border-slate-200 rounded-lg p-3.5 flex items-center justify-between shadow-xs"
               >
                 <div>
                   <div className="font-mono text-xs font-bold text-slate-900">{note.delivery_note_no}</div>
@@ -123,7 +123,7 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
             return (
               <div
                 key={inv.invoice_no}
-                className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm transition-all duration-150"
+                className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm transition-all duration-150"
               >
                 {/* Header accordion trigger */}
                 <div
@@ -135,7 +135,7 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
                       <FileText size={14} style={{ color: 'var(--theme-color)' }} />
                       Invoice #{idx + 1}
                     </span>
-                    <span className="font-mono text-xs font-bold text-slate-800 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                    <span className="font-mono text-xs font-bold text-slate-800  bg-[white] border border-slate-200 px-2 py-0.5 rounded">
                       {inv.invoice_no}
                     </span>
                   </div>
@@ -143,7 +143,7 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
                   <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                     <Link
                       to={`/updateInvoice/${encodeURIComponent(inv.invoice_no)}`}
-                      className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
                     >
                       <Edit2 size={10} /> Edit
                     </Link>
@@ -193,7 +193,7 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
                               <th className="px-4 py-2.5 text-right">Total</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100 bg-white">
+                          <tbody className="divide-y divide-slate-100  bg-[white]">
                             {items.map((item, idx) => {
                               const total = (parseFloat(item.rate_per_piece) || 0) * (parseFloat(item.quantity) || 0);
                               return (
@@ -229,7 +229,7 @@ export default function InvoicePanel({ tradeId, deliveryNotes = [], invoices = [
       ) : (
         /* Empty state when no invoices have been registered and no pending dispatches exist */
         eligibleDns.length === 0 && (
-          <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
+          <div className=" bg-[white] border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
             <div className="w-12 h-12 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center mx-auto" style={{ color: 'var(--theme-color)' }}>
               <FileText size={24} />
             </div>

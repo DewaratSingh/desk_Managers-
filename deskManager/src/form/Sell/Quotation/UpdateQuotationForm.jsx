@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import ItemQuoteHistory from '../../../components/ItemQuoteHistory.jsx';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
-const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
 export default function UpdateQuotationForm() {
   const { id } = useParams();
@@ -366,7 +366,7 @@ export default function UpdateQuotationForm() {
           </div>
         )}
 
-        <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+        <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
             
             {/* Quotation No & Date */}
@@ -410,7 +410,7 @@ export default function UpdateQuotationForm() {
               />
 
               {showRfqDropdown && rfqSuggestions.length > 0 && (
-                <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                   {rfqSuggestions.map(rfq => (
                     <button
                       key={rfq.rfq_no}
@@ -462,7 +462,7 @@ export default function UpdateQuotationForm() {
               />
 
               {showRecQtnDropdown && recQtnSuggestions.length > 0 && (
-                <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                   {recQtnSuggestions.map(rq => (
                     <button
                       key={rq.received_quotation_no}
@@ -515,7 +515,7 @@ export default function UpdateQuotationForm() {
                     {quotationItems.map(item => (
                       <div
                         key={item.item_code}
-                        className={`px-4 py-3 bg-white transition-colors ${
+                        className={`px-4 py-3  bg-[white] transition-colors ${
                           item.selected ? 'hover:bg-slate-50' : 'opacity-60 bg-slate-50'
                         }`}
                       >
@@ -564,7 +564,7 @@ export default function UpdateQuotationForm() {
                                 disabled={!item.selected}
                                 value={item.unit || ''}
                                 onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
-                                className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100"
+                                className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100"
                               />
                             </div>
                             <div className="flex flex-col items-end">
@@ -577,7 +577,7 @@ export default function UpdateQuotationForm() {
                                 placeholder="0.00"
                                 value={item.unit_price}
                                 onChange={(e) => handlePriceChange(item.item_code, e.target.value)}
-                                className="w-24 px-1.5 py-1 text-right font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100"
+                                className="w-24 px-1.5 py-1 text-right font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] disabled:bg-slate-100"
                               />
                             </div>
                             <button
@@ -619,7 +619,7 @@ export default function UpdateQuotationForm() {
                 rows={4}
                 value={formData.terms_and_conditions}
                 onChange={set('terms_and_conditions')}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-xs placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] font-mono leading-relaxed"
+                className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-xs placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] font-mono leading-relaxed"
                 placeholder="Enter standard payment terms, delivery period, price validity..."
               />
             </div>
@@ -655,7 +655,7 @@ export default function UpdateQuotationForm() {
 
         {/* Right side history panel */}
         {historyItem && (
-          <div className="hidden lg:block lg:col-span-2 bg-white border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
+          <div className="hidden lg:block lg:col-span-2  bg-[white] border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
             <ItemQuoteHistory
               code={historyItem}
               excludeRfq={formData.rfq_no || null}

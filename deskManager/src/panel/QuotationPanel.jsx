@@ -14,7 +14,7 @@ export default function QuotationPanel({ quotation, rfq, tradeId, tradeType, onR
   if (!quotation) {
     if (!rfq) return null;
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
+      <div className=" bg-[white] border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
         <div className="max-w-sm mx-auto space-y-1">
           <h3 className="text-sm font-bold text-slate-800">No Quotation Registered</h3>
           <p className="text-xs text-slate-500 font-semibold">
@@ -58,7 +58,7 @@ export default function QuotationPanel({ quotation, rfq, tradeId, tradeType, onR
   );
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
@@ -77,7 +77,7 @@ export default function QuotationPanel({ quotation, rfq, tradeId, tradeType, onR
           {quotation.status !== 'rejected' && (
             <Link
               to={`/updateQuotation/${quotation.quotation_no}?trade_id=${tradeId}`}
-              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
             >
               <Edit2 size={10} /> Edit
             </Link>
@@ -117,7 +117,7 @@ export default function QuotationPanel({ quotation, rfq, tradeId, tradeType, onR
                   <th className="px-4 py-2.5 text-right">Line Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-slate-100  bg-[white]">
                 {(quotation.items || []).map((item, idx) => {
                   const lineTotal = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
                   return (

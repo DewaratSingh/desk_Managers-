@@ -18,11 +18,11 @@ const statusColor = (s) => {
   return 'bg-amber-50 text-amber-700 border-amber-200';
 };
 
-export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, isBuySide, isProcessSide }) {
+export default function PoPanel({ purchaseOrder, quotation, processRq, processReceivedQuotation, tradeId, isBuySide, isProcessSide }) {
   // Check if quotation was rejected
   if (quotation && quotation.status === 'rejected') {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
+      <div className=" bg-[white] border border-slate-200 rounded-xl p-8 text-center shadow-sm">
         <div className="max-w-sm mx-auto space-y-1">
           <h3 className="text-sm font-bold text-red-600">Quotation Rejected</h3>
           <p className="text-xs text-slate-500 font-semibold">
@@ -35,18 +35,25 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
 
   // Prompt card when quotation exists but no PO yet
   if (!purchaseOrder) {
-    // Process trade: show "Create Process PO" button after Process RQ
-    if (isProcessSide && processRq) {
+    // Process trade: show "Create Process PO" button after Process RQ or Process Received Quotation
+    if (isProcessSide && (processRq || processReceivedQuotation)) {
+      const qtnNo = processReceivedQuotation
+        ? (processReceivedQuotation.quotation_no || processReceivedQuotation.quotation_number || processReceivedQuotation.received_quotation_no)
+        : null;
+      const processPoUrl = processReceivedQuotation
+        ? `/addProcessPurchaseOrder?quotation_no=${encodeURIComponent(qtnNo || '')}&trade_id=${encodeURIComponent(tradeId || '')}`
+        : `/addProcessPurchaseOrder?number=${encodeURIComponent((processRq && processRq.number) || '')}&trade_id=${encodeURIComponent(tradeId || '')}`;
+
       return (
-        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
+        <div className=" bg-[white] border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
           <div className="max-w-sm mx-auto space-y-1">
             <h3 className="text-sm font-bold text-slate-800">No Purchase Order Raised</h3>
             <p className="text-xs text-slate-500 font-semibold">
-              A Process Trade Request has been registered. The next step is to raise a Purchase Order for the process items.
+              A Process Trade Quotation / Request has been registered. The next step is to raise a Purchase Order for the process items.
             </p>
           </div>
           <Link
-            to={`/addProcessPurchaseOrder?number=${processRq.number}&trade_id=${tradeId}`}
+            to={processPoUrl}
             className="inline-flex items-center gap-1.5 px-5 py-2.5 text-white font-bold text-xs rounded-lg cursor-pointer shadow-sm"
             style={{ backgroundColor: 'var(--theme-color)' }}
             onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(0.9)'}
@@ -64,7 +71,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
       ? `/addReceivedPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`
       : `/addPurchaseOrder?quotation_no=${qtnNo}&trade_id=${tradeId}`;
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
+      <div className=" bg-[white] border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
         <div className="max-w-sm mx-auto space-y-1">
           <h3 className="text-sm font-bold text-slate-800">No Purchase Order Raised</h3>
           <p className="text-xs text-slate-500 font-semibold">
@@ -87,7 +94,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
   // ── Process PO View ──────────────────────────────────────────────────────────
   if (purchaseOrder._is_process_po) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
             <ShoppingCart size={14} style={{ color: 'var(--theme-color)' }} />
@@ -151,13 +158,13 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
                 const targetItems = job.target_items || [];
                 
                 return (
-                  <div key={jIdx} className="border border-slate-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
+                  <div key={jIdx} className="border border-slate-200 rounded-2xl  bg-[white] shadow-2xs overflow-hidden">
                     <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                       <div>
                         <span className="text-xs font-bold text-slate-800">Job {jIdx + 1}: {job.process_name}</span>
                         {job.message && <p className="text-[10px] text-slate-500 mt-0.5">{job.message}</p>}
                       </div>
-                      <div className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-white px-2 py-1 rounded border border-slate-200 shadow-2xs">
+                      <div className="text-[10px] text-slate-500 font-medium whitespace-nowrap  bg-[white] px-2 py-1 rounded border border-slate-200 shadow-2xs">
                         {fmtDate(job.date_of_start)} {job.date_of_end ? ` → ${fmtDate(job.date_of_end)}` : ''}
                       </div>
                     </div>
@@ -174,7 +181,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
                           </div>
                           
                           <div className="overflow-x-auto mt-2">
-                            <table className="w-full border-collapse text-left text-xs bg-white rounded-lg overflow-hidden border border-amber-100">
+                            <table className="w-full border-collapse text-left text-xs  bg-[white] rounded-lg overflow-hidden border border-amber-100">
                               <thead className="bg-amber-50/50 border-b border-amber-100 text-[10px] font-bold text-amber-800 uppercase tracking-wider">
                                 <tr>
                                   <th className="px-3 py-2">Item Code</th>
@@ -236,7 +243,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
                           </div>
                           
                           <div className="overflow-x-auto mt-2">
-                            <table className="w-full border-collapse text-left text-xs bg-white rounded-lg overflow-hidden border border-indigo-100">
+                            <table className="w-full border-collapse text-left text-xs  bg-[white] rounded-lg overflow-hidden border border-indigo-100">
                               <thead className="bg-indigo-50/50 border-b border-indigo-100 text-[9px] font-bold text-indigo-800 uppercase tracking-wider">
                                 <tr>
                                   <th className="px-3 py-2">Item Code</th>
@@ -332,7 +339,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
                         <th className="px-4 py-2.5 text-right w-24">Required Qty</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-amber-100 bg-white">
+                    <tbody className="divide-y divide-amber-100  bg-[white]">
                       {(purchaseOrder.source_items || purchaseOrder.items || []).map((item, idx) => {
                         const srcAllocs = item.source_item_traceid_array || [];
                         return (
@@ -393,7 +400,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
                         <th className="px-4 py-2.5 w-32">Trace / Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-indigo-100 bg-white">
+                    <tbody className="divide-y divide-indigo-100  bg-[white]">
                       {(purchaseOrder.target_items || purchaseOrder.items || []).map((item, idx) => {
                         const tgtAllocs = item.target_item_traceid_array || item.target_trace_id_array || [];
                         const itemPrice = parseFloat(item.price) || 0;
@@ -482,7 +489,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
   const grandTotal = itemsBasic + gstTotal + transport + packing + other + basicVal;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
@@ -496,13 +503,13 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
           {/* View full detail page */}
           <Link
             to={`/order/${encodeURIComponent(purchaseOrder.po_no)}`}
-            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <ExternalLink size={10} /> View
           </Link>
           <Link
             to={isBuySide ? `/updateReceivedPurchaseOrder/${purchaseOrder.po_no}?trade_id=${tradeId}` : `/updatePurchaseOrder/${purchaseOrder.po_no}?trade_id=${tradeId}`}
-            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <Edit2 size={10} /> Edit
           </Link>
@@ -545,7 +552,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, tradeId, 
                   <th className="px-4 py-2.5">Vendor</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-slate-100  bg-[white]">
                 {(purchaseOrder.items || []).map((item, idx) => {
                   const lineBasic = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
                   const lineGst   = lineBasic * ((parseFloat(item.gst_rate) || 0) / 100);

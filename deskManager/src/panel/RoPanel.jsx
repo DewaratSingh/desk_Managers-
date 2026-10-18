@@ -23,7 +23,7 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
   if (!releaseOrder) {
     if (!purchaseOrder) return null;
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
+      <div className=" bg-[white] border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
         <div className="max-w-sm mx-auto space-y-1">
           <h3 className="text-sm font-bold text-slate-800">No Release Order Raised</h3>
           <p className="text-xs text-slate-500 font-semibold">
@@ -55,7 +55,7 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
   const grandTotal = itemsBasic + gstTotal + transport + packing + other + basicVal;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
@@ -69,13 +69,13 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
           {/* View full detail page */}
           <Link
             to={`/release-order/${encodeURIComponent(releaseOrder.ro_no)}`}
-            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <ExternalLink size={10} /> View
           </Link>
           <Link
             to={`/updateReleaseOrder/${releaseOrder.ro_no}?trade_id=${tradeId}`}
-            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <Edit2 size={10} /> Edit
           </Link>
@@ -146,7 +146,7 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
                   <th className="px-4 py-2.5">Vendor</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-slate-100  bg-[white]">
                 {(releaseOrder.items || []).map((item, idx) => {
                   const lineBasic = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0);
                   const lineGst   = lineBasic * ((parseFloat(item.gst_rate) || 0) / 100);

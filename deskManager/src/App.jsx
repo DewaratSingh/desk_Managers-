@@ -15,6 +15,8 @@ import UpdateReleaseOrderForm from './form/Sell/ReleaseOrder/UpdateReleaseOrderF
 import CreateRfqForm from './form/Sell/RFQ/CreateRfqForm'
 import CreateProcessRfqForm from './form/sell_process/CreateProcessRfqForm'
 import UpdateProcessRfqForm from './form/sell_process/UpdateProcessRfqForm'
+import CreateProcessReceivedQuotationForm from './form/buy_process/CreateProcessReceivedQuotationForm'
+import UpdateProcessReceivedQuotationForm from './form/buy_process/UpdateProcessReceivedQuotationForm'
 import UpdateRfqForm from './form/Sell/RFQ/UpdateRfqForm'
 import CreateQuotationForm from './form/Sell/Quotation/CreateQuotationForm'
 import UpdateQuotationForm from './form/Sell/Quotation/UpdateQuotationForm'
@@ -82,9 +84,9 @@ function App() {
             <Route path="/inventory/sell" element={<SellStockForm />} />
             <Route path="/manufacture" element={<ManufactureList />} />
             <Route path="/manufactures" element={<ManufactureList />} />
-            <Route path="/addProcessRq" element={<ProcessRqForm />} />
-            <Route path="/process-rq" element={<ProcessRqForm />} />
-            <Route path="/updateProcessRq/:id" element={<ProcessRqForm />} />
+            <Route path="/addProcessRq" element={<CreateProcessReceivedQuotationForm />} />
+            <Route path="/process-rq" element={<CreateProcessReceivedQuotationForm />} />
+            <Route path="/updateProcessRq/:id" element={<UpdateProcessReceivedQuotationForm />} />
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />
@@ -95,6 +97,8 @@ function App() {
           <Route path="/addRfq" element={<CreateRfqForm />} />
           <Route path="/addProcessRfq" element={<CreateProcessRfqForm />} />
           <Route path="/updateProcessRfq/:id" element={<UpdateProcessRfqForm />} />
+          <Route path="/addProcessReceivedQuotation" element={<CreateProcessReceivedQuotationForm />} />
+          <Route path="/updateProcessReceivedQuotation/:id" element={<UpdateProcessReceivedQuotationForm />} />
           <Route path="/updateRfq/:id" element={<UpdateRfqForm />} />
           <Route path="/addQuotation" element={<CreateQuotationForm />} />
           <Route path="/updateQuotation/:id" element={<UpdateQuotationForm />} />
@@ -103,6 +107,7 @@ function App() {
           <Route path="/addReceivedQuotation" element={<CreateReceivedQuotationForm />} />
           <Route path="/updateReceivedQuotation/:id" element={<UpdateReceivedQuotationForm />} />
           <Route path="/addProcessPurchaseOrder" element={<ProcessPoForm />} />
+          <Route path="/addProcessContractOrder" element={<ProcessPoForm isContractOrder={true} />} />
           <Route path="/party/form" element={<AddCustomerView />} />
           <Route path="/buyer/form" element={<AddBuyerView />} />
           <Route path="/item/form" element={<AddItemView />} />

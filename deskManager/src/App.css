@@ -102,7 +102,7 @@
 }
 
 @layer utilities {
-	.bg-white {
+	. bg-[white] {
 		background-color: var(--bg-form, transparent) !important;
 	}
 	.bg-slate-50 {

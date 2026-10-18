@@ -179,7 +179,7 @@ export default function AddBuyerView() {
 
           {/* Search */}
           <div 
-            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors"
+            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2  bg-[white] shadow-sm transition-colors"
             style={{ borderColor: searchFocused ? 'var(--theme-color)' : 'rgb(203, 213, 225)' }}
           >
             <Search size={18} className="text-slate-400 shrink-0" />
@@ -195,7 +195,7 @@ export default function AddBuyerView() {
           </div>
 
           {/* Directory */}
-          <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-sm">
+          <div className="border border-slate-300 rounded-lg overflow-hidden  bg-[white] shadow-sm">
             <div className="bg-slate-100 px-5 py-3 border-b border-slate-300">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <ListFilter size={14} style={{ color: 'var(--theme-color)' }} />
@@ -212,7 +212,7 @@ export default function AddBuyerView() {
                 No contacts found. Click "+ Add Contact" to get started.
               </div>
             ) : (
-              <div className="overflow-x-auto bg-white">
+              <div className="overflow-x-auto  bg-[white]">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
@@ -222,7 +222,7 @@ export default function AddBuyerView() {
                       <th className="px-5 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
+                  <tbody className="divide-y divide-slate-200  bg-[white]">
                     {filteredBuyers.map((buyer) => (
                       <tr 
                         key={buyer.id}
@@ -240,7 +240,7 @@ export default function AddBuyerView() {
                         <td className="px-5 py-3.5 text-right">
                           <button
                             onClick={() => handleEditClick(buyer)}
-                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold  bg-[white] transition-all inline-flex items-center gap-1 cursor-pointer"
                             style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.backgroundColor = 'var(--theme-color)';
@@ -265,7 +265,7 @@ export default function AddBuyerView() {
                 <button
                   onClick={() => fetchBuyers(true)}
                   disabled={loadingMore}
-                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)]  bg-[white] text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loadingMore ? (
                     <>
@@ -297,7 +297,7 @@ export default function AddBuyerView() {
             {editingId ? 'Update Contact' : 'Add New Contact'}
           </h1>
 
-          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleAddBuyer} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
@@ -309,7 +309,7 @@ export default function AddBuyerView() {
                   placeholder="e.g. John Doe"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
                   onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 />
@@ -325,7 +325,7 @@ export default function AddBuyerView() {
                   placeholder="e.g. john@example.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
                   onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 />
@@ -341,7 +341,7 @@ export default function AddBuyerView() {
                   placeholder="e.g. 9876543210"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
                   onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 />

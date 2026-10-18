@@ -15,7 +15,8 @@ const EMPTY_FORM = {
   item_code: '',
   description: '',
   drawing_number: '',
-  long_description: ''
+  long_description: '',
+  margin: ''
 };
 
 export default function AddItemView({
@@ -53,7 +54,8 @@ export default function AddItemView({
           item_code: item.item_code || '',
           description: item.description || '',
           drawing_number: item.drawing_number || '',
-          long_description: item.long_description || ''
+          long_description: item.long_description || '',
+          margin: item.margin !== null && item.margin !== undefined ? item.margin : ''
         });
       } else {
         setEditingCode(null);
@@ -146,7 +148,8 @@ export default function AddItemView({
           const success = await onUpdateItem(editingCode, {
             description: formData.description,
             drawing_number: formData.drawing_number,
-            long_description: formData.long_description
+            long_description: formData.long_description,
+            margin: formData.margin
           });
           if (success) handleBackToDirectory();
         } else {
@@ -156,7 +159,8 @@ export default function AddItemView({
             body: JSON.stringify({
               description: formData.description,
               drawing_number: formData.drawing_number,
-              long_description: formData.long_description
+              long_description: formData.long_description,
+              margin: formData.margin
             })
           });
           if (res.ok) {
@@ -231,7 +235,7 @@ export default function AddItemView({
 
           {/* Search */}
           <div 
-            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors"
+            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2  bg-[white] shadow-sm transition-colors"
             style={{ borderColor: searchFocused ? 'var(--theme-color)' : 'rgb(203, 213, 225)' }}
           >
             <Search size={18} className="text-slate-400 shrink-0" />
@@ -247,7 +251,7 @@ export default function AddItemView({
           </div>
 
           {/* Directory */}
-          <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-sm">
+          <div className="border border-slate-300 rounded-lg overflow-hidden  bg-[white] shadow-sm">
             <div className="bg-slate-100 px-5 py-3 border-b border-slate-300">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <ListFilter size={14} style={{ color: 'var(--theme-color)' }} />
@@ -264,18 +268,19 @@ export default function AddItemView({
                 No items in catalog. Click "+ Add Item" to get started.
               </div>
             ) : (
-              <div className="overflow-x-auto bg-white">
+              <div className="overflow-x-auto  bg-[white]">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
                       <th className="px-5 py-3">Item Code</th>
                       <th className="px-5 py-3">Drawing No</th>
                       <th className="px-5 py-3">Description</th>
+                      <th className="px-5 py-3">Margin (%)</th>
                       <th className="px-5 py-3">Long Details</th>
                       <th className="px-5 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
+                  <tbody className="divide-y divide-slate-200  bg-[white]">
                     {filteredItems.map((item) => {
                       return (
                         <tr 
@@ -291,19 +296,22 @@ export default function AddItemView({
                           <td className="px-5 py-3.5 font-semibold text-slate-700 max-w-xs truncate" title={item.description}>
                             {item.description}
                           </td>
+                          <td className="px-5 py-3.5 font-semibold text-slate-700">
+                            {item.margin !== null && item.margin !== undefined && item.margin !== '' ? `${item.margin}%` : '—'}
+                          </td>
                           <td className="px-5 py-3.5 text-slate-500 font-semibold max-w-xs truncate" title={item.long_description}>
                             {item.long_description ? (item.long_description.length > 60 ? item.long_description.substring(0, 60) + '...' : item.long_description) : '—'}
                           </td>
                           <td className="px-5 py-3.5 text-right space-x-2">
                             <button
                               onClick={() => setViewingItem(item)}
-                              className="px-2.5 py-1.5 text-[11px] border border-slate-300 rounded font-semibold bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400 transition-all inline-flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1.5 text-[11px] border border-slate-300 rounded font-semibold  bg-[white] text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400 transition-all inline-flex items-center gap-1 cursor-pointer"
                             >
                               <Eye size={11} /> View
                             </button>
                             <button
                               onClick={() => handleEditClick(item)}
-                              className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white transition-all inline-flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1.5 text-[11px] border rounded font-semibold  bg-[white] transition-all inline-flex items-center gap-1 cursor-pointer"
                               style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.backgroundColor = 'var(--theme-color)';
@@ -329,7 +337,7 @@ export default function AddItemView({
                 <button
                   onClick={() => fetchItems(true)}
                   disabled={loadingMore}
-                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)]  bg-[white] text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loadingMore ? (
                     <>
@@ -361,7 +369,7 @@ export default function AddItemView({
             {editingCode ? 'Update Item' : 'Add New Item'}
           </h1>
 
-          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
@@ -374,7 +382,7 @@ export default function AddItemView({
                   value={formData.item_code}
                   onChange={set('item_code')}
                   disabled={!!editingCode}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   onFocus={(e) => !editingCode && (e.target.style.borderColor = 'var(--theme-color)')}
                   onBlur={(e) => !editingCode && (e.target.style.borderColor = 'rgb(203, 213, 225)')}
                 />
@@ -395,7 +403,7 @@ export default function AddItemView({
                   placeholder="e.g. Stainless Steel Bracket"
                   value={formData.description}
                   onChange={set('description')}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
                   onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 />
@@ -410,7 +418,23 @@ export default function AddItemView({
                   placeholder="e.g. DRW-050"
                   value={formData.drawing_number}
                   onChange={set('drawing_number')}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                  onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Margin (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="e.g. 15.00"
+                  value={formData.margin}
+                  onChange={set('margin')}
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
                   onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 />
@@ -425,7 +449,7 @@ export default function AddItemView({
                   placeholder="Detailed specifications, notes…"
                   value={formData.long_description}
                   onChange={set('long_description')}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none resize-y"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none resize-y"
                   onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 />
@@ -463,7 +487,7 @@ export default function AddItemView({
 
       {viewingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col transform scale-100 transition-all">
+          <div className=" bg-[white] border border-slate-200 rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col transform scale-100 transition-all">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Item Details</h3>
               <button 
@@ -488,6 +512,12 @@ export default function AddItemView({
                 <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">Description</span>
                 <span className="text-sm text-slate-900 font-bold bg-slate-50 px-2.5 py-1 rounded border border-slate-200 block">{viewingItem.description}</span>
               </div>
+              {viewingItem.margin !== null && viewingItem.margin !== undefined && viewingItem.margin !== '' && (
+                <div>
+                  <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">Margin</span>
+                  <span className="font-mono text-sm text-slate-900 font-bold bg-slate-50 px-2.5 py-1 rounded border border-slate-200 inline-block">{viewingItem.margin}%</span>
+                </div>
+              )}
               {viewingItem.long_description && (
                 <div>
                   <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[10px]">Long Description</span>

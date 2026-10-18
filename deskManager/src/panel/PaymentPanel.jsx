@@ -175,7 +175,7 @@ export default function PaymentPanel({ tradeId, payments = [], expectedTotal = 0
   );
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
@@ -240,7 +240,7 @@ export default function PaymentPanel({ tradeId, payments = [], expectedTotal = 0
                   <th className="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-slate-100  bg-[white]">
                 {payments.map(pmt => (
                   <tr key={pmt.payment_no} className="hover:bg-slate-50/40 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-800">{pmt.payment_no}</td>

@@ -6,7 +6,7 @@ import ItemQuoteHistory from '../../../components/ItemQuoteHistory.jsx';
 import { useReceivedQuotation } from '../../../context/ReceivedQuotationContext.jsx';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
-const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
 export default function UpdateReceivedQuotationForm() {
   const { id } = useParams();
@@ -349,7 +349,7 @@ export default function UpdateReceivedQuotationForm() {
             </p>
           </div>
 
-          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-4">
                 
@@ -395,7 +395,7 @@ export default function UpdateReceivedQuotationForm() {
                     autoComplete="off"
                   />
                   {showBuyerDropdown && buyerSuggestions.length > 0 && (
-                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                    <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                       {buyerSuggestions.map(b => (
                         <button
                           key={b.id}
@@ -449,7 +449,7 @@ export default function UpdateReceivedQuotationForm() {
                     autoComplete="off"
                   />
                   {showCustomerDropdown && customerSuggestions.length > 0 && (
-                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                    <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                       {customerSuggestions.map(c => (
                         <button
                           key={c.id}
@@ -500,7 +500,7 @@ export default function UpdateReceivedQuotationForm() {
                     <div className="mb-3 border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
                       <div className="divide-y divide-slate-200">
                         {selectedItems.map((item) => (
-                          <div key={item.item_code} className="px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
+                          <div key={item.item_code} className="px-4 py-3  bg-[white] hover:bg-slate-50 transition-colors">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               <div className="min-w-0 flex-1 mr-4">
                                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -527,7 +527,7 @@ export default function UpdateReceivedQuotationForm() {
                                     required
                                     value={item.quantity}
                                     onChange={(e) => handleItemValueChange(item.item_code, 'quantity', e.target.value)}
-                                    className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                    className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                                   />
                                 </div>
                                 <div className="flex flex-col items-end">
@@ -539,7 +539,7 @@ export default function UpdateReceivedQuotationForm() {
                                     placeholder="0.00"
                                     value={item.unit_price}
                                     onChange={(e) => handleItemValueChange(item.item_code, 'unit_price', e.target.value)}
-                                    className="w-24 px-1.5 py-1 text-right font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                    className="w-24 px-1.5 py-1 text-right font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                                   />
                                 </div>
                                 <button
@@ -590,7 +590,7 @@ export default function UpdateReceivedQuotationForm() {
                       autoComplete="off"
                     />
                     {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
-                      <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                         {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
                           <button
                             key={item.item_code}
@@ -617,7 +617,7 @@ export default function UpdateReceivedQuotationForm() {
                     rows={4}
                     value={formData.terms_and_conditions}
                     onChange={set('terms_and_conditions')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-xs placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] font-mono leading-relaxed"
+                    className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-xs placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] font-mono leading-relaxed"
                     placeholder="Enter standard payment terms, delivery period, price validity..."
                   />
                 </div>
@@ -654,7 +654,7 @@ export default function UpdateReceivedQuotationForm() {
 
         {/* Right side history panel */}
         {historyItem && (
-          <div className="hidden lg:block lg:col-span-2 bg-white border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
+          <div className="hidden lg:block lg:col-span-2  bg-[white] border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
             <ItemQuoteHistory
               code={historyItem}
               excludeRfq={editingNo}

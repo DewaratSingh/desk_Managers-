@@ -46,6 +46,17 @@ router.get('/trace-items', async (req, res) => {
         } else if (row.legacy_source_code) {
           allowedCodes = [row.legacy_source_code];
         }
+      } else {
+        const prqRes = await pool.query(
+          `SELECT pri.item_code
+           FROM "processReceivedQuotation_item" pri
+           JOIN "processReceivedQuotation" prq ON pri.process_received_quotation_id = prq.id
+           WHERE (prq.quotation_number = $1 OR prq.id::text = $1) AND prq.company_id = $2`,
+          [rqIdentifier, req.user.company_id]
+        );
+        if (prqRes.rows.length > 0) {
+          allowedCodes = prqRes.rows.map(r => r.item_code).filter(Boolean);
+        }
       }
     }
 
@@ -415,6 +426,104 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // If no existing trade was linked (e.g. direct Buy Process Contract Order), create a new trade record
+    if (!tradeDbId) {
+      tradeCodeStr = 'TRD-' + po_no.trim().replace(/[\s/]+/g, '-');
+      const dupCheck = await client.query(
+        'SELECT id FROM trades WHERE trade_id = $1 AND company_id = $2',
+        [tradeCodeStr, companyId]
+      );
+      if (dupCheck.rows.length > 0) {
+        tradeCodeStr = `${tradeCodeStr}-${Date.now().toString().slice(-4)}`;
+      }
+
+      const resolvedTradeType = req.body?.trade_type || 'BUY_PROCESS';
+      const tradeInsertRes = await client.query(
+        `INSERT INTO trades (trade_id, status, trade_type, documents, company_id)
+         VALUES ($1, 'ordered', $2, $3::jsonb, $4)
+         RETURNING id, trade_id`,
+        [
+          tradeCodeStr,
+          resolvedTradeType,
+          JSON.stringify([{ type: 'PO', id: po_no.trim() }]),
+          companyId
+        ]
+      );
+      tradeDbId = tradeInsertRes.rows[0].id;
+      tradeCodeStr = tradeInsertRes.rows[0].trade_id;
+    }
+
+    const normalizedSourceItems = Array.isArray(source_items) ? [...source_items] : [];
+    const normalizedTargetItems = Array.isArray(target_items) ? [...target_items] : [];
+
+    if (hasLegacyItems && normalizedSourceItems.length === 0) {
+      items.forEach(it => {
+        if (it.source_item_code) {
+          normalizedSourceItems.push({
+            item_code: it.source_item_code,
+            qty: it.source_qty,
+            trace_item_id: it.source_trace_id_array && it.source_trace_id_array[0] ? it.source_trace_id_array[0].trace_id : null
+          });
+        }
+      });
+    }
+
+    if (hasLegacyItems && normalizedTargetItems.length === 0) {
+      items.forEach(it => {
+        if (it.target_item_code) {
+          normalizedTargetItems.push({
+            item_code: it.target_item_code,
+            qty: it.target_qty,
+            price: it.price,
+            process_name: it.process_name
+          });
+        }
+      });
+    }
+
+    // Auto-create Job and manufacture record if job_ids is empty or not passed
+    let finalJobIds = Array.isArray(job_ids) ? job_ids.filter(Boolean) : (job_ids ? [job_ids] : []);
+    if (finalJobIds.length === 0 && (normalizedSourceItems.length > 0 || normalizedTargetItems.length > 0)) {
+      const jobProcessName = (normalizedTargetItems[0] && normalizedTargetItems[0].process_name)
+        || (normalizedSourceItems[0] && normalizedSourceItems[0].process_name)
+        || 'Manufacturing Process';
+
+      const jobRes = await client.query(
+        `INSERT INTO job (process_name, date_of_start, date_of_end, message, company_id)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [
+          jobProcessName,
+          date_of_start || new Date().toISOString().split('T')[0],
+          date_of_end || delivery_date || null,
+          message || `Job auto-created for Process PO ${po_no.trim()}`,
+          companyId
+        ]
+      );
+      const createdJobId = jobRes.rows[0].id;
+
+      if (normalizedSourceItems.length > 0) {
+        await client.query(
+          `INSERT INTO source_item (job_id, items, company_id) VALUES ($1, $2::jsonb, $3)`,
+          [createdJobId, JSON.stringify(normalizedSourceItems), companyId]
+        );
+      }
+
+      if (normalizedTargetItems.length > 0) {
+        await client.query(
+          `INSERT INTO target_item (job_id, items, company_id) VALUES ($1, $2::jsonb, $3)`,
+          [createdJobId, JSON.stringify(normalizedTargetItems), companyId]
+        );
+      }
+
+      await client.query(
+        `INSERT INTO manufacture (status, job_id, loss_qty, company_id)
+         VALUES ('in_progress', $1, '[]'::jsonb, $2)`,
+        [createdJobId, companyId]
+      );
+
+      finalJobIds = [createdJobId];
+    }
+
     const insertRes = await client.query(
       `INSERT INTO process_po (
          po_no, date_of_start, date_of_end, received_q_id, trade_id,
@@ -441,43 +550,15 @@ router.post('/', async (req, res) => {
         delivery_date || date_of_end || null,
         shipping_address || null,
         message || null,
-        job_ids ? JSON.stringify(Array.isArray(job_ids) ? job_ids : [job_ids]) : '[]',
+        JSON.stringify(finalJobIds),
         companyId
       ]
     );
 
     const ppoId = insertRes.rows[0].id;
 
-    const normalizedSourceItems = Array.isArray(source_items) ? source_items : [];
-    const normalizedTargetItems = Array.isArray(target_items) ? target_items : [];
-    require('fs').writeFileSync('payload_debug.json', JSON.stringify({source_items, target_items, items}, null, 2));
-
-    if (hasLegacyItems && normalizedSourceItems.length === 0) {
-      items.forEach(it => {
-        if (it.source_item_code) {
-          normalizedSourceItems.push({
-            item_code: it.source_item_code,
-            qty: it.source_qty,
-            trace_item_id: it.source_trace_id_array && it.source_trace_id_array[0] ? it.source_trace_id_array[0].trace_id : null
-          });
-        }
-      });
-    }
-
-    if (hasLegacyItems && normalizedTargetItems.length === 0) {
-      items.forEach(it => {
-        if (it.target_item_code) {
-          normalizedTargetItems.push({
-            item_code: it.target_item_code,
-            qty: it.target_qty,
-            price: it.price
-          });
-        }
-      });
-    }
-
     // Helper to resolve items.id integer from item_code string or ID
-    const resolveItemId = async (codeOrId) => {
+    const resolveItemId = async (codeOrId, desc = '') => {
       if (!codeOrId) return null;
       const strVal = String(codeOrId).trim();
       const numVal = parseInt(strVal);
@@ -488,19 +569,37 @@ router.post('/', async (req, res) => {
           `SELECT id FROM items WHERE (item_code = $1 OR id = $2) AND company_id = $3 LIMIT 1`,
           [strVal, numVal, companyId]
         );
-        return res.rows.length > 0 ? res.rows[0].id : null;
+        if (res.rows.length > 0) return res.rows[0].id;
       } else {
         const res = await client.query(
           `SELECT id FROM items WHERE item_code = $1 AND company_id = $2 LIMIT 1`,
           [strVal, companyId]
         );
-        return res.rows.length > 0 ? res.rows[0].id : null;
+        if (res.rows.length > 0) return res.rows[0].id;
+      }
+
+      try {
+        const ins = await client.query(
+          `INSERT INTO items (item_code, description, company_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING
+           RETURNING id`,
+          [strVal, desc || strVal, companyId]
+        );
+        if (ins.rows.length > 0) return ins.rows[0].id;
+        const retry = await client.query(
+          `SELECT id FROM items WHERE item_code = $1 AND company_id = $2 LIMIT 1`,
+          [strVal, companyId]
+        );
+        return retry.rows.length > 0 ? retry.rows[0].id : null;
+      } catch (e) {
+        return null;
       }
     };
 
     // 1. Process Multi-Source Items
     for (const src of normalizedSourceItems) {
-      const srcItemId = await resolveItemId(src.item_code);
+      const srcItemId = await resolveItemId(src.item_code, src.description);
       await client.query(
         `INSERT INTO process_po_source_item (process_po_id, item_code, trace_item_id, qty, company_id)
          VALUES ($1, $2, $3, $4, $5)`,
@@ -516,7 +615,7 @@ router.post('/', async (req, res) => {
 
     // 2. Process Multi-Target Items
     for (const tgt of normalizedTargetItems) {
-      const tgtItemId = await resolveItemId(tgt.item_code);
+      const tgtItemId = await resolveItemId(tgt.item_code, tgt.description);
       const tgtPrice = parseFloat(tgt.price) || 0;
       const tgtQty = parseFloat(tgt.qty) || 0;
 
@@ -568,8 +667,8 @@ router.post('/', async (req, res) => {
         process_name
       } = item;
 
-      const sourceDbId = await resolveItemId(source_item_code);
-      const targetDbId = await resolveItemId(target_item_code);
+      const sourceDbId = await resolveItemId(source_item_code, item.source_description);
+      const targetDbId = await resolveItemId(target_item_code, item.target_description);
 
       const parsedSourceQty = parseFloat(source_qty) || 0;
       const parsedTargetQty = parseFloat(target_qty) || 0;
@@ -621,7 +720,7 @@ router.post('/', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    res.status(201).json({ message: 'Process PO job created successfully', id: ppoId, po_no: po_no.trim(), trade_id: trade_id || null });
+    res.status(201).json({ message: 'Process PO job created successfully', id: ppoId, po_no: po_no.trim(), trade_id: tradeCodeStr || trade_id || null });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error creating Process PO job:', err.message);

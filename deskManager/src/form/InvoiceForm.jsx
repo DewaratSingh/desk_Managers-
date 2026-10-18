@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
-const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
 export default function InvoiceForm() {
   const { id } = useParams();
@@ -271,7 +271,7 @@ export default function InvoiceForm() {
 
   return (
     <div className="min-h-screen bg-slate-55 text-slate-900 p-6 flex items-center justify-center">
-      <div className="max-w-4xl w-full bg-white border border-slate-200 shadow-xl rounded-2xl p-6 sm:p-8 space-y-6">
+      <div className="max-w-4xl w-full  bg-[white] border border-slate-200 shadow-xl rounded-2xl p-6 sm:p-8 space-y-6">
         
         {/* Header */}
         <div className="pb-4 border-b border-slate-200">
@@ -418,7 +418,7 @@ export default function InvoiceForm() {
                     <th className="px-4 py-3 text-right">Price</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-slate-100  bg-[white]">
                   {items.map((item, idx) => (
                     <tr
                       key={item.item_code}
@@ -482,7 +482,7 @@ export default function InvoiceForm() {
             <button
               type="button"
               onClick={handleBackToTrade}
-              className="px-5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-5 py-2.5  bg-[white] border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Cancel
             </button>

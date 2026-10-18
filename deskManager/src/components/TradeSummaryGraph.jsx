@@ -239,7 +239,7 @@ export default function TradeSummaryGraph({
   });
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all duration-300">
+    <div className=" bg-[white] border border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all duration-300">
       
       {/* ── Header Bar ────────────────────────────────────────────────────────── */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white px-5 py-3.5 flex items-center justify-between gap-4">
@@ -255,7 +255,7 @@ export default function TradeSummaryGraph({
               <h2 className="text-sm font-black tracking-wide text-white flex items-center gap-2">
                 Trade Summary
               </h2>
-              <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded-md bg-white/10 text-slate-200 border border-white/15">
+              <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded-md  bg-[white]/10 text-slate-200 border border-white/15">
                 {trade?.trade_type || 'TRADE'}
               </span>
               <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
@@ -596,7 +596,7 @@ export default function TradeSummaryGraph({
                   <p className="text-xs text-slate-400 font-medium text-center py-4">No document events registered yet.</p>
                 ) : (
                   docs.map((doc, idx) => (
-                    <div key={idx} className="flex items-start gap-3 bg-white border border-slate-200 rounded-lg p-3 shadow-2xs">
+                    <div key={idx} className="flex items-start gap-3  bg-[white] border border-slate-200 rounded-lg p-3 shadow-2xs">
                       <div className="p-2 bg-slate-100 text-slate-700 rounded-lg font-bold text-xs">
                         #{idx + 1}
                       </div>

@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { useReleaseOrder } from '../../../context/ReleaseOrderContext.jsx';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
-const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
 export default function CreateReleaseOrderForm() {
   const [searchParams] = useSearchParams();
@@ -615,7 +615,7 @@ export default function CreateReleaseOrderForm() {
         )}
 
         {/* Form Card */}
-        <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+        <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
 
             {/* RO No */}
@@ -659,7 +659,7 @@ export default function CreateReleaseOrderForm() {
               </div>
 
               {showContractDropdown && contractSuggestions.length > 0 && (
-                <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                   {contractSuggestions.map(c => (
                     <button
                       key={c.id}
@@ -742,7 +742,7 @@ export default function CreateReleaseOrderForm() {
               />
 
               {showBuyerDropdown && buyerSuggestions.length > 0 && (
-                <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                   {buyerSuggestions.map(b => (
                     <button
                       key={b.id}
@@ -800,7 +800,7 @@ export default function CreateReleaseOrderForm() {
               />
 
               {showCustomerDropdown && customerSuggestions.length > 0 && (
-                <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                   {customerSuggestions.map(c => (
                     <button
                       key={c.id}
@@ -862,7 +862,7 @@ export default function CreateReleaseOrderForm() {
                 </div>
 
                 {showItemDropdown && itemSuggestions.length > 0 && (
-                  <div className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="absolute z-40 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                     {itemSuggestions.map(item => (
                       <button
                         key={item.item_code}
@@ -889,7 +889,7 @@ export default function CreateReleaseOrderForm() {
                     {roItems.map(item => (
                       <div
                         key={item.item_code}
-                        className={`px-4 py-3 bg-white transition-colors ${!item.selected ? 'opacity-50 bg-slate-50' : ''}`}
+                        className={`px-4 py-3  bg-[white] transition-colors ${!item.selected ? 'opacity-50 bg-slate-50' : ''}`}
                       >
                         {/* Row 1: Checkbox + Item Info */}
                         <div className="flex items-start justify-between gap-3">
@@ -951,7 +951,7 @@ export default function CreateReleaseOrderForm() {
                                 required
                                 value={item.quantity}
                                 onChange={(e) => updateItem(item.item_code, 'quantity', e.target.value)}
-                                className="w-full px-2 py-1 font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                className="w-full px-2 py-1 font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                               />
                             </div>
 
@@ -964,7 +964,7 @@ export default function CreateReleaseOrderForm() {
                                 required
                                 value={item.unit_price}
                                 onChange={(e) => updateItem(item.item_code, 'unit_price', e.target.value)}
-                                className="w-full px-2 py-1 font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                className="w-full px-2 py-1 font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                               />
                             </div>
 
@@ -984,7 +984,7 @@ export default function CreateReleaseOrderForm() {
                                     setGstDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
                                     fetchGstSuggestions(item.item_code, gstSearchInput[item.item_code] || '');
                                   }}
-                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
+                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
                                   autoComplete="off"
                                 />
                                 {item.gst_type && (
@@ -999,7 +999,7 @@ export default function CreateReleaseOrderForm() {
                               </div>
 
                               {gstDropdownOpen[item.item_code] && (gstSuggestions[item.item_code] || []).length > 0 && (
-                                <div className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
+                                <div className="absolute z-40 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
                                   {(gstSuggestions[item.item_code] || []).map(g => (
                                     <button
                                       key={g.id}
@@ -1022,7 +1022,7 @@ export default function CreateReleaseOrderForm() {
                                 type="date"
                                 value={item.delivery_date}
                                 onChange={(e) => updateItem(item.item_code, 'delivery_date', e.target.value)}
-                                className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                               />
                             </div>
 
@@ -1042,7 +1042,7 @@ export default function CreateReleaseOrderForm() {
                                     setShipDropdownOpen(prev => ({ ...prev, [item.item_code]: true }));
                                     fetchShipSuggestions(item.item_code, shipInput[item.item_code] || '');
                                   }}
-                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
+                                  className="w-full pl-2 pr-5 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)] font-medium"
                                   autoComplete="off"
                                 />
                                 {item.shipping_address && (
@@ -1057,7 +1057,7 @@ export default function CreateReleaseOrderForm() {
                               </div>
 
                               {shipDropdownOpen[item.item_code] && (shipSuggestions[item.item_code] || []).length > 0 && (
-                                <div className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
+                                <div className="absolute z-40 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
                                   {(shipSuggestions[item.item_code] || []).map(c => (
                                     <button
                                       key={c.id}
@@ -1093,7 +1093,7 @@ export default function CreateReleaseOrderForm() {
                     min="0"
                     value={formData.transport}
                     onChange={set('transport')}
-                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                    className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                   />
                 </div>
                 <div>
@@ -1104,7 +1104,7 @@ export default function CreateReleaseOrderForm() {
                     min="0"
                     value={formData.packing_forward}
                     onChange={set('packing_forward')}
-                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                    className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                   />
                 </div>
                 <div>
@@ -1115,7 +1115,7 @@ export default function CreateReleaseOrderForm() {
                     min="0"
                     value={formData.basic_value}
                     onChange={set('basic_value')}
-                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                    className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                   />
                 </div>
                 <div>
@@ -1126,7 +1126,7 @@ export default function CreateReleaseOrderForm() {
                     min="0"
                     value={formData.other}
                     onChange={set('other')}
-                    className="w-full px-2 py-1 text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                    className="w-full px-2 py-1 text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                   />
                 </div>
               </div>

@@ -137,7 +137,8 @@ export default function ManufactureList() {
       description: st.description || '',
       trace_item_id: st.trace_id || st.trace_item_id || null,
       qty: st.Qty !== undefined && st.Qty !== null ? String(st.Qty) : '',
-      available_qty: st.available_qty || ''
+      available_qty: st.available_qty || '',
+      price: st.price !== undefined && st.price !== null ? st.price : (st.cost_price || 0)
     }));
 
     setFormData(prev => ({
@@ -252,11 +253,21 @@ export default function ManufactureList() {
     }));
   };
 
+  const handleTargetItemPriceChange = (index, value) => {
+    setTargetCompletionItems(prev => prev.map((it, idx) => {
+      if (idx !== index) return it;
+      return {
+        ...it,
+        price: value
+      };
+    }));
+  };
+
   // Navigates to Inventory form to add target item to inventory with prefilled data
   const handleAddInInventory = (item) => {
     if (!viewingJob) return;
     const qtyToAdd = item.completion_qty || item.remaining_qty || item.order_qty;
-    const priceVal = item.price || 0;
+    const priceVal = parseFloat(item.price) || 0;
 
     navigate('/inventory/form', {
       state: {
@@ -323,7 +334,8 @@ export default function ManufactureList() {
       completed_qty: parseFloat(item.completion_qty) || 0,
       location: item.inventoryDetails?.location || 'Warehouse A',
       target_status: item.inventoryDetails?.status || 'In Inventory',
-      cost_price: parseFloat(item.price) || 0
+      cost_price: parseFloat(item.price) || 0,
+      price: parseFloat(item.price) || 0
     }));
 
     setIsProcessingComplete(true);
@@ -462,7 +474,7 @@ export default function ManufactureList() {
             <button
               onClick={fetchManufactures}
               disabled={isLoading}
-              className="p-2 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-50 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+              className="p-2  bg-[white] border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-50 transition-all shadow-xs cursor-pointer disabled:opacity-50"
               title="Refresh Records"
             >
               <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
@@ -482,7 +494,7 @@ export default function ManufactureList() {
 
         {/* SEARCH BAR */}
         <div 
-          className="flex items-center gap-2.5 border border-slate-300 rounded-xl px-3.5 py-2.5 bg-white shadow-xs transition-all"
+          className="flex items-center gap-2.5 border border-slate-300 rounded-xl px-3.5 py-2.5  bg-[white] shadow-xs transition-all"
           style={{ borderColor: searchFocused ? 'var(--theme-color)' : 'rgb(203, 213, 225)' }}
         >
           <Search size={18} className="text-slate-400 shrink-0" />
@@ -498,7 +510,7 @@ export default function ManufactureList() {
         </div>
 
         {/* MANUFACTURE DIRECTORY LIST TABLE */}
-        <div className="border border-slate-300 rounded-2xl overflow-hidden bg-white shadow-sm">
+        <div className="border border-slate-300 rounded-2xl overflow-hidden  bg-[white] shadow-sm">
           <div className="bg-slate-50 px-5 py-3 border-b border-slate-200 flex justify-between items-center">
             <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
               <Layers size={15} style={{ color: 'var(--theme-color)' }} />
@@ -531,11 +543,11 @@ export default function ManufactureList() {
                     <th className="px-4 py-3 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
+                <tbody className="divide-y divide-slate-200  bg-[white]">
                   {filteredList.map((m) => {
                     const srcList = Array.isArray(m.source_items) && m.source_items.length > 0
                       ? m.source_items
-                      : (m.items || []).map(i => ({ item_code: i.source_item_code, qty: i.source_qty, trace_item_id: i.source_trace_id_array?.[0]?.trace_id }));
+                      : (m.items || []).map(i => ({ item_code: i.source_item_code, qty: i.source_qty, trace_item_id: i.source_trace_id_array?.[0]?.trace_id, price: i.source_price !== undefined ? i.source_price : i.price }));
 
                     const tgtList = Array.isArray(m.target_items) && m.target_items.length > 0
                       ? m.target_items
@@ -579,8 +591,13 @@ export default function ManufactureList() {
                                     TR-{src.trace_item_id}
                                   </span>
                                 )}
-                                <div className="font-mono text-red-600 font-bold text-[10px] mt-0.5">
-                                  Qty: {src.qty || 0}
+                                <div className="flex items-center justify-between font-mono text-[10px] mt-0.5">
+                                  <span className="text-red-600 font-bold">Qty: {src.qty || 0}</span>
+                                  {(src.price !== undefined && src.price !== null && src.price !== '' && parseFloat(src.price) > 0) && (
+                                    <span className="text-slate-700 font-bold">
+                                      ₹{parseFloat(src.price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -648,7 +665,7 @@ export default function ManufactureList() {
                               e.stopPropagation();
                               handleOpenJobDetails(m);
                             }}
-                            className="px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition-colors cursor-pointer flex items-center gap-1 mx-auto shadow-2xs"
+                            className="px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:text-slate-900  bg-[white] hover:bg-slate-100 border border-slate-300 rounded-xl transition-colors cursor-pointer flex items-center gap-1 mx-auto shadow-2xs"
                           >
                             <Eye size={13} />
                             Details
@@ -667,7 +684,7 @@ export default function ManufactureList() {
       {/* MANUFACTURE JOB PRODUCTION COMPLETION MODAL */}
       {viewingJob && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-          <div className="bg-white border border-slate-300 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
+          <div className=" bg-[white] border border-slate-300 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
             
             {/* TOP SECTION: Job Details Header */}
             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/80 flex justify-between items-center">
@@ -720,15 +737,35 @@ export default function ManufactureList() {
 
                 <div>
                   <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Source Consumed Summary</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <div className="flex flex-wrap gap-1.5 mt-1">
                     {((viewingJob.source_items && viewingJob.source_items.length > 0)
                       ? viewingJob.source_items
-                      : (viewingJob.items || []).map(i => ({ item_code: i.source_item_code, qty: i.source_qty, trace_item_id: i.source_trace_id_array?.[0]?.trace_id }))
-                    ).map((src, i) => (
-                      <span key={i} className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-mono font-bold">
-                        {src.item_code} (Qty: {src.qty})
-                      </span>
-                    ))}
+                      : (viewingJob.items || []).map(i => ({
+                          item_code: i.source_item_code,
+                          qty: i.source_qty,
+                          trace_item_id: i.source_trace_id_array?.[0]?.trace_id,
+                          price: i.source_price !== undefined ? i.source_price : i.price
+                        }))
+                    ).map((src, i) => {
+                      const itemPrice = src.price !== undefined && src.price !== null && src.price !== ''
+                        ? src.price
+                        : (src.cost_price !== undefined && src.cost_price !== null ? src.cost_price : null);
+                      return (
+                        <span key={i} className="bg-amber-50 text-amber-950 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow-2xs">
+                          <span className="text-amber-900">{src.item_code}</span>
+                          <span className="text-amber-700">(Qty: {src.qty || 0}</span>
+                          {itemPrice !== null && (
+                            <>
+                              <span className="text-slate-400 font-medium">•</span>
+                              <span className="text-emerald-700 font-bold">
+                                ₹{parseFloat(itemPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </>
+                          )}
+                          <span className="text-amber-700">)</span>
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -742,7 +779,7 @@ export default function ManufactureList() {
                   </h3>
                 </div>
 
-                <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-xs bg-white">
+                <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-xs  bg-[white]">
                   <table className="w-full text-left text-[11px] border-collapse">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
@@ -753,11 +790,11 @@ export default function ManufactureList() {
                         <th className="px-3 py-2.5 text-right w-20">Delivered</th>
                         <th className="px-3 py-2.5 text-right w-20">Remaining</th>
                         <th className="px-3 py-2.5 text-right w-28">Selected Qty</th>
-                        <th className="px-3 py-2.5 text-right w-24">Price (₹)</th>
+                        <th className="px-3 py-2.5 text-right w-28">Price (₹)</th>
                         <th className="px-3 py-2.5 text-center w-36">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white font-semibold">
+                    <tbody className="divide-y divide-slate-100  bg-[white] font-semibold">
                       {targetCompletionItems.map((item, idx) => (
                         <tr
                           key={item.item_code || idx}
@@ -769,7 +806,8 @@ export default function ManufactureList() {
                               type="checkbox"
                               checked={item.selected}
                               onChange={() => handleTargetItemCheckboxChange(idx)}
-                              className="w-4 h-4 accent-indigo-600 rounded cursor-pointer border-slate-300"
+                              disabled={parseFloat(item.remaining_qty || 0) <= 0}
+                              className="w-4 h-4 accent-indigo-600 rounded cursor-pointer border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed"
                             />
                           </td>
 
@@ -818,45 +856,65 @@ export default function ManufactureList() {
                             </div>
                           </td>
 
-                          {/* Price */}
-                          <td className="px-3 py-2 text-right font-mono font-bold text-slate-800">
-                            ₹{parseFloat(item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          {/* Price (Editable) */}
+                          <td className="px-3 py-2 text-right">
+                            <div className="relative inline-flex items-center">
+                              <span className="absolute left-2 text-slate-400 font-bold text-xs pointer-events-none">₹</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                disabled={parseFloat(item.remaining_qty || 0) <= 0}
+                                value={item.price !== undefined && item.price !== null ? item.price : ''}
+                                onChange={(e) => handleTargetItemPriceChange(idx, e.target.value)}
+                                className="w-24 pl-5 pr-2 py-1 text-right font-mono font-bold text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 shadow-2xs hover:border-slate-400 transition-colors disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                                placeholder="0.00"
+                              />
+                            </div>
                           </td>
 
                           {/* Action: Add in Inventory & Scrap Button */}
                           <td className="px-3 py-2 text-center">
                             <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleAddInInventory(item)}
-                                className={`px-2.5 py-1 text-[10px] font-black rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs ${
-                                  item.configured || item.inventoryDetails
-                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
-                                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
-                                }`}
-                              >
-                                {item.configured || item.inventoryDetails ? (
-                                  <>
-                                    <CheckCircle2 size={11} className="text-emerald-600" />
-                                    <span>Location Set</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Package size={11} />
-                                    <span>Add in Inventory</span>
-                                  </>
-                                )}
-                              </button>
-                              
-                              {item.remaining_qty > 0 && !(item.configured || item.inventoryDetails) && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleScrapRemaining(idx)}
-                                  className="px-2.5 py-1 text-[10px] font-black rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 transition-all cursor-pointer shadow-2xs"
-                                  title="Scrap Remaining Quantity"
-                                >
-                                  Scrap Other
-                                </button>
+                              {parseFloat(item.remaining_qty || 0) > 0 ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddInInventory(item)}
+                                    className={`px-2.5 py-1 text-[10px] font-black rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs ${
+                                      item.configured || item.inventoryDetails
+                                        ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                                    }`}
+                                  >
+                                    {item.configured || item.inventoryDetails ? (
+                                      <>
+                                        <CheckCircle2 size={11} className="text-emerald-600" />
+                                        <span>Location Set</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Package size={11} />
+                                        <span>Add in Inventory</span>
+                                      </>
+                                    )}
+                                  </button>
+                                  
+                                  {!(item.configured || item.inventoryDetails) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleScrapRemaining(idx)}
+                                      className="px-2.5 py-1 text-[10px] font-black rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 transition-all cursor-pointer shadow-2xs"
+                                      title="Scrap Remaining Quantity"
+                                    >
+                                      Scrap Other
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200">
+                                  <CheckCircle2 size={11} className="text-emerald-500" /> Completed
+                                </span>
                               )}
                             </div>
                           </td>
@@ -898,7 +956,7 @@ export default function ManufactureList() {
       {/* CREATE MANUFACTURE JOB FORM MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-          <div className="bg-white border border-slate-300 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
+          <div className=" bg-[white] border border-slate-300 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
             
             {/* Modal Header */}
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
@@ -935,7 +993,7 @@ export default function ManufactureList() {
                     placeholder="e.g. Multi-Component Machining & Assembly"
                     value={formData.process_name}
                     onChange={(e) => setFormData(prev => ({ ...prev, process_name: e.target.value }))}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -947,7 +1005,7 @@ export default function ManufactureList() {
                     type="date"
                     value={formData.date_of_start}
                     onChange={(e) => setFormData(prev => ({ ...prev, date_of_start: e.target.value }))}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -959,7 +1017,7 @@ export default function ManufactureList() {
                     type="date"
                     value={formData.date_of_end}
                     onChange={(e) => setFormData(prev => ({ ...prev, date_of_end: e.target.value }))}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all"
                   />
                 </div>
               </div>
@@ -989,7 +1047,7 @@ export default function ManufactureList() {
                 {formData.source_items.length > 0 ? (
                   <div className="space-y-2">
                     {formData.source_items.map((src, idx) => (
-                      <div key={idx} className="bg-white border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                      <div key={idx} className=" bg-[white] border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
                         <div className="space-y-0.5 flex-1">
                           <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
                             <span>{src.item_code}</span>
@@ -1011,6 +1069,15 @@ export default function ManufactureList() {
                             </span>
                           </div>
 
+                          {(src.price !== undefined && src.price !== null && src.price !== '' && parseFloat(src.price) > 0) && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">Price:</span>
+                              <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg shadow-2xs">
+                                ₹{parseFloat(src.price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => handleRemoveSourceItem(idx)}
@@ -1024,7 +1091,7 @@ export default function ManufactureList() {
                     ))}
                   </div>
                 ) : (
-                  <div className="p-6 text-center border border-dashed border-amber-300/80 rounded-xl bg-white text-slate-400 text-xs font-medium">
+                  <div className="p-6 text-center border border-dashed border-amber-300/80 rounded-xl  bg-[white] text-slate-400 text-xs font-medium">
                     No Source Items selected. Click "Select Source Trace Items" to pick stock items to consume.
                   </div>
                 )}
@@ -1055,7 +1122,7 @@ export default function ManufactureList() {
                 {formData.target_items.length > 0 ? (
                   <div className="space-y-2">
                     {formData.target_items.map((tgt, idx) => (
-                      <div key={idx} className="bg-white border border-emerald-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                      <div key={idx} className=" bg-[white] border border-emerald-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
                         <div className="space-y-0.5 flex-1">
                           <div className="font-bold text-slate-900 text-xs">{tgt.item_code}</div>
                           {tgt.description && <div className="text-[10px] text-slate-500 truncate">{tgt.description}</div>}
@@ -1091,7 +1158,7 @@ export default function ManufactureList() {
                     ))}
                   </div>
                 ) : (
-                  <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl bg-white text-slate-400 text-xs font-medium">
+                  <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl  bg-[white] text-slate-400 text-xs font-medium">
                     No Target Items added. Click "Add Target Item" to select target catalog product code, quantity & price.
                   </div>
                 )}
@@ -1107,7 +1174,7 @@ export default function ManufactureList() {
                   placeholder="Enter specific manufacturing instructions or batch notes..."
                   value={formData.message}
                   onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all resize-y"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] focus:border-transparent transition-all resize-y"
                 />
               </div>
 

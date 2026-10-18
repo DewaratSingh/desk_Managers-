@@ -134,10 +134,15 @@ const initializeDatabase = async () => {
         description VARCHAR(500) NOT NULL,
         drawing_number VARCHAR(255),
         long_description TEXT,
+        margin NUMERIC(10, 2) DEFAULT 0.00,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (item_code, company_id)
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS margin NUMERIC(10, 2) DEFAULT 0.00;
     `);
 
     // 7. RFQs Table
@@ -828,6 +833,45 @@ const initializeDatabase = async () => {
     await client.query(`
       CREATE OR REPLACE VIEW processrfq AS SELECT * FROM "processRFQ";
       CREATE OR REPLACE VIEW processrfq_item AS SELECT * FROM "processRFQ_item";
+    `);
+
+    // 36. Process Received Quotation (Buy Process)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "processReceivedQuotation" (
+        id SERIAL PRIMARY KEY,
+        quotation_number VARCHAR(100) NOT NULL,
+        quotation_date DATE NOT NULL,
+        commercial_bid_due_date DATE NOT NULL,
+        technical_bid_due_date DATE NOT NULL,
+        buyer_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        status VARCHAR(50) DEFAULT 'active',
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (quotation_number, company_id)
+      );
+    `);
+
+    // 37. Process Received Quotation Items (Buy Process)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "processReceivedQuotation_item" (
+        id SERIAL PRIMARY KEY,
+        process_received_quotation_id INTEGER REFERENCES "processReceivedQuotation"(id) ON DELETE CASCADE,
+        item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        item_code VARCHAR(100) NOT NULL,
+        quantity NUMERIC(12, 3) NOT NULL DEFAULT 1 CHECK (quantity > 0),
+        price DECIMAL(12, 2) NOT NULL DEFAULT 0.00 CHECK (price >= 0),
+        process_name VARCHAR(255) NOT NULL,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Compatibility views for Process Received Quotation
+    await client.query(`
+      CREATE OR REPLACE VIEW processreceivedquotation AS SELECT * FROM "processReceivedQuotation";
+      CREATE OR REPLACE VIEW processreceivedquotation_item AS SELECT * FROM "processReceivedQuotation_item";
     `);
 
     console.log('Database initialized successfully.');

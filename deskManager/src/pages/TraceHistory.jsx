@@ -44,7 +44,7 @@ const HistoryBranch = ({ historyArray }) => {
                   <span className="font-black text-sm text-slate-700">{getStepTitle(step)}</span>
                 </div>
                 {step.date && (
-                  <div className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded-md border border-slate-200">
+                  <div className="text-[10px] font-bold text-slate-400  bg-[white] px-2 py-1 rounded-md border border-slate-200">
                     {new Date(step.date).toLocaleDateString()}
                   </div>
                 )}
@@ -261,7 +261,7 @@ export default function TraceHistory() {
                   <span className="font-black tracking-wide text-sm flex items-center gap-2">
                     <Box size={16} /> CURRENT TRACE
                   </span>
-                  <span className="bg-white/20 px-2 py-0.5 rounded-md text-xs font-mono font-bold">TR-{traceData.id}</span>
+                  <span className=" bg-[white]/20 px-2 py-0.5 rounded-md text-xs font-mono font-bold">TR-{traceData.id}</span>
                 </div>
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between items-end border-b border-slate-100 pb-3">

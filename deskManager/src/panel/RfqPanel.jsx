@@ -9,14 +9,14 @@ const fmtDate = (d) => {
 export default function RfqPanel({ rfq, tradeId }) {
   if (!rfq) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-10 text-center shadow-sm">
+      <div className=" bg-[white] border border-slate-200 rounded-xl p-10 text-center shadow-sm">
         <p className="text-sm text-slate-400 font-semibold">No RFQ details found for this trade.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
@@ -29,7 +29,7 @@ export default function RfqPanel({ rfq, tradeId }) {
           </span>
           <Link
             to={`/updateRfq/${rfq.rfq_no}`}
-            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600  bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <Edit2 size={10} /> Edit
           </Link>
@@ -94,7 +94,7 @@ export default function RfqPanel({ rfq, tradeId }) {
                   <th className="px-4 py-2.5 text-right">Qty</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-slate-100  bg-[white]">
                 {(rfq.items || []).map((item, idx) => (
                   <tr key={idx} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3">

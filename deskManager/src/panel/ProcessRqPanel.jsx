@@ -12,7 +12,7 @@ export default function ProcessRqPanel({ processRq, tradeId }) {
   const jobs = processRq.jobs || [];
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
       {/* Header */}
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -77,13 +77,13 @@ export default function ProcessRqPanel({ processRq, tradeId }) {
               const targetItems = job.target_items || [];
               
               return (
-                <div key={jIdx} className="border border-slate-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
+                <div key={jIdx} className="border border-slate-200 rounded-2xl  bg-[white] shadow-2xs overflow-hidden">
                   <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div>
                       <span className="text-xs font-bold text-slate-800">Job {jIdx + 1}: {job.process_name}</span>
                       {job.message && <p className="text-[10px] text-slate-500 mt-0.5">{job.message}</p>}
                     </div>
-                    <div className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-white px-2 py-1 rounded border border-slate-200 shadow-2xs">
+                    <div className="text-[10px] text-slate-500 font-medium whitespace-nowrap  bg-[white] px-2 py-1 rounded border border-slate-200 shadow-2xs">
                       {fmtDate(job.date_of_start)} {job.date_of_end ? ` → ${fmtDate(job.date_of_end)}` : ''}
                     </div>
                   </div>
@@ -100,7 +100,7 @@ export default function ProcessRqPanel({ processRq, tradeId }) {
                         </div>
                         <div className="space-y-2 mt-2">
                           {sourceItems.map((src, sIdx) => (
-                            <div key={sIdx} className="bg-white border border-amber-200 rounded-lg p-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs">
+                            <div key={sIdx} className=" bg-[white] border border-amber-200 rounded-lg p-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs">
                               <div className="flex-1 space-y-0.5">
                                 <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
                                   <span className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900">
@@ -137,7 +137,7 @@ export default function ProcessRqPanel({ processRq, tradeId }) {
                         </div>
                         <div className="space-y-2 mt-2">
                           {targetItems.map((tgt, tIdx) => (
-                            <div key={tIdx} className="bg-white border border-emerald-200 rounded-lg p-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs">
+                            <div key={tIdx} className=" bg-[white] border border-emerald-200 rounded-lg p-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs">
                               <div className="flex-1 space-y-0.5">
                                 <div className="font-bold text-slate-900 text-xs">
                                   <span className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900">
@@ -180,7 +180,7 @@ export default function ProcessRqPanel({ processRq, tradeId }) {
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
               <List size={12} /> Processed Item Mappings ({legacyItems.length})
             </p>
-            <div className="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs">
+            <div className="border border-slate-200 rounded-xl overflow-x-auto  bg-[white] shadow-2xs">
               <table className="w-full border-collapse text-left text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">

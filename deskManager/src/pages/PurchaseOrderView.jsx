@@ -65,7 +65,7 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
         width: `${Math.max(160, coords.width)}px`,
         zIndex: 9999,
       }}
-      className="bg-white border border-slate-300 rounded shadow-xl overflow-hidden max-h-40 overflow-y-auto"
+      className=" bg-[white] border border-slate-300 rounded shadow-xl overflow-hidden max-h-40 overflow-y-auto"
     >
       {filtered.map((s) => (
         <button
@@ -91,7 +91,7 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
           placeholder={placeholder}
           autoComplete="off"
           style={{ borderColor: 'var(--theme-secondary)' }}
-          className="w-full px-1.5 py-0.5 border rounded text-[11px] font-medium bg-white focus:outline-none placeholder:text-slate-300"
+          className="w-full px-1.5 py-0.5 border rounded text-[11px] font-medium  bg-[white] focus:outline-none placeholder:text-slate-300"
         />
         {value && (
           <button type="button" onClick={onClear}
@@ -288,7 +288,7 @@ export default function PurchaseOrderView() {
   const pendingQtyTotal = Math.max(0, totalQty - deliveredQty);
 
   return (
-    <div className="min-h-screen flex flex-col print:bg-white" style={{ backgroundColor: 'var(--bg-app)' }}>
+    <div className="min-h-screen flex flex-col print: bg-[white]" style={{ backgroundColor: 'var(--bg-app)' }}>
 
       {/* ── sticky topbar ─────────────────────────────────────────────────── */}
       <div

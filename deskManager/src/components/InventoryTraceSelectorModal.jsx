@@ -153,7 +153,7 @@ export default function InventoryTraceSelectorModal({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-      <div className="bg-white border border-slate-300 rounded-3xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
+      <div className=" bg-[white] border border-slate-300 rounded-3xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
         
         {/* Modal Header */}
         <div className="bg-amber-50 px-6 py-4 border-b border-amber-200 flex justify-between items-center">
@@ -196,7 +196,7 @@ export default function InventoryTraceSelectorModal({
 
         {/* Search Bar */}
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center gap-3">
-          <div className="flex-1 flex items-center gap-2.5 border border-slate-300 rounded-xl px-3.5 py-2 bg-white shadow-2xs">
+          <div className="flex-1 flex items-center gap-2.5 border border-slate-300 rounded-xl px-3.5 py-2  bg-[white] shadow-2xs">
             <Search size={16} className="text-slate-400 shrink-0" />
             <input
               type="text"
@@ -210,7 +210,7 @@ export default function InventoryTraceSelectorModal({
             type="button"
             onClick={fetchTraceItems}
             disabled={loading}
-            className="p-2 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+            className="p-2  bg-[white] border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
             title="Refresh Stock List"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -230,7 +230,7 @@ export default function InventoryTraceSelectorModal({
               <span>No available inventory stock found matching your search.</span>
             </div>
           ) : (
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
+            <div className="border border-slate-200 rounded-2xl overflow-hidden  bg-[white] shadow-2xs">
               <table className="w-full border-collapse text-left text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
@@ -243,7 +243,7 @@ export default function InventoryTraceSelectorModal({
                     <th className="px-3.5 py-2.5 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white font-semibold">
+                <tbody className="divide-y divide-slate-100  bg-[white] font-semibold">
                   {filteredTraceItems.map((item) => {
                     const tid = item.trace_id || item.trace_item_id;
                     const currentSel = selectedSelections[tid];
@@ -290,7 +290,7 @@ export default function InventoryTraceSelectorModal({
                             placeholder="Qty"
                             value={currentQty}
                             onChange={(e) => handleQtyChange(item, e.target.value)}
-                            className="w-24 px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500 shadow-2xs"
+                            className="w-24 px-2.5 py-1.5  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500 shadow-2xs"
                           />
                         </td>
                         <td className="px-3.5 py-2.5 text-center align-middle">

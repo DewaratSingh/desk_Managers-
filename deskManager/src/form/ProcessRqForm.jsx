@@ -271,14 +271,14 @@ export default function ProcessRqForm() {
           <button
             type="button"
             onClick={() => navigate('/dashboard')}
-            className="px-3.5 py-2 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-50 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+            className="px-3.5 py-2  bg-[white] border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-50 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
           >
             <ArrowLeft size={15} /> Back to Dashboard
           </button>
         </div>
 
         {/* FORM CONTAINER CARD */}
-        <div className="border border-slate-300 rounded-3xl bg-white p-6 shadow-sm space-y-6">
+        <div className="border border-slate-300 rounded-3xl  bg-[white] p-6 shadow-sm space-y-6">
           <form onSubmit={handleSubmit} className="space-y-6">
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 rounded-2xl border border-slate-200 bg-slate-50/50">
@@ -292,7 +292,7 @@ export default function ProcessRqForm() {
                   required
                   value={dateOfStart}
                   onChange={(e) => setDateOfStart(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
@@ -305,7 +305,7 @@ export default function ProcessRqForm() {
                   type="date"
                   value={dateOfEnd}
                   onChange={(e) => setDateOfEnd(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                 />
               </div>
 
@@ -327,11 +327,11 @@ export default function ProcessRqForm() {
                   onFocus={() => {
                     if (sellerInput.trim()) setShowSellerDropdown(true);
                   }}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   autoComplete="off"
                 />
                 {showSellerDropdown && sellerSuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
+                  <div className="absolute z-50 w-full mt-1  bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
                     {sellerSuggestions.map((b) => (
                       <button
                         key={b.id}
@@ -372,11 +372,11 @@ export default function ProcessRqForm() {
                   onFocus={() => {
                     if (partyInput.trim()) setShowPartyDropdown(true);
                   }}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   autoComplete="off"
                 />
                 {showPartyDropdown && partySuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
+                  <div className="absolute z-50 w-full mt-1  bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto text-xs">
                     {partySuggestions.map((c) => (
                       <button
                         key={c.id}
@@ -408,7 +408,7 @@ export default function ProcessRqForm() {
                   placeholder="e.g. Surface treatment & galvanizing"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all min-h-[60px]"
+                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all min-h-[60px]"
                 />
               </div>
             </div>
@@ -437,7 +437,7 @@ export default function ProcessRqForm() {
               {localJobs.length > 0 ? (
                 <div className="space-y-3">
                   {localJobs.map((job, idx) => (
-                    <div key={idx} className="bg-white border border-indigo-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+                    <div key={idx} className=" bg-[white] border border-indigo-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
                       <div className="flex-1 space-y-1">
                         <div className="font-bold text-slate-900 text-sm">{job.process_name}</div>
                         <div className="text-[11px] text-slate-500 font-medium">
@@ -464,7 +464,7 @@ export default function ProcessRqForm() {
                   ))}
                 </div>
               ) : (
-                <div className="p-8 text-center border border-dashed border-indigo-300 rounded-xl bg-white text-slate-400 text-xs font-medium">
+                <div className="p-8 text-center border border-dashed border-indigo-300 rounded-xl  bg-[white] text-slate-400 text-xs font-medium">
                   No jobs added yet. Click "Add Job" to define processing tasks.
                 </div>
               )}
@@ -503,7 +503,7 @@ export default function ProcessRqForm() {
       {/* JOB CREATION MODAL */}
       {isJobModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-          <div className="bg-white border border-slate-300 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
+          <div className=" bg-[white] border border-slate-300 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
             
             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/80 flex justify-between items-center">
               <div className="flex items-center gap-2.5">
@@ -579,7 +579,7 @@ export default function ProcessRqForm() {
                   <button
                     type="button"
                     onClick={() => setIsSourceModalOpen(true)}
-                    className="text-[10px] font-bold bg-white border border-amber-300 text-amber-800 px-3 py-1.5 rounded-lg shadow-2xs hover:bg-amber-100 cursor-pointer"
+                    className="text-[10px] font-bold  bg-[white] border border-amber-300 text-amber-800 px-3 py-1.5 rounded-lg shadow-2xs hover:bg-amber-100 cursor-pointer"
                   >
                     Select Inventory Trace
                   </button>
@@ -587,7 +587,7 @@ export default function ProcessRqForm() {
                 {jobFormData.source_items.length > 0 ? (
                   <div className="space-y-2">
                     {jobFormData.source_items.map((src, i) => (
-                      <div key={i} className="flex items-center justify-between bg-white border border-amber-200 p-2.5 rounded-lg">
+                      <div key={i} className="flex items-center justify-between  bg-[white] border border-amber-200 p-2.5 rounded-lg">
                         <div className="text-[11px] font-bold text-slate-800">
                           {src.item_code} {src.trace_item_id && <span className="ml-1 text-[9px] bg-amber-100 px-1 py-0.5 rounded text-amber-900 border border-amber-300">TR-{src.trace_item_id}</span>}
                         </div>
@@ -612,7 +612,7 @@ export default function ProcessRqForm() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-[10px] text-slate-500 font-medium italic text-center py-2 bg-white border border-amber-200 border-dashed rounded-lg">No source items selected</div>
+                  <div className="text-[10px] text-slate-500 font-medium italic text-center py-2  bg-[white] border border-amber-200 border-dashed rounded-lg">No source items selected</div>
                 )}
               </div>
 
@@ -625,7 +625,7 @@ export default function ProcessRqForm() {
                   <button
                     type="button"
                     onClick={() => setIsTargetModalOpen(true)}
-                    className="text-[10px] font-bold bg-white border border-emerald-300 text-emerald-800 px-3 py-1.5 rounded-lg shadow-2xs hover:bg-emerald-100 cursor-pointer"
+                    className="text-[10px] font-bold  bg-[white] border border-emerald-300 text-emerald-800 px-3 py-1.5 rounded-lg shadow-2xs hover:bg-emerald-100 cursor-pointer"
                   >
                     Add Output Item
                   </button>
@@ -633,32 +633,53 @@ export default function ProcessRqForm() {
                 {jobFormData.target_items.length > 0 ? (
                   <div className="space-y-2">
                     {jobFormData.target_items.map((tgt, i) => (
-                      <div key={i} className="flex items-center justify-between bg-white border border-emerald-200 p-2.5 rounded-lg">
+                      <div key={i} className="flex items-center justify-between  bg-[white] border border-emerald-200 p-2.5 rounded-lg">
                         <div className="text-[11px] font-bold text-slate-800">
                           {tgt.item_code}
                         </div>
-                        <div className="flex items-center gap-3">
-                          <input 
-                            type="number" 
-                            className="w-16 border border-slate-300 rounded px-1 py-0.5 text-xs text-center" 
-                            value={tgt.qty} 
-                            placeholder="Qty"
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setJobFormData(prev => {
-                                const newTgt = [...prev.target_items];
-                                newTgt[i].qty = v;
-                                return { ...prev, target_items: newTgt };
-                              });
-                            }}
-                          />
-                          <button type="button" onClick={() => setJobFormData(prev => ({ ...prev, target_items: prev.target_items.filter((_, idx) => idx !== i) }))} className="text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 text-[10px] text-slate-500 font-bold uppercase">
+                            <span>Qty:</span>
+                            <input 
+                              type="number" 
+                              className="w-16 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-center font-bold text-slate-800" 
+                              value={tgt.qty} 
+                              placeholder="Qty"
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setJobFormData(prev => {
+                                  const newTgt = [...prev.target_items];
+                                  newTgt[i].qty = v;
+                                  return { ...prev, target_items: newTgt };
+                                });
+                              }}
+                            />
+                          </div>
+                          <div className="flex items-center gap-1 text-[10px] text-slate-500 font-bold uppercase">
+                            <span>₹:</span>
+                            <input 
+                              type="number" 
+                              step="0.01"
+                              className="w-20 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-bold text-slate-800" 
+                              value={tgt.price} 
+                              placeholder="Price"
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setJobFormData(prev => {
+                                  const newTgt = [...prev.target_items];
+                                  newTgt[i].price = v;
+                                  return { ...prev, target_items: newTgt };
+                                });
+                              }}
+                            />
+                          </div>
+                          <button type="button" onClick={() => setJobFormData(prev => ({ ...prev, target_items: prev.target_items.filter((_, idx) => idx !== i) }))} className="text-slate-400 hover:text-red-500 cursor-pointer p-1"><Trash2 size={14} /></button>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-[10px] text-slate-500 font-medium italic text-center py-2 bg-white border border-emerald-200 border-dashed rounded-lg">No target items added</div>
+                  <div className="text-[10px] text-slate-500 font-medium italic text-center py-2  bg-[white] border border-emerald-200 border-dashed rounded-lg">No target items added</div>
                 )}
               </div>
 

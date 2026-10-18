@@ -106,7 +106,7 @@ export default function LoginView({ onLogin = () => {} }) {
       <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-indigo-400/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-sm relative z-10 transition-all duration-300">
-        <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-2xl p-6 md:p-8 shadow-md shadow-slate-200/30 transition-all duration-200">
+        <div className=" bg-[white]/80 backdrop-blur-xl border border-slate-200/60 rounded-2xl p-6 md:p-8 shadow-md shadow-slate-200/30 transition-all duration-200">
           <div className="flex flex-col items-center mb-6 text-center">
             <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-1">
               {isChangingPassword ? 'Password Setup' : 'Sign In'}
@@ -141,7 +141,7 @@ export default function LoginView({ onLogin = () => {} }) {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Enter username"
-                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -160,7 +160,7 @@ export default function LoginView({ onLogin = () => {} }) {
                     value={previousPassword}
                     onChange={(e) => setPreviousPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -179,7 +179,7 @@ export default function LoginView({ onLogin = () => {} }) {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -230,7 +230,7 @@ export default function LoginView({ onLogin = () => {} }) {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Enter your username"
-                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -249,7 +249,7 @@ export default function LoginView({ onLogin = () => {} }) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-medium text-sm outline-none focus: bg-[white] focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>

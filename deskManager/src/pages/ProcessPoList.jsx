@@ -393,7 +393,7 @@ export default function ProcessPoList() {
     <div className="min-h-screen bg-slate-50 text-slate-900 p-4 md:p-8">
       {/* Top Header & Toolbar */}
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4  bg-[white] p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex items-center gap-4">
             <div
               className="p-3 rounded-xl text-white shadow-md flex items-center justify-center shrink-0"
@@ -438,11 +438,11 @@ export default function ProcessPoList() {
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
-              className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all shadow-xs"
+              className="w-full  bg-[white] border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all shadow-xs"
             />
           </div>
 
-          <div className="bg-white border border-slate-200 p-3.5 rounded-xl flex items-center justify-between shadow-xs">
+          <div className=" bg-[white] border border-slate-200 p-3.5 rounded-xl flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-100">
                 <FileText size={16} />
@@ -452,7 +452,7 @@ export default function ProcessPoList() {
             <span className="text-base font-black text-slate-900">{processPoList.length}</span>
           </div>
 
-          <div className="bg-white border border-slate-200 p-3.5 rounded-xl flex items-center justify-between shadow-xs">
+          <div className=" bg-[white] border border-slate-200 p-3.5 rounded-xl flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100">
                 <Package size={16} />
@@ -467,12 +467,12 @@ export default function ProcessPoList() {
 
         {/* Directory Grid / Cards */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex flex-col items-center justify-center py-16  bg-[white] rounded-2xl border border-slate-200 shadow-xs">
             <RefreshCw size={28} className="animate-spin text-indigo-600 mb-2" />
             <p className="text-slate-500 text-xs font-semibold">Loading Process PO directory...</p>
           </div>
         ) : filteredList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-slate-200 text-center px-4 shadow-xs">
+          <div className="flex flex-col items-center justify-center py-16  bg-[white] rounded-2xl border border-slate-200 text-center px-4 shadow-xs">
             <div className="p-3 bg-slate-100 text-slate-400 rounded-full mb-2">
               <AlertCircle size={28} />
             </div>
@@ -486,7 +486,7 @@ export default function ProcessPoList() {
             {filteredList.map((job) => (
               <div
                 key={job.id}
-                className="bg-white hover:border-slate-300 border border-slate-200 rounded-2xl p-5 shadow-sm transition-all duration-200 flex flex-col justify-between group"
+                className=" bg-[white] hover:border-slate-300 border border-slate-200 rounded-2xl p-5 shadow-sm transition-all duration-200 flex flex-col justify-between group"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-3">
@@ -564,7 +564,7 @@ export default function ProcessPoList() {
       {/* CREATE NEW PROCESS PO JOB MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-6xl p-6 md:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto my-8">
+          <div className=" bg-[white] border border-slate-200 rounded-3xl w-full max-w-6xl p-6 md:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto my-8">
             <div className="flex items-center justify-between border-b border-slate-200 pb-4">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-xl">
@@ -595,7 +595,7 @@ export default function ProcessPoList() {
                     placeholder="e.g. PPO-0001 or Heat Treatment Job"
                     value={formData.po_no}
                     onChange={(e) => setFormData(prev => ({ ...prev, po_no: e.target.value }))}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    className="w-full  bg-[white] border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
@@ -605,7 +605,7 @@ export default function ProcessPoList() {
                     type="date"
                     value={formData.date_of_start}
                     onChange={(e) => setFormData(prev => ({ ...prev, date_of_start: e.target.value }))}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    className="w-full  bg-[white] border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
@@ -615,7 +615,7 @@ export default function ProcessPoList() {
                     type="date"
                     value={formData.date_of_end}
                     onChange={(e) => setFormData(prev => ({ ...prev, date_of_end: e.target.value }))}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    className="w-full  bg-[white] border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
@@ -626,7 +626,7 @@ export default function ProcessPoList() {
                     placeholder="Additional process instructions or specifications..."
                     value={formData.message}
                     onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                    className="w-full  bg-[white] border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
@@ -675,14 +675,14 @@ export default function ProcessPoList() {
                               setOpenDropdown({ rowIndex: idx, type: 'source' });
                             }}
                             onFocus={() => setOpenDropdown({ rowIndex: idx, type: 'source' })}
-                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 pr-7"
+                            className="w-full  bg-[white] border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 pr-7"
                           />
                           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         </div>
 
                         {/* Source Item Dropdown */}
                         {openDropdown.rowIndex === idx && openDropdown.type === 'source' && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-30 divide-y divide-slate-100">
+                          <div className="absolute left-0 right-0 top-full mt-1  bg-[white] border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-30 divide-y divide-slate-100">
                             {inventoryItems
                               .filter(inv => (inv.item_code || '').toLowerCase().includes((item.source_item_code || '').toLowerCase()))
                               .map((inv, iIdx) => (
@@ -727,14 +727,14 @@ export default function ProcessPoList() {
                               setOpenDropdown({ rowIndex: idx, type: 'target' });
                             }}
                             onFocus={() => setOpenDropdown({ rowIndex: idx, type: 'target' })}
-                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 pr-7"
+                            className="w-full  bg-[white] border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 pr-7"
                           />
                           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         </div>
 
                         {/* Target Item Dropdown */}
                         {openDropdown.rowIndex === idx && openDropdown.type === 'target' && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-30 divide-y divide-slate-100">
+                          <div className="absolute left-0 right-0 top-full mt-1  bg-[white] border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-30 divide-y divide-slate-100">
                             {catalogItems
                               .filter(c => (c.item_code || '').toLowerCase().includes((item.target_item_code || '').toLowerCase()))
                               .map((cat, cIdx) => (
@@ -761,7 +761,7 @@ export default function ProcessPoList() {
                           placeholder="0"
                           value={item.source_qty}
                           onChange={(e) => handleItemChange(idx, 'source_qty', e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                          className="w-full  bg-[white] border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                         />
                       </div>
 
@@ -774,7 +774,7 @@ export default function ProcessPoList() {
                           placeholder="0"
                           value={item.target_qty}
                           onChange={(e) => handleItemChange(idx, 'target_qty', e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                          className="w-full  bg-[white] border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                         />
                       </div>
 
@@ -786,7 +786,7 @@ export default function ProcessPoList() {
                           placeholder="0.00"
                           value={item.price}
                           onChange={(e) => handleItemChange(idx, 'price', e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                          className="w-full  bg-[white] border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                     </div>
@@ -830,7 +830,7 @@ export default function ProcessPoList() {
       {/* TRACE SELECTION POP-UP MODAL */}
       {traceModalState.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col">
+          <div className=" bg-[white] border border-slate-200 rounded-3xl w-full max-w-3xl p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div className="flex items-center gap-2.5">
                 <Layers className="text-indigo-600" size={20} />
@@ -867,7 +867,7 @@ export default function ProcessPoList() {
                       <th className="py-2.5 px-3">Consume Qty</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white font-semibold text-slate-800">
+                  <tbody className="divide-y divide-slate-100  bg-[white] font-semibold text-slate-800">
                     {traceModalState.traceItems.map((tItem) => {
                       const isSelected = !!traceModalState.selectedSelections[tItem.trace_id];
                       const selectedObj = traceModalState.selectedSelections[tItem.trace_id] || {};
@@ -895,7 +895,7 @@ export default function ProcessPoList() {
                                   min="0.01"
                                   value={selectedObj.Qty || ''}
                                   onChange={(e) => handleTraceQtyChange(tItem.trace_id, e.target.value)}
-                                  className="w-24 bg-white border border-indigo-400 rounded-lg px-2 py-1 text-xs text-slate-900 font-bold focus:outline-none"
+                                  className="w-24  bg-[white] border border-indigo-400 rounded-lg px-2 py-1 text-xs text-slate-900 font-bold focus:outline-none"
                                 />
                                 <button
                                   type="button"
@@ -946,7 +946,7 @@ export default function ProcessPoList() {
       {/* PROCESS PO JOB DETAILS POP-UP MODAL & PRODUCTION COMPLETION */}
       {viewingJob && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl p-6 md:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto my-8">
+          <div className=" bg-[white] border border-slate-200 rounded-3xl w-full max-w-4xl p-6 md:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto my-8">
             <div className="flex items-center justify-between border-b border-slate-200 pb-4">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -996,7 +996,7 @@ export default function ProcessPoList() {
 
                   {/* Trace Arrays Information */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="bg-white p-3 rounded-xl border border-slate-200">
+                    <div className=" bg-[white] p-3 rounded-xl border border-slate-200">
                       <p className="font-bold text-slate-600 mb-1.5 flex items-center gap-1.5 text-[11px]">
                         <Layers size={13} className="text-indigo-600" />
                         <span>Source Trace IDs ({mItem.source_trace_id_array ? mItem.source_trace_id_array.length : 0})</span>
@@ -1014,7 +1014,7 @@ export default function ProcessPoList() {
                       )}
                     </div>
 
-                    <div className="bg-white p-3 rounded-xl border border-slate-200">
+                    <div className=" bg-[white] p-3 rounded-xl border border-slate-200">
                       <p className="font-bold text-slate-600 mb-1.5 flex items-center gap-1.5 text-[11px]">
                         <CheckSquare size={13} className="text-emerald-600" />
                         <span>Target Trace IDs ({mItem.target_trace_id_array ? mItem.target_trace_id_array.length : 0})</span>
@@ -1034,7 +1034,7 @@ export default function ProcessPoList() {
                   </div>
 
                   {/* Complete Production Action Bar */}
-                  <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
+                  <div className=" bg-[white] border border-slate-200 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
                     <div>
                       <p className="text-xs font-bold text-slate-900">Complete Process PO Stock</p>
                       <p className="text-[11px] text-slate-500 font-semibold">Enter completed quantity to update trace item status to 'in inventory'</p>
@@ -1048,7 +1048,7 @@ export default function ProcessPoList() {
                           placeholder="Completed Qty"
                           value={completedQtyInputs[mItem.id] || ''}
                           onChange={(e) => setCompletedQtyInputs({ ...completedQtyInputs, [mItem.id]: e.target.value })}
-                          className="w-full md:w-36 bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                          className="w-full md:w-36  bg-[white] border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
                         />
                         <button
                           type="button"

@@ -297,7 +297,7 @@ router.post('/', async (req, res) => {
             item.gst_type  || null,
             parseFloat(item.gst_rate)  || 0,
             item.shipping_address || null,
-            item.delivery_date    || null,
+            item.delivery_date || delivery_date || null,
             req.user.company_id
           ]
         );
@@ -395,7 +395,7 @@ router.put('/:po_no', async (req, res) => {
             item.gst_type  || null,
             parseFloat(item.gst_rate)  || 0,
             item.shipping_address || null,
-            item.delivery_date    || null,
+            item.delivery_date    || delivery_date || null,
             req.user.company_id
           ]
         );

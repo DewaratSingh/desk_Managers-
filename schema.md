@@ -146,6 +146,7 @@ CREATE TABLE items (
   description      VARCHAR(500)  NOT NULL,
   drawing_number   VARCHAR(255),
   long_description TEXT,
+  margin           NUMERIC(10,2) DEFAULT 0.00,
   company_id       INTEGER       REFERENCES companies(id),
   created_at       TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );
@@ -906,6 +907,38 @@ CREATE TABLE process_rfq_items (
 );
 ```
 
+### `processReceivedQuotation`
+```sql
+CREATE TABLE "processReceivedQuotation" (
+  id                      SERIAL        PRIMARY KEY,
+  quotation_number        VARCHAR(100)  NOT NULL,
+  quotation_date          DATE          NOT NULL,
+  commercial_bid_due_date DATE          NOT NULL,
+  technical_bid_due_date  DATE          NOT NULL,
+  buyer_id                INTEGER       REFERENCES buyers(id),
+  customer_id             INTEGER       REFERENCES customers(id),
+  trade_id                INTEGER       REFERENCES trades(id),
+  status                  VARCHAR(50)   DEFAULT 'active',
+  company_id              INTEGER       REFERENCES companies(id),
+  created_at              TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### `processReceivedQuotation_item`
+```sql
+CREATE TABLE "processReceivedQuotation_item" (
+  id                            SERIAL        PRIMARY KEY,
+  process_received_quotation_id INTEGER       REFERENCES "processReceivedQuotation"(id),
+  item_id                       INTEGER       REFERENCES items(id),
+  item_code                     VARCHAR(100)  NOT NULL,
+  quantity                      NUMERIC(12, 3) NOT NULL DEFAULT 1,
+  price                         DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  process_name                  VARCHAR(255)  NOT NULL,
+  company_id                    INTEGER       REFERENCES companies(id),
+  created_at                    TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ---
 
 ## 14. Vendor Orders
@@ -1002,3 +1035,19 @@ job ──< target_item
 | `po_process_item` | `source_item_traceid_array` | `[trace_item_id, ...]` |
 | `po_process_item` | `target_item_traceid_array` | `[trace_item_id, ...]` |
 | `users` | `permissions` | `["view_pricing", "admin", ...]` |
+
+---
+
+## 15. Buy Process Contract Order (Direct Trade & Delivery Flow)
+
+- **Entry**: `/addProcessContractOrder` accessible from Sidebar under **Buy Process → Contract Order**.
+- **Form**: Process PO Form in **direct Contract Order mode** (clean, no auto-fill, fresh PO generation).
+- **Backend Flow (`POST /api/process-po`)**:
+  - When `trade_id` is not passed:
+    - Automatically creates a new record in `trades` table (`trade_id = 'TRD-PPO-xxxx'`, `status = 'ordered'`, `trade_type = 'BUY_PROCESS'`, `documents = [{type: 'PO', id: po_no}]`).
+    - Automatically creates linked manufacturing records: `job`, `source_item`, `target_item`, and `manufacture` (`status = 'in_progress'`), saving the generated ID into `process_po.job_ids`.
+    - Associates `process_po.trade_id` with the newly created trade.
+- **Next Step**:
+  - Redirects to `/trade/:trade_id`.
+  - The trade displays the Process Purchase Order with **Assigned Jobs** (raw materials and target output products).
+  - Displays the **"Next Step: Delivery Note (DN)"** action banner with a direct link to `/addDeliveryNote?trade_id=${tradeId}` for finished goods dispatch.

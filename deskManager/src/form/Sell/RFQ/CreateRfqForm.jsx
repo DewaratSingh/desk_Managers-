@@ -6,7 +6,7 @@ import { useRfq } from '../../../context/RfqContext.jsx';
 import ItemQuoteHistory from '../../../components/ItemQuoteHistory.jsx';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
-const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
 export default function CreateRfqForm() {
   const navigate = useNavigate();
@@ -332,7 +332,7 @@ export default function CreateRfqForm() {
           )}
 
           {/* Form Card */}
-          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-4">
               
               {/* RFQ No */}
@@ -409,7 +409,7 @@ export default function CreateRfqForm() {
                   autoComplete="off"
                 />
                 {showBuyerDropdown && buyerSuggestions.length > 0 && (
-                  <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="absolute  z-30 w-full mt-1 bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                     {buyerSuggestions.slice(0, 6).map(b => (
                       <button
                         key={b.id}
@@ -468,7 +468,7 @@ export default function CreateRfqForm() {
                   autoComplete="off"
                 />
                 {showCustomerDropdown && customerSuggestions.length > 0 && (
-                  <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="absolute z-30 w-full mt-1 bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                     {customerSuggestions.slice(0, 6).map(c => (
                       <button
                         key={c.id}
@@ -520,7 +520,7 @@ export default function CreateRfqForm() {
                     </div>
                     <div className="divide-y divide-slate-200">
                       {selectedItems.map((item) => (
-                        <div key={item.item_code} className="px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
+                        <div key={item.item_code} className="px-4 py-3  bg-[white] hover:bg-slate-50 transition-colors">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="min-w-0 flex-1 mr-4">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -547,7 +547,7 @@ export default function CreateRfqForm() {
                                   required
                                   value={item.quantity}
                                   onChange={(e) => handleQuantityChange(item.item_code, e.target.value)}
-                                  className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                                 />
                               </div>
                               <div className="flex flex-col items-end">
@@ -559,7 +559,7 @@ export default function CreateRfqForm() {
                                   placeholder="e.g. Piece"
                                   value={item.unit || ''}
                                   onChange={(e) => handleUnitChange(item.item_code, e.target.value)}
-                                  className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                                   autoComplete="off"
                                 />
                               </div>
@@ -572,7 +572,7 @@ export default function CreateRfqForm() {
                                   placeholder="0.00"
                                   value={item.unit_price || '0'}
                                   onChange={(e) => handlePriceChange(item.item_code, e.target.value)}
-                                  className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-white border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                                 />
                               </div>
                               <button
@@ -628,7 +628,7 @@ export default function CreateRfqForm() {
                   />
 
                   {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
-                    <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                    <div className="absolute z-30 w-full mt-1 bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                       {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
                         <button
                           key={item.item_code}
@@ -703,7 +703,7 @@ export default function CreateRfqForm() {
 
         {/* Right side history panel */}
         {historyItem && (
-          <div className="hidden lg:block lg:col-span-2 bg-white border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
+          <div className="hidden lg:block lg:col-span-2  bg-[white] border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
             <ItemQuoteHistory
               code={historyItem}
               excludeRfq={null}

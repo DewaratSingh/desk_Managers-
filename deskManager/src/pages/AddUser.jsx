@@ -64,7 +64,7 @@ function ToggleSwitch({ checked, onChange, disabled, label, title }) {
       <span className="sr-only">{label || 'Toggle'}</span>
       <span
         aria-hidden="true"
-        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full  bg-[white] shadow-md ring-0 transition duration-200 ease-in-out ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
@@ -544,7 +544,7 @@ export default function AddUserView() {
 
           {/* Search */}
           <div
-            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors"
+            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2  bg-[white] shadow-sm transition-colors"
             style={{ borderColor: searchFocused ? 'var(--theme-color)' : 'rgb(203, 213, 225)' }}
           >
             <Search size={18} className="text-slate-400 shrink-0" />
@@ -560,7 +560,7 @@ export default function AddUserView() {
           </div>
 
           {/* Table */}
-          <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-sm">
+          <div className="border border-slate-300 rounded-lg overflow-hidden  bg-[white] shadow-sm">
             <div className="bg-slate-100 px-5 py-3 border-b border-slate-300">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <ListFilter size={14} style={{ color: 'var(--theme-color)' }} />
@@ -577,7 +577,7 @@ export default function AddUserView() {
                 No users found. Click "+ Add User" to set up profiles.
               </div>
             ) : (
-              <div className="overflow-x-auto bg-white">
+              <div className="overflow-x-auto  bg-[white]">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
@@ -588,7 +588,7 @@ export default function AddUserView() {
                       <th className="px-5 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
+                  <tbody className="divide-y divide-slate-200  bg-[white]">
                     {filteredUsers.map((u) => (
                       <tr
                         key={u.username}
@@ -609,7 +609,7 @@ export default function AddUserView() {
                         <td className="px-5 py-3.5 text-right space-x-2 whitespace-nowrap">
                           <button
                             onClick={() => handleEditClick(u)}
-                            className="px-2.5 py-1.5 text-[11px] border border-slate-300 rounded font-semibold bg-white text-slate-700 hover:border-slate-800 transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 text-[11px] border border-slate-300 rounded font-semibold  bg-[white] text-slate-700 hover:border-slate-800 transition-all inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Edit2 size={11} /> Edit
                           </button>
@@ -660,7 +660,7 @@ export default function AddUserView() {
             )}
           </div>
 
-          <div className="bg-white border border-slate-300 rounded-xl p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-xl p-6 shadow-sm">
             <form onSubmit={handleAddUser} className="space-y-6">
               
               {/* Username Field with Database Availability Check */}
@@ -677,7 +677,7 @@ export default function AddUserView() {
                     placeholder="e.g. jsmith"
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-white disabled:bg-slate-100 disabled:text-slate-500 border border-slate-300 rounded-lg text-sm placeholder:text-slate-400 font-semibold focus:outline-none transition-all pr-10"
+                    className="w-full px-3.5 py-2.5  bg-[white] disabled:bg-slate-100 disabled:text-slate-500 border border-slate-300 rounded-lg text-sm placeholder:text-slate-400 font-semibold focus:outline-none transition-all pr-10"
                     onFocus={(e) => !editingId && (e.target.style.borderColor = 'var(--theme-color)')}
                     onBlur={(e) => !editingId && (e.target.style.borderColor = 'rgb(203, 213, 225)')}
                   />
@@ -811,7 +811,7 @@ export default function AddUserView() {
                 </div>
 
                 {/* The Matrix Table */}
-                <div className="border border-slate-300 rounded-xl overflow-hidden bg-white shadow-xs">
+                <div className="border border-slate-300 rounded-xl overflow-hidden  bg-[white] shadow-xs">
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-left">
                       <thead>
@@ -842,7 +842,7 @@ export default function AddUserView() {
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200 bg-white text-xs">
+                      <tbody className="divide-y divide-slate-200  bg-[white] text-xs">
                         {PERMISSION_MATRIX_ROWS.map((row) => {
                           const rowPerms = PERMISSION_MATRIX_COLS.map(c => `${row.key}:${c.key}`);
                           const allRowEnabled = rowPerms.every(p => formData.permissions.includes(p));
@@ -941,7 +941,7 @@ export default function AddUserView() {
                 </button>
 
                 {showAdditionalPrivileges && (
-                  <div className="p-4 border-t border-slate-200 bg-white space-y-2.5">
+                  <div className="p-4 border-t border-slate-200  bg-[white] space-y-2.5">
                     <p className="text-[11px] text-slate-500 mb-2">
                       Enable general administrative and view access to catalog records, pricing details, and auxiliary features:
                     </p>
@@ -954,7 +954,7 @@ export default function AddUserView() {
                             className={`flex items-center justify-between p-2.5 rounded-lg border transition-all ${
                               isAllowed
                                 ? 'bg-emerald-50/50 border-emerald-300'
-                                : 'bg-white border-slate-200 hover:border-slate-300'
+                                : ' bg-[white] border-slate-200 hover:border-slate-300'
                             }`}
                           >
                             <div className="pr-2">

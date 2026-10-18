@@ -66,11 +66,11 @@ export default function ProtectedRoute() {
     requiredPermission = 'buy_contract_order:create';
   } else if (path.startsWith('/updateContractOrder')) {
     requiredPermission = 'buy_contract_order:update';
-  } else if (path.startsWith('/addProcessRq')) {
+  } else if (path.startsWith('/addProcessRq') || path.startsWith('/addProcessReceivedQuotation')) {
     requiredPermission = 'process_rq:create';
-  } else if (path.startsWith('/updateProcessRq')) {
+  } else if (path.startsWith('/updateProcessRq') || path.startsWith('/updateProcessReceivedQuotation')) {
     requiredPermission = 'process_rq:update';
-  } else if (path.startsWith('/addProcessPurchaseOrder')) {
+  } else if (path.startsWith('/addProcessPurchaseOrder') || path.startsWith('/addProcessContractOrder')) {
     requiredPermission = 'process_order:create';
   } else if (
     path.startsWith('/order') ||

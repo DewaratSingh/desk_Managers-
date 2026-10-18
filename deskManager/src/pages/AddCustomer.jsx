@@ -184,7 +184,7 @@ export default function AddCustomerView() {
 
           {/* Search */}
           <div 
-            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors"
+            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2  bg-[white] shadow-sm transition-colors"
             style={{ borderColor: searchFocused ? 'var(--theme-color)' : 'rgb(203, 213, 225)' }}
           >
             <Search size={18} className="text-slate-400 shrink-0" />
@@ -200,7 +200,7 @@ export default function AddCustomerView() {
           </div>
 
           {/* Directory */}
-          <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-sm">
+          <div className="border border-slate-300 rounded-lg overflow-hidden  bg-[white] shadow-sm">
             <div className="bg-slate-100 px-5 py-3 border-b border-slate-300">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <ListFilter size={14} style={{ color: 'var(--theme-color)' }} />
@@ -217,7 +217,7 @@ export default function AddCustomerView() {
                 No parties found. Click "+ Add Party" to get started.
               </div>
             ) : (
-              <div className="overflow-x-auto bg-white">
+              <div className="overflow-x-auto  bg-[white]">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
@@ -227,7 +227,7 @@ export default function AddCustomerView() {
                       <th className="px-5 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
+                  <tbody className="divide-y divide-slate-200  bg-[white]">
                     {filteredCustomers.map((customer) => (
                       <tr 
                         key={customer.id}
@@ -245,13 +245,13 @@ export default function AddCustomerView() {
                         <td className="px-5 py-3.5 text-right space-x-2">
                           <button
                             onClick={() => setViewingParty(customer)}
-                            className="px-2.5 py-1.5 text-[11px] border border-slate-300 rounded font-semibold bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400 transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 text-[11px] border border-slate-300 rounded font-semibold  bg-[white] text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400 transition-all inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Eye size={11} /> View
                           </button>
                           <button
                             onClick={() => handleEditClick(customer)}
-                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold  bg-[white] transition-all inline-flex items-center gap-1 cursor-pointer"
                             style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.backgroundColor = 'var(--theme-color)';
@@ -276,7 +276,7 @@ export default function AddCustomerView() {
                 <button
                   onClick={() => fetchCustomers(true)}
                   disabled={loadingMore}
-                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)]  bg-[white] text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loadingMore ? (
                     <>
@@ -308,7 +308,7 @@ export default function AddCustomerView() {
             {editingId ? 'Update Party' : 'Add New Party'}
           </h1>
 
-          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleAddCustomer} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
@@ -321,7 +321,7 @@ export default function AddCustomerView() {
                   placeholder="e.g. PART-001"
                   value={formData.id}
                   onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   onFocus={(e) => !editingId && (e.target.style.borderColor = 'var(--theme-color)')}
                   onBlur={(e) => !editingId && (e.target.style.borderColor = 'rgb(203, 213, 225)')}
                 />
@@ -342,7 +342,7 @@ export default function AddCustomerView() {
                   placeholder="e.g. Acme Corporation"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
                   onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 />
@@ -358,7 +358,7 @@ export default function AddCustomerView() {
                   placeholder="Enter full address..."
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none resize-y"
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none resize-y"
                   onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                 />
@@ -397,7 +397,7 @@ export default function AddCustomerView() {
 
       {viewingParty && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col transform scale-100 transition-all">
+          <div className=" bg-[white] border border-slate-200 rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col transform scale-100 transition-all">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Party Details</h3>
               <button 

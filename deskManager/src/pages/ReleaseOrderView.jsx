@@ -78,7 +78,7 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
         width: `${Math.max(192, coords.width)}px`,
         zIndex: 9999,
       }}
-      className="bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto"
+      className=" bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto"
     >
       {filtered.map((s) => (
         <button
@@ -103,7 +103,7 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
           autoComplete="off"
-          className="w-36 px-2 py-1 border border-slate-300 rounded text-xs font-medium bg-white focus:outline-none focus:border-[var(--theme-color)] placeholder:text-slate-400"
+          className="w-36 px-2 py-1 border border-slate-300 rounded text-xs font-medium  bg-[white] focus:outline-none focus:border-[var(--theme-color)] placeholder:text-slate-400"
         />
         {value && (
           <button type="button" onClick={onClear}
@@ -237,17 +237,17 @@ export default function ReleaseOrderView() {
         {error || 'Release Order not found.'}
       </div>
       <button onClick={() => navigate(-1)}
-        className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm cursor-pointer transition-colors">
+        className="flex items-center gap-1.5 px-4 py-2  bg-[white] border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm cursor-pointer transition-colors">
         <ArrowLeft size={15} /> Go Back
       </button>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 print:bg-white">
+    <div className="min-h-screen bg-slate-100 text-slate-900 print: bg-[white]">
 
       {/* ── Sticky Top Bar ──────────────────────────────────────────────────── */}
-      <div className="print:hidden sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm">
+      <div className="print:hidden sticky top-0 z-20  bg-[white] border-b border-slate-200 shadow-sm">
         <div className="w-full px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => navigate(-1)}
@@ -300,7 +300,7 @@ export default function ReleaseOrderView() {
         </div>
 
         {/* ── RO Info Card ─────────────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className=" bg-[white] border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="bg-slate-50 px-6 py-3 border-b border-slate-200">
             <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
               <Hash size={13} style={{ color: 'var(--theme-color)' }} /> RO Information
@@ -325,7 +325,7 @@ export default function ReleaseOrderView() {
         </div>
 
         {/* ── Items Table ──────────────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className=" bg-[white] border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 flex justify-between items-center">
             <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
               <Package size={13} style={{ color: 'var(--theme-color)' }} />
@@ -486,7 +486,7 @@ export default function ReleaseOrderView() {
         </div>
 
         {/* ── Financial Breakdown ──────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className=" bg-[white] border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="bg-slate-50 px-6 py-3 border-b border-slate-200">
             <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
               <Tag size={13} style={{ color: 'var(--theme-color)' }} /> Financial Breakdown

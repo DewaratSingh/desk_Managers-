@@ -4,6 +4,7 @@ import { AlertCircle, ArrowLeft, FileText, RefreshCw, Tag, Check, Loader2 } from
 
 import RfqPanel       from '../panel/RfqPanel';
 import ProcessRfqPanel from '../panel/ProcessRfqPanel';
+import ProcessReceivedQuotationPanel from '../panel/ProcessReceivedQuotationPanel';
 import QuotationPanel from '../panel/QuotationPanel';
 import ReceivedQuotationPanel from '../panel/ReceivedQuotationPanel';
 import ProcessRqPanel from '../panel/ProcessRqPanel';
@@ -33,6 +34,7 @@ const tradeTypeStyle = (type) => {
   const t = (type || '').toUpperCase();
   if (t === 'SELL' || t === 'SELLARC') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
   if (t === 'SELL_PROCESS' || t === 'SELL PROCESS') return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
+  if (t === 'BUY_PROCESS' || t === 'BUY PROCESS') return { color: '#d97706', borderColor: '#fcd34d', backgroundColor: '#fef3c7' };
   if (t === 'BUY' || t === 'BUYARC')   return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
   if (t === 'ARC')                     return { color: '#7c3aed', borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' };
   if (t === 'PROCESS')                 return { color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' };
@@ -126,7 +128,7 @@ function StatusUpdater({ tradeId, currentStatus, onStatusChanged }) {
   }, []);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+    <div className=" bg-[white] border border-slate-200 rounded-xl p-5 shadow-sm">
       <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-3">
         <Tag size={11} style={{ color: 'var(--theme-color)' }} /> Trade Status
       </p>
@@ -142,12 +144,12 @@ function StatusUpdater({ tradeId, currentStatus, onStatusChanged }) {
             onFocus={handleFocus}
             onKeyDown={e => { if (e.key === 'Enter') { setShowDropdown(false); handleSave(); } if (e.key === 'Escape') setShowDropdown(false); }}
             placeholder="Search or type a status…"
-            className="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] bg-white"
+            className="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)]  bg-[white]"
           />
           {showDropdown && suggestions.length > 0 && (
             <div
               ref={dropdownRef}
-              className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto"
+              className="absolute z-20 top-full left-0 right-0 mt-1  bg-[white] border border-slate-200 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto"
             >
               {suggestions.map(s => (
                 <button
@@ -201,6 +203,7 @@ export default function TradeView() {
   const [trade, setTrade]               = useState(null);
   const [rfq, setRfq]                   = useState(null);
   const [processRfq, setProcessRfq]     = useState(null);
+  const [processReceivedQuotation, setProcessReceivedQuotation] = useState(null);
   const [quotation, setQuotation]       = useState(null);
   const [receivedQuotation, setReceivedQuotation] = useState(null);
   const [processRq, setProcessRq]       = useState(null);
@@ -230,6 +233,7 @@ export default function TradeView() {
       const docs   = tradeData.documents || [];
       const rfqDoc = docs.find(d => d.type?.toUpperCase() === 'RFQ');
       const processRfqDoc = docs.find(d => d.type?.toUpperCase() === 'PROCESS_RFQ');
+      const processRecQtnDoc = docs.find(d => d.type?.toUpperCase() === 'PROCESS_RECEIVED_QUOTATION');
       const qtnDoc = docs.find(d => d.type?.toUpperCase() === 'QUOTATION');
       const recQtnDoc = docs.find(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
       const prDoc  = docs.find(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
@@ -243,6 +247,7 @@ export default function TradeView() {
       await Promise.all([
         rfqDoc?.id ? fetchRFQ(rfqDoc.id)   : Promise.resolve(setRfq(null)),
         processRfqDoc?.id ? fetchProcessRFQ(processRfqDoc.id) : Promise.resolve(setProcessRfq(null)),
+        processRecQtnDoc?.id ? fetchProcessReceivedQTN(processRecQtnDoc.id) : Promise.resolve(setProcessReceivedQuotation(null)),
         qtnDoc?.id ? fetchQTN(qtnDoc.id)   : Promise.resolve(setQuotation(null)),
         recQtnDoc?.id ? fetchReceivedQTN(recQtnDoc.id) : Promise.resolve(setReceivedQuotation(null)),
         prDoc?.id ? fetchProcessRQ(prDoc.id) : Promise.resolve(setProcessRq(null)),
@@ -280,6 +285,13 @@ export default function TradeView() {
     try {
       const res = await fetch(`/api/process-rfqs/${encodeURIComponent(id)}`);
       if (res.ok) setProcessRfq(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchProcessReceivedQTN = async (id) => {
+    try {
+      const res = await fetch(`/api/process-received-quotations/${encodeURIComponent(id)}`);
+      if (res.ok) setProcessReceivedQuotation(await res.json());
     } catch (err) { console.error(err); }
   };
 
@@ -377,7 +389,7 @@ export default function TradeView() {
   // ── Error ────────────────────────────────────────────────────────────────────
   if (error || !trade) return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-8 shadow-sm text-center space-y-4">
+      <div className="max-w-md w-full  bg-[white] border border-slate-200 rounded-xl p-8 shadow-sm text-center space-y-4">
         <AlertCircle className="mx-auto text-red-500" size={42} />
         <div>
           <h2 className="text-base font-bold text-slate-900">Error Loading Trade</h2>
@@ -416,10 +428,11 @@ export default function TradeView() {
 
   const hasQuotationDoc = docs.some(d => d.type?.toUpperCase() === 'QUOTATION');
   const hasRecQtnDoc = docs.some(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
+  const hasProcessRecQtnDoc = docs.some(d => d.type?.toUpperCase() === 'PROCESS_RECEIVED_QUOTATION');
   const hasPoDoc = docs.some(d => d.type?.toUpperCase() === 'PURCHASE_ORDER' || d.type?.toUpperCase() === 'PO');
   const hasRoDoc = docs.some(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO');
   const hasProcessRqDoc = docs.some(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
-  const isProcessTrade = (trade.trade_type || '').toUpperCase() === 'PROCESS';
+  const isProcessTrade = (trade.trade_type || '').toUpperCase() === 'PROCESS' || (trade.trade_type || '').toUpperCase() === 'BUY_PROCESS';
 
   const panels = [];
 
@@ -428,6 +441,14 @@ export default function TradeView() {
       key: 'process-rfq',
       label: '① Process RFQ',
       component: <ProcessRfqPanel rfq={processRfq} tradeId={trade.trade_id} />
+    });
+  }
+
+  if (processReceivedQuotation) {
+    panels.push({
+      key: 'process-received-quotation',
+      label: '① Process Received Quotation',
+      component: <ProcessReceivedQuotationPanel receivedQuotation={processReceivedQuotation} tradeId={trade.trade_id} hasPoDoc={hasPoDoc} />
     });
   }
 
@@ -483,14 +504,22 @@ export default function TradeView() {
     });
   }
 
-  if (hasPoDoc || hasQuotationDoc || hasRecQtnDoc || (isProcessTrade && hasProcessRqDoc)) {
+  if (hasPoDoc || hasQuotationDoc || hasRecQtnDoc || (isProcessTrade && (hasProcessRqDoc || hasProcessRecQtnDoc || processReceivedQuotation))) {
+    let poLabel = (rfq && hasQuotationDoc) ? '③ Purchase Order' : '② Purchase Order';
+    if (panels.length === 0) {
+      poLabel = isProcessTrade ? '① Process Purchase Order' : '① Purchase Order';
+    } else if (isProcessTrade) {
+      poLabel = '② Process Purchase Order';
+    }
+
     panels.push({
       key: 'po',
-      label: (rfq && hasQuotationDoc) ? '③ Purchase Order' : '② Purchase Order',
+      label: poLabel,
       component: <PoPanel
         purchaseOrder={purchaseOrder}
         quotation={quotation || receivedQuotation}
         processRq={isProcessTrade ? processRq : null}
+        processReceivedQuotation={isProcessTrade ? processReceivedQuotation : null}
         tradeId={trade.trade_id}
         isBuySide={trade.trade_type === 'buy'}
         isProcessSide={isProcessTrade}
@@ -576,8 +605,10 @@ export default function TradeView() {
   // Map document types → labels for the pipeline tracker
   const DOC_LABELS = {
     RFQ:            'RFQ',
+    PROCESS_RFQ:    'Process RFQ',
     QUOTATION:      'Quotation',
     RECEIVED_QUOTATION: 'Received Quotation',
+    PROCESS_RECEIVED_QUOTATION: 'Process Received Quotation',
     PR:             'Process Request',
     RQ_PROCESS:     'Process Request',
     PURCHASE_ORDER: 'Purchase Order',
@@ -592,7 +623,7 @@ export default function TradeView() {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-950">
       {/* ── Top Bar ─────────────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
+      <div className=" bg-[white] border-b border-slate-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => navigate(-1)}

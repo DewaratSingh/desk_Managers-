@@ -226,7 +226,7 @@ export default function GstCategoryView() {
 
           {/* Search */}
           <div 
-            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2 bg-white shadow-sm transition-colors"
+            className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2  bg-[white] shadow-sm transition-colors"
             style={{ borderColor: searchFocused ? 'var(--theme-color)' : 'rgb(203, 213, 225)' }}
           >
             <Search size={18} className="text-slate-400 shrink-0" />
@@ -242,7 +242,7 @@ export default function GstCategoryView() {
           </div>
 
           {/* Directory Grid */}
-          <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-sm">
+          <div className="border border-slate-300 rounded-lg overflow-hidden  bg-[white] shadow-sm">
             <div className="bg-slate-100 px-5 py-3 border-b border-slate-300 flex justify-between items-center">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <ListFilter size={14} style={{ color: 'var(--theme-color)' }} />
@@ -259,7 +259,7 @@ export default function GstCategoryView() {
                 No GST categories found. Click "New Category" to configure one.
               </div>
             ) : (
-              <div className="overflow-x-auto bg-white">
+              <div className="overflow-x-auto  bg-[white]">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
@@ -268,7 +268,7 @@ export default function GstCategoryView() {
                       <th className="px-5 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
+                  <tbody className="divide-y divide-slate-200  bg-[white]">
                     {filteredGstRates.map((g) => (
                       <tr 
                         key={g.id}
@@ -288,7 +288,7 @@ export default function GstCategoryView() {
                         <td className="px-5 py-3.5 text-right space-x-2">
                           <button
                             onClick={() => handleEditClick(g)}
-                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold  bg-[white] transition-all inline-flex items-center gap-1 cursor-pointer"
                             style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.backgroundColor = 'var(--theme-color)';
@@ -303,7 +303,7 @@ export default function GstCategoryView() {
                           </button>
                           <button
                             onClick={() => handleDeleteClick(g.id)}
-                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold bg-white hover:bg-red-600 hover:text-white border-red-600 text-red-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 text-[11px] border rounded font-semibold  bg-[white] hover:bg-red-600 hover:text-white border-red-600 text-red-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Trash2 size={11} /> Delete
                           </button>
@@ -319,7 +319,7 @@ export default function GstCategoryView() {
                 <button
                   onClick={() => fetchGstRates(true)}
                   disabled={loadingMore}
-                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)] bg-white text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:border-[var(--theme-color)]  bg-[white] text-slate-700 hover:text-[var(--theme-color)] transition-all cursor-pointer shadow-sm hover:shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loadingMore ? (
                     <>
@@ -358,7 +358,7 @@ export default function GstCategoryView() {
             </div>
           )}
 
-          <div className="bg-white border border-slate-300 rounded-lg p-6 shadow-sm">
+          <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 
@@ -373,7 +373,7 @@ export default function GstCategoryView() {
                     placeholder="e.g. CGST + SGST 18%"
                     value={formData.type}
                     onChange={set('type')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                    className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
                     onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                     onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                   />
@@ -393,7 +393,7 @@ export default function GstCategoryView() {
                     placeholder="e.g. 18.00"
                     value={formData.rate}
                     onChange={set('rate')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
+                    className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none"
                     onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                     onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                   />

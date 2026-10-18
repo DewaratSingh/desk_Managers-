@@ -129,7 +129,7 @@ export default function SellStockForm() {
 
   return (
     <main className="min-h-[calc(100vh-72px)] p-6 text-slate-700 bg-slate-50 font-sans">
-      <div className="mx-auto max-w-2xl bg-white border border-slate-200 rounded-3xl p-8 shadow-xl shadow-slate-200/50">
+      <div className="mx-auto max-w-2xl  bg-[white] border border-slate-200 rounded-3xl p-8 shadow-xl shadow-slate-200/50">
         
         {/* Header */}
         <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
@@ -155,19 +155,19 @@ export default function SellStockForm() {
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 grid grid-cols-3 gap-4 mb-6 shadow-inner text-xs font-semibold">
           <div>
             <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[9px]">Item Code</span>
-            <span className="font-mono text-xs font-black text-slate-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg inline-block">
+            <span className="font-mono text-xs font-black text-slate-800  bg-[white] border border-slate-200 px-2.5 py-1 rounded-lg inline-block">
               {sourceItemCode || '—'}
             </span>
           </div>
           <div>
             <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[9px]">Source Available Qty</span>
-            <span className="text-xs font-black text-slate-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg inline-block">
+            <span className="text-xs font-black text-slate-800  bg-[white] border border-slate-200 px-2.5 py-1 rounded-lg inline-block">
               {sourceQty || 0}
             </span>
           </div>
           <div>
             <span className="block text-slate-400 font-bold uppercase tracking-wider mb-1 text-[9px]">Source Unit Price</span>
-            <span className="text-xs font-black text-slate-800 font-mono bg-white border border-slate-200 px-2.5 py-1 rounded-lg inline-block">
+            <span className="text-xs font-black text-slate-800 font-mono  bg-[white] border border-slate-200 px-2.5 py-1 rounded-lg inline-block">
               ₹{parseFloat(sourcePrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
           </div>
@@ -190,7 +190,7 @@ export default function SellStockForm() {
                   setShowDropdown(true);
                 }}
                 onFocus={() => setShowDropdown(true)}
-                className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                className="w-full pl-9 pr-3 py-2.5  bg-[white] border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 autoComplete="off"
               />
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -204,7 +204,7 @@ export default function SellStockForm() {
 
             {/* Dropdown Options */}
             {showDropdown && trades.length > 0 && (
-              <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto divide-y divide-slate-100 animate-fade-in">
+              <div className="absolute z-30 top-full left-0 right-0 mt-1  bg-[white] border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto divide-y divide-slate-100 animate-fade-in">
                 {trades.map((t) => (
                   <button
                     key={t.trade_db_id}
@@ -233,7 +233,7 @@ export default function SellStockForm() {
             )}
             
             {showDropdown && searchQuery && trades.length === 0 && !isLoadingTrades && (
-              <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-4 text-center text-xs font-semibold text-slate-400">
+              <div className="absolute z-30 top-full left-0 right-0 mt-1  bg-[white] border border-slate-200 rounded-xl shadow-lg p-4 text-center text-xs font-semibold text-slate-400">
                 No eligible trades found containing this item code.
               </div>
             )}
@@ -292,7 +292,7 @@ export default function SellStockForm() {
                 placeholder="Enter dispatch amount..."
                 value={sellQty}
                 onChange={(e) => setSellQty(e.target.value)}
-                className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                className="w-full px-3 py-2.5  bg-[white] border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
               />
             </div>
 

@@ -8,7 +8,7 @@ router.get('/', async (req, res) => {
   const limit = req.query.limit ? parseInt(req.query.limit) : null;
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
   try {
-    let query = `SELECT id, item_code, description, drawing_number, long_description, created_at FROM items WHERE company_id = $1`;
+    let query = `SELECT id, item_code, description, drawing_number, long_description, margin, created_at FROM items WHERE company_id = $1`;
     const params = [req.user.company_id];
     
     if (q) {
@@ -35,12 +35,13 @@ router.get('/', async (req, res) => {
 
 // Create an item
 router.post('/', async (req, res) => {
-  const { item_code, description, drawing_number, long_description } = req.body || {};
+  const { item_code, description, drawing_number, long_description, margin } = req.body || {};
   if (!item_code || !description) return res.status(400).json({ error: 'item_code and description required' });
+  const parsedMargin = margin !== undefined && margin !== '' && margin !== null ? parseFloat(margin) : 0;
   try {
     const result = await pool.query(
-      'INSERT INTO items (item_code, description, drawing_number, long_description, company_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (item_code, company_id) DO NOTHING RETURNING *',
-      [item_code, description, drawing_number, long_description, req.user.company_id]
+      'INSERT INTO items (item_code, description, drawing_number, long_description, margin, company_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (item_code, company_id) DO NOTHING RETURNING *',
+      [item_code, description, drawing_number, long_description, isNaN(parsedMargin) ? 0 : parsedMargin, req.user.company_id]
     );
     if (result.rows.length === 0) return res.status(400).json({ error: 'Item code already exists' });
     res.status(201).json(result.rows[0]);
@@ -53,12 +54,13 @@ router.post('/', async (req, res) => {
 // Update an item
 router.put('/:item_code', async (req, res) => {
   const { item_code } = req.params;
-  const { description, drawing_number, long_description } = req.body || {};
+  const { description, drawing_number, long_description, margin } = req.body || {};
   if (!description) return res.status(400).json({ error: 'description required' });
+  const parsedMargin = margin !== undefined && margin !== '' && margin !== null ? parseFloat(margin) : 0;
   try {
     const result = await pool.query(
-      'UPDATE items SET description = $1, drawing_number = $2, long_description = $3 WHERE item_code = $4 AND company_id = $5 RETURNING *',
-      [description, drawing_number, long_description, item_code, req.user.company_id]
+      'UPDATE items SET description = $1, drawing_number = $2, long_description = $3, margin = $4 WHERE item_code = $5 AND company_id = $6 RETURNING *',
+      [description, drawing_number, long_description, isNaN(parsedMargin) ? 0 : parsedMargin, item_code, req.user.company_id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
     res.json(result.rows[0]);

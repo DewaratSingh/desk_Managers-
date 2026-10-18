@@ -21,7 +21,7 @@ export default function UnderConstruction({ sectionName, title, message }) {
     <div className="min-h-[calc(100vh-80px)] flex flex-col items-center justify-center p-4 sm:p-6 bg-slate-100 text-slate-900 transition-colors">
       
       {/* Outer Card with Hazard Tape Accent */}
-      <div className="w-full max-w-2xl bg-white border border-slate-300 rounded-2xl shadow-xl overflow-hidden relative">
+      <div className="w-full max-w-2xl  bg-[white] border border-slate-300 rounded-2xl shadow-xl overflow-hidden relative">
         
         {/* Top Black & Yellow Hazard Strip */}
         <div className="h-5 w-full shadow-inner" style={stripePattern} />

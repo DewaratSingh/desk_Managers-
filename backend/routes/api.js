@@ -28,6 +28,7 @@ const manufactureRouter = require('./manufacture');
 const rqProcessRouter = require('./rq-process');
 const processPORouter = require('./process-po');
 const processRfqRouter = require('./process-rfq');
+const processReceivedQuotationRouter = require('./process-received-quotation');
 
 // Simple health check for API
 router.get('/health', (req, res) => {
@@ -67,5 +68,7 @@ router.use('/rq-process', rqProcessRouter);
 router.use('/process-po', processPORouter);
 router.use('/process-rfqs', processRfqRouter);
 router.use('/process-rfq', processRfqRouter);
+router.use('/process-received-quotations', processReceivedQuotationRouter);
+router.use('/process-received-quotation', processReceivedQuotationRouter);
 
 module.exports = router;

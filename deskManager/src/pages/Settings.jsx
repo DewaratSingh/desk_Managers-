@@ -108,7 +108,7 @@ export default function Settings() {
                     type="text" 
                     value={theme.primary}
                     onChange={(e) => handleColorChange('primary', e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase bg-white"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase  bg-[white]"
                   />
                 </div>
               </div>
@@ -127,7 +127,7 @@ export default function Settings() {
                     type="text" 
                     value={theme.textSidebar}
                     onChange={(e) => handleColorChange('textSidebar', e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase bg-white"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase  bg-[white]"
                   />
                 </div>
               </div>
@@ -146,7 +146,7 @@ export default function Settings() {
                     type="text" 
                     value={theme.secondary}
                     onChange={(e) => handleColorChange('secondary', e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase bg-white"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase  bg-[white]"
                   />
                 </div>
               </div>
@@ -165,7 +165,7 @@ export default function Settings() {
                     type="text" 
                     value={theme.bgApp}
                     onChange={(e) => handleColorChange('bgApp', e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase bg-white"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase  bg-[white]"
                   />
                 </div>
               </div>
@@ -184,7 +184,7 @@ export default function Settings() {
                     type="text" 
                     value={theme.bgForm}
                     onChange={(e) => handleColorChange('bgForm', e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase bg-white"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase  bg-[white]"
                   />
                 </div>
               </div>
@@ -203,7 +203,7 @@ export default function Settings() {
                     type="text" 
                     value={theme.textPrimary}
                     onChange={(e) => handleColorChange('textPrimary', e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase bg-white"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase  bg-[white]"
                   />
                 </div>
               </div>
@@ -222,7 +222,7 @@ export default function Settings() {
                     type="text" 
                     value={theme.borderColor}
                     onChange={(e) => handleColorChange('borderColor', e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase bg-white"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase  bg-[white]"
                   />
                 </div>
               </div>
@@ -242,11 +242,11 @@ export default function Settings() {
                   className="w-16 h-48 flex-shrink-0 transition-colors duration-300 p-3 flex flex-col gap-3"
                   style={{ backgroundColor: theme.primary, color: theme.textSidebar }}
                 >
-                  <div className="w-8 h-8 rounded bg-white/20"></div>
+                  <div className="w-8 h-8 rounded  bg-[white]/20"></div>
                   <div className="w-8 h-8 rounded flex items-center justify-center shadow-sm" style={{ backgroundColor: theme.secondary }}>
-                    <div className="w-4 h-4 rounded-sm bg-white/80"></div>
+                    <div className="w-4 h-4 rounded-sm  bg-[white]/80"></div>
                   </div>
-                  <div className="w-8 h-8 rounded bg-white/10"></div>
+                  <div className="w-8 h-8 rounded  bg-[white]/10"></div>
                 </div>
 
                 {/* Mock Content Area */}

@@ -119,15 +119,15 @@ const OPERATIONS = [
         id: "ops-bp-rq",
         label: "Received Quotation",
         icon: ArrowDownToLine,
-        path: "/addProcessRq",
+        path: "/addProcessReceivedQuotation",
         hint: "Create Received Quotation",
       },
       {
         id: "ops-bp-contract",
         label: "Contract Order",
         icon: FileSignature,
-        path: "/arc/form",
-        hint: "Create Contract",
+        path: "/addProcessContractOrder",
+        hint: "Create Contract Order",
       },
     ],
   },
@@ -297,7 +297,7 @@ export default function Sidebar({ user, onLogout }) {
       >
         <div className={`p-1.5 rounded-md transition-all duration-200 flex items-center justify-center shrink-0 ${
           isActive
-            ? "bg-white/20 text-[var(--text-sidebar)] shadow-sm"
+            ? " bg-[white]/20 text-[var(--text-sidebar)] shadow-sm"
             : "bg-slate-800/80 text-[var(--text-sidebar)] opacity-70 group-hover:opacity-100 group-hover:bg-slate-700/60"
         }`}>
           <Icon size={16} strokeWidth={isActive ? 2.25 : 1.75} className="transition-transform duration-200 group-hover:scale-110" />
@@ -325,7 +325,7 @@ export default function Sidebar({ user, onLogout }) {
           >
             <div className={`p-1.5 rounded-md transition-all duration-200 flex items-center justify-center shrink-0 ${
               isOpsActive
-                ? "bg-white/20 shadow-sm"
+                ? " bg-[white]/20 shadow-sm"
                 : "bg-slate-800/80 opacity-70 group-hover:opacity-100 group-hover:bg-slate-700/60"
             }`}>
               <Briefcase size={16} strokeWidth={isOpsActive ? 2.25 : 1.75} className="transition-transform duration-200 group-hover:scale-110" />

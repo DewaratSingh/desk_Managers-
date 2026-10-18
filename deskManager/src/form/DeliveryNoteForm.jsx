@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams, useLocation } from 'react-rout
 import { AlertCircle, ArrowLeft, RefreshCw, Tag, Package, X } from 'lucide-react';
 
 const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider";
-const inputCls = "w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs placeholder:text-slate-400 font-semibold focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+const inputCls = "w-full px-2 py-1  bg-[white] border border-slate-300 rounded text-xs placeholder:text-slate-400 font-semibold focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
 const isSellSideTrade = (t) => {
   const norm = (t || '').toLowerCase().replace(/\s+/g, '');
@@ -529,7 +529,7 @@ export default function DeliveryNoteForm() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-4 flex items-center justify-center">
-      <div className="max-w-7xl w-full bg-white border border-slate-200 shadow-lg rounded-xl p-4 sm:p-5 space-y-4">
+      <div className="max-w-7xl w-full  bg-[white] border border-slate-200 shadow-lg rounded-xl p-4 sm:p-5 space-y-4">
         
         {/* Header */}
         <div className="pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -665,7 +665,7 @@ export default function DeliveryNoteForm() {
                     {isBuySideTrade(tradeType) && <th className="px-3 py-2 text-center w-[320px]">Action</th>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-slate-100  bg-[white]">
                   {items.map((item, idx) => (
                     <tr
                       key={item.item_code}
@@ -798,7 +798,7 @@ export default function DeliveryNoteForm() {
             <button
               type="button"
               onClick={handleBackToTrade}
-              className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-4 py-2  bg-[white] border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -823,7 +823,7 @@ export default function DeliveryNoteForm() {
       {/* Stock Selection Modal for SELL / ARC Delivery */}
       {openStockPickerItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-300 rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 animate-fade-in flex flex-col max-h-[90vh]">
+          <div className=" bg-[white] border border-slate-300 rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 animate-fade-in flex flex-col max-h-[90vh]">
             {/* Modal Header */}
             <div className="flex justify-between items-start border-b border-slate-200 pb-3 shrink-0">
               <div>
@@ -871,7 +871,7 @@ export default function DeliveryNoteForm() {
                       <th className="px-3.5 py-2.5 text-center w-24">Quick fill</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white font-semibold text-slate-800">
+                  <tbody className="divide-y divide-slate-100  bg-[white] font-semibold text-slate-800">
                     {stockList.map((inv) => {
                       const st = inv.trace_status || inv.status || 'active';
                       let badgeCls = "bg-slate-100 border-slate-200 text-slate-700";
