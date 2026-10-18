@@ -80,18 +80,18 @@ export default function ProcessReceivedQuotationPanel({ receivedQuotation, proce
           </div>
         )}
 
-        {/* Dates row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-5 border-b border-slate-100">
-          {[
-            { label: 'Quotation Date',     value: fmtDate(data.quotation_date || data.date) },
-            { label: 'Commercial Bid Due', value: fmtDate(data.commercial_bid_due_date) },
-            { label: 'Technical Bid Due',  value: fmtDate(data.technical_bid_due_date) },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
-              <p className="text-sm font-semibold text-slate-800">{value}</p>
+        {/* Meta row */}
+        <div className="pb-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Quotation Date</p>
+            <p className="text-sm font-semibold text-slate-800">{fmtDate(data.quotation_date || data.date)}</p>
+          </div>
+          {data.terms_and_conditions && (
+            <div className="max-w-md">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Terms &amp; Conditions</p>
+              <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed font-mono">{data.terms_and_conditions}</p>
             </div>
-          ))}
+          )}
         </div>
 
         {/* Customer / Buyer Grid */}

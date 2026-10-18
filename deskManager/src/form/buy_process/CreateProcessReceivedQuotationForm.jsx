@@ -1,23 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, History } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ItemQuoteHistory from '../../components/ItemQuoteHistory.jsx';
 
-const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
-const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
-
-const INITIAL_FORM = {
-  quotation_number: '',
-  quotation_date: '',
-  commercial_bid_due_date: '',
-  technical_bid_due_date: '',
-  buyer_id: '',
-  buyer_email: '',
-  buyer_phone: '',
-  customer_id: '',
-  customer_name: ''
-};
+const DEFAULT_TERMS = [
+  "1. Price Validity: 30 days from date of quote.\n2. Delivery: 4-6 weeks after receipt of technically and commercially clear PO.\n3. Payment Terms: 30% advance with order, balance against delivery.\n4. Warranty: 12 months from dispatch.",
+  "1. Payment Terms: Net 45 days.\n2. Price Basis: F.O.R. Shreeji Industries, taxes extra.\n3. Validity: This offer is valid for 15 days.\n4. Delivery: Within 2 weeks from PO.",
+  "1. Delivery Terms: Ex-works, freight on to-pay basis.\n2. Payment: Net 30 days credit.\n3. Taxes & Duties: GST extra at actuals.\n4. Price Validity: 45 days from quote.",
+  "1. Payment Terms: 50% advance along with order, 50% prior to dispatch.\n2. Delivery Period: 3 weeks from receipt of clear PO.\n3. Validity of Quote: 30 days.\n4. Unloading: In customer scope.",
+  "1. Price: Firm and final, packing included.\n2. Payment: 100% within 30 days of dispatch.\n3. Validity: 60 days.\n4. Delivery: 1 week from order confirmation."
+];
 
 const COMMON_PROCESSES = [
   'Machining',
@@ -42,40 +35,55 @@ const COMMON_PROCESSES = [
   'Quality Inspection'
 ];
 
+const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
+const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+
 export default function CreateProcessReceivedQuotationForm() {
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [formData, setFormData] = useState(INITIAL_FORM);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [buyerInput, setBuyerInput] = useState('');
-  const [customerInput, setCustomerInput] = useState('');
-  const [itemSearch, setItemSearch] = useState('');
+  const queryTradeId = searchParams.get('trade_id');
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [nextRqNo, setNextRqNo] = useState('');
+
+  const [formData, setFormData] = useState({
+    received_quotation_no: '',
+    quotation_date: new Date().toISOString().split('T')[0],
+    buyer_id: '',
+    buyer_email: '',
+    buyer_phone: '',
+    customer_id: '',
+    customer_name: '',
+    terms_and_conditions: ''
+  });
+
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [buyerInput, setBuyerInput] = useState('');
+  const [customerInput, setCustomerInput] = useState('');
+  const [itemInput, setItemInput] = useState('');
   const [historyItem, setHistoryItem] = useState(null);
 
-  // Autocomplete resources from DB
+  // Buyer Autocomplete state
   const [buyerSuggestions, setBuyerSuggestions] = useState([]);
   const [showBuyerDropdown, setShowBuyerDropdown] = useState(false);
   const [buyerNotFound, setBuyerNotFound] = useState(false);
 
+  // Customer Autocomplete state
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [customerNotFound, setCustomerNotFound] = useState(false);
 
+  // Item Autocomplete state
   const [itemSuggestions, setItemSuggestions] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
 
-  // Dropdown reference refs for click outside
   const buyerRef = useRef(null);
   const customerRef = useRef(null);
   const itemRef = useRef(null);
 
-  const buyerManualRef = useRef(false);
-  const customerManualRef = useRef(false);
-
-  // Close dropdowns when clicking outside
+  // Handle click outside dropdowns
   useEffect(() => {
     function handleClickOutside(event) {
       if (buyerRef.current && !buyerRef.current.contains(event.target)) {
@@ -92,74 +100,110 @@ export default function CreateProcessReceivedQuotationForm() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchBuyers = (query) => {
-    fetch(`/api/buyers?q=${encodeURIComponent(query)}&limit=5`)
-      .then(r => r.json())
-      .then(data => {
-        setBuyerSuggestions(Array.isArray(data) ? data : []);
-        setBuyerNotFound(Array.isArray(data) && data.length === 0);
-      })
-      .catch(console.error);
+  const fetchNextNo = async () => {
+    try {
+      const res = await fetch('/api/process-received-quotations/next-no');
+      if (res.ok) {
+        const data = await res.json();
+        setNextRqNo(data.nextNo);
+      }
+    } catch (err) {
+      console.error('Error fetching next process received quotation no:', err);
+    }
   };
 
-  const fetchCustomers = (query) => {
-    fetch(`/api/customers?q=${encodeURIComponent(query)}&limit=5`)
-      .then(r => r.json())
-      .then(data => {
-        setCustomerSuggestions(Array.isArray(data) ? data : []);
-        setCustomerNotFound(Array.isArray(data) && data.length === 0);
-      })
-      .catch(console.error);
-  };
-
-  const fetchItems = (query) => {
-    fetch(`/api/items?q=${encodeURIComponent(query)}&limit=5`)
-      .then(r => r.json())
-      .then(data => {
-        setItemSuggestions(Array.isArray(data) ? data : []);
-      })
-      .catch(console.error);
-  };
-
-  // Debounced search for buyers
   useEffect(() => {
-    if (!buyerManualRef.current) return;
-    const delayDebounceFn = setTimeout(() => {
-      fetchBuyers(buyerInput.trim());
-    }, 200);
-    return () => clearTimeout(delayDebounceFn);
-  }, [buyerInput]);
+    fetchNextNo();
+    const randomTerm = DEFAULT_TERMS[Math.floor(Math.random() * DEFAULT_TERMS.length)];
+    setFormData(prev => ({
+      ...prev,
+      received_quotation_no: '',
+      quotation_date: new Date().toISOString().split('T')[0],
+      terms_and_conditions: randomTerm
+    }));
+  }, []);
 
-  // Debounced search for customers
+  // Debounced search for buyers (limit 5)
   useEffect(() => {
-    if (!customerManualRef.current) return;
-    const delayDebounceFn = setTimeout(() => {
-      fetchCustomers(customerInput.trim());
-    }, 200);
-    return () => clearTimeout(delayDebounceFn);
-  }, [customerInput]);
+    const trimmed = buyerInput.trim();
+    if (!trimmed || formData.buyer_id) {
+      setBuyerSuggestions([]);
+      setShowBuyerDropdown(false);
+      setBuyerNotFound(false);
+      return;
+    }
 
-  // Debounced search for items
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/buyers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setBuyerSuggestions(Array.isArray(data) ? data : []);
+          setBuyerNotFound(Array.isArray(data) && data.length === 0);
+          setShowBuyerDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [buyerInput, formData.buyer_id]);
+
+  // Debounced search for customers (limit 5)
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchItems(itemSearch.trim());
-    }, 200);
-    return () => clearTimeout(delayDebounceFn);
-  }, [itemSearch]);
+    const trimmed = customerInput.trim();
+    if (!trimmed || formData.customer_id) {
+      setCustomerSuggestions([]);
+      setShowCustomerDropdown(false);
+      setCustomerNotFound(false);
+      return;
+    }
 
-  const setField = (field) => (e) =>
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/customers?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setCustomerSuggestions(Array.isArray(data) ? data : []);
+          setCustomerNotFound(Array.isArray(data) && data.length === 0);
+          setShowCustomerDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerInput, formData.customer_id]);
+
+  // Debounced search for items (limit 5)
+  useEffect(() => {
+    const trimmed = itemInput.trim();
+    if (!trimmed) {
+      setItemSuggestions([]);
+      setShowItemDropdown(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=5`)
+        .then(r => r.json())
+        .then(data => {
+          setItemSuggestions(Array.isArray(data) ? data : []);
+          setShowItemDropdown(true);
+        })
+        .catch(console.error);
+    }, 200);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [itemInput]);
+
+  const set = (field) => (e) =>
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
 
   // Autocomplete Handlers
   const handleBuyerInput = (value) => {
-    buyerManualRef.current = true;
     setBuyerInput(value);
     setFormData(prev => ({ ...prev, buyer_id: '', buyer_email: '', buyer_phone: '' }));
     setShowBuyerDropdown(true);
   };
 
   const selectBuyer = (b) => {
-    buyerManualRef.current = false;
     setFormData(prev => ({
       ...prev,
       buyer_id: b.id,
@@ -172,26 +216,24 @@ export default function CreateProcessReceivedQuotationForm() {
   };
 
   const handleCustomerInput = (value) => {
-    customerManualRef.current = true;
     setCustomerInput(value);
     setFormData(prev => ({ ...prev, customer_id: '', customer_name: '' }));
     setShowCustomerDropdown(true);
   };
 
   const selectCustomer = (c) => {
-    customerManualRef.current = false;
     setFormData(prev => ({
       ...prev,
       customer_id: c.customer_code || c.id,
       customer_name: c.name
     }));
-    setCustomerInput(c.customer_code || c.id);
+    setCustomerInput(c.name || c.customer_code || String(c.id));
     setShowCustomerDropdown(false);
     setCustomerNotFound(false);
   };
 
-  const handleItemSearch = (value) => {
-    setItemSearch(value);
+  const handleItemInput = (value) => {
+    setItemInput(value);
     setShowItemDropdown(true);
   };
 
@@ -206,10 +248,10 @@ export default function CreateProcessReceivedQuotationForm() {
         description: item.description || '',
         process_name: '',
         quantity: 1,
-        price: '0'
+        unit_price: 0
       }
     ]);
-    setItemSearch('');
+    setItemInput('');
     setItemSuggestions([]);
     setShowItemDropdown(false);
   };
@@ -218,70 +260,55 @@ export default function CreateProcessReceivedQuotationForm() {
     setSelectedItems(prev => prev.filter(i => i.item_code !== itemCode));
   };
 
-  const handleProcessNameChange = (itemCode, value) => {
-    setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, process_name: value } : i));
+  const handleItemValueChange = (itemCode, key, val) => {
+    setSelectedItems(prev => prev.map(item => {
+      if (item.item_code === itemCode) {
+        return { ...item, [key]: val };
+      }
+      return item;
+    }));
   };
 
-  const handleQuantityChange = (itemCode, value) => {
-    const qty = parseFloat(value) || 1;
-    setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, quantity: qty } : i));
+  const calculateBasicValue = (items) => {
+    return items.reduce((sum, item) => sum + (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0), 0);
   };
 
-  const handlePriceChange = (itemCode, value) => {
-    setSelectedItems(prev => prev.map(i => i.item_code === itemCode ? { ...i, price: value } : i));
-  };
-
-  const backToList = () => {
-    navigate('/dashboard');
-  };
-
-  const handleCancel = () => {
-    navigate('/dashboard');
+  const handleBackToDirectory = () => {
+    navigate(-1);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
     setError(null);
 
-    if (!formData.quotation_number.trim() || !formData.quotation_date || !formData.commercial_bid_due_date || !formData.technical_bid_due_date) {
-      setError('Please fill in all required Process Received Quotation header fields');
-      return;
-    }
-
     if (!formData.buyer_id) {
-      setError('Please select and link a valid Buyer');
+      setError('Please select a valid vendor Name.');
+      setIsLoading(false);
       return;
     }
-
     if (!formData.customer_id) {
-      setError('Please select and link a valid Customer/Supplier');
+      setError('Please select a valid Seller vendor.');
+      setIsLoading(false);
       return;
     }
-
     if (selectedItems.length === 0) {
-      setError('Please attach at least one Item with its Process Name to this Received Quotation');
+      setError('Please add at least one item to the quotation.');
+      setIsLoading(false);
       return;
     }
 
-    const missingProcessItem = selectedItems.find(i => !i.process_name || !i.process_name.trim());
-    if (missingProcessItem) {
-      setError(`Please provide a Process Name for item "${missingProcessItem.item_code}"`);
-      return;
-    }
-
-    setIsLoading(true);
     const payload = {
-      quotation_number: formData.quotation_number.trim(),
-      quotation_date: formData.quotation_date,
-      commercial_bid_due_date: formData.commercial_bid_due_date,
-      technical_bid_due_date: formData.technical_bid_due_date,
+      received_quotation_no: formData.received_quotation_no,
       buyer_id: parseInt(formData.buyer_id),
       customer_id: formData.customer_id,
+      quotation_date: formData.quotation_date,
+      terms_and_conditions: formData.terms_and_conditions,
       items: selectedItems.map(item => ({
         item_code: item.item_code,
-        process_name: item.process_name.trim(),
+        process_name: (item.process_name || 'Processing').trim(),
         quantity: parseFloat(item.quantity) || 1,
-        price: parseFloat(item.price) || 0
+        unit_price: parseFloat(item.unit_price) || 0
       }))
     };
 
@@ -293,452 +320,375 @@ export default function CreateProcessReceivedQuotationForm() {
       });
 
       if (res.ok) {
-        const resData = await res.json();
-        toast.success('Buy Process Received Quotation created successfully!');
-        if (resData.trade_id) {
-          navigate(`/trade/${resData.trade_id}`);
+        const data = await res.json();
+        toast.success('Process Received Quotation created successfully!');
+        const destTradeId = queryTradeId || data.trade_id;
+        if (destTradeId) {
+          navigate(`/trade/${destTradeId}`);
         } else {
           navigate('/dashboard');
         }
       } else {
         const errData = await res.json();
-        setError(errData.error || 'Failed to create Process Received Quotation');
+        setError(errData.error || 'Failed to save process received quotation.');
       }
     } catch (err) {
       console.error(err);
-      setError('Server connection error while saving Process Received Quotation');
+      setError('Server connection error while saving quotation.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex-1 p-6 bg-slate-100 text-slate-900">
-      <div className={historyItem ? "max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6 items-start" : "max-w-3xl mx-auto space-y-5"}>
+    <div className="flex-1 p-6 bg-slate-100 text-slate-900 font-sans">
+      <div className={historyItem ? "max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6 items-start" : "max-w-2xl mx-auto space-y-5"}>
         <div className={historyItem ? "lg:col-span-3 space-y-5 flex flex-col w-full" : "space-y-5 flex flex-col w-full"}>
-          
           <button
             type="button"
-            onClick={backToList}
+            onClick={handleBackToDirectory}
             className="mb-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors self-start"
           >
             <ArrowLeft size={14} />
-            Back to Dashboard
+            Back
           </button>
-
-          {/* Header */}
-          <div>
-            <div className="inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 mb-1.5">
-              Buy Process
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 m-0">
-              New Process Received Quotation Entry
-            </h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Fill in the Buy Process Received Quotation details below.
-            </p>
-          </div>
-
+        
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg flex items-center gap-1.5">
-              <AlertCircle size={14} />
-              {error}
+              <AlertCircle size={14} /> {error}
             </div>
           )}
 
-          {/* Form Card */}
+          {/* Header */}
+          <div className="pb-2 border-b border-slate-300">
+            <h1 className="text-2xl font-bold text-slate-900 m-0">
+              Create Process Received Quotation
+            </h1>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
+              Log a new incoming process quotation proposal.
+            </p>
+          </div>
+
           <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-4">
-              
-              {/* Quotation No */}
-              <div>
-                <label className={labelCls}>Quotation No. <b className="text-red-500">*</b></label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. PRQ-2024-001"
-                  value={formData.quotation_number}
-                  onChange={setField('quotation_number')}
-                  className={inputCls}
-                  onFocus={(e) => (e.target.style.borderColor = 'var(--theme-color)')}
-                  onBlur={(e) => (e.target.style.borderColor = 'rgb(203, 213, 225)')}
-                />
-              </div>
-
-              {/* Dates Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className={labelCls}>Quotation Date <b className="text-red-500">*</b></label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.quotation_date}
-                    onChange={setField('quotation_date')}
-                    className={inputCls}
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
+              <div className="space-y-4">
+                
+                {/* Quotation No & Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Quotation ID</label>
+                    <input
+                      type="text"
+                      placeholder={nextRqNo ? `e.g. PRQ-XXXX (Leave blank for ${nextRqNo})` : "Enter received quotation ID..."}
+                      value={formData.received_quotation_no}
+                      onChange={set('received_quotation_no')}
+                      className={inputCls}
+                      onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                      onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    />
+                    <p className="text-[10px] text-slate-400 font-semibold mt-1.5 pl-1">
+                      Leave blank to automatically generate Quotation ID.
+                    </p>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Quotation Date <b className="text-red-500">*</b></label>
+                    <input
+                      type="date"
+                      required
+                      value={formData.quotation_date}
+                      onChange={set('quotation_date')}
+                      className={inputCls}
+                      onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
+                      onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>Commercial Bid Due <b className="text-red-500">*</b></label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.commercial_bid_due_date}
-                    onChange={setField('commercial_bid_due_date')}
-                    className={inputCls}
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Technical Bid Due <b className="text-red-500">*</b></label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.technical_bid_due_date}
-                    onChange={setField('technical_bid_due_date')}
-                    className={inputCls}
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
-                </div>
-              </div>
 
-              {/* Buyer Name (Search Base) */}
-              <div ref={buyerRef} className="relative">
-                <label className={labelCls}>Buyer Name <b className="text-red-500">*</b></label>
-                <input
-                  type="text"
-                  placeholder="Start typing buyer name..."
-                  value={buyerInput}
-                  onChange={(e) => handleBuyerInput(e.target.value)}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'var(--theme-color)';
-                    buyerManualRef.current = true;
-                    setShowBuyerDropdown(true);
-                    fetchBuyers(buyerInput);
-                  }}
-                  className={inputCls}
-                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  autoComplete="off"
-                />
-                {showBuyerDropdown && buyerSuggestions.length > 0 && (
-                  <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                    {buyerSuggestions.slice(0, 6).map(b => (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => selectBuyer(b)}
-                        className="w-full text-left px-3.5 py-2 hover:bg-amber-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                      >
-                        <div className="font-bold text-xs text-slate-900">{b.name}</div>
-                        <div className="text-[10px] text-slate-500">{b.email} &bull; {b.phone}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {buyerNotFound && (
-                  <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                    <div className="flex items-center gap-1.5">
-                      <AlertCircle size={13} className="shrink-0" />
-                      <span>No buyer found for "{buyerInput}".</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/buyer/form')}
-                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
-                    >
-                      Add Buyer
-                    </button>
-                  </div>
-                )}
-                {formData.buyer_id && (
-                  <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
-                    <span className="text-emerald-600">✓ Buyer Linked</span>
-                    <span className="text-slate-300">|</span>
-                    <span>{formData.buyer_email}</span>
-                    <span className="text-slate-300">|</span>
-                    <span>{formData.buyer_phone}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Customer / Supplier ID (Search Base) */}
-              <div ref={customerRef} className="relative">
-                <label className={labelCls}>Customer / Supplier ID <b className="text-red-500">*</b></label>
-                <input
-                  type="text"
-                  placeholder="Start typing customer or supplier ID / name..."
-                  value={customerInput}
-                  onChange={(e) => handleCustomerInput(e.target.value)}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'var(--theme-color)';
-                    customerManualRef.current = true;
-                    setShowCustomerDropdown(true);
-                    fetchCustomers(customerInput);
-                  }}
-                  className={inputCls}
-                  onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  autoComplete="off"
-                />
-                {showCustomerDropdown && customerSuggestions.length > 0 && (
-                  <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                    {customerSuggestions.slice(0, 6).map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => selectCustomer(c)}
-                        className="w-full text-left px-3.5 py-2 hover:bg-amber-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                      >
-                        <div className="font-bold text-xs text-slate-900">{c.customer_code || c.id}</div>
-                        <div className="text-[10px] text-slate-500">{c.name} &bull; {c.address}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {customerNotFound && (
-                  <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                    <div className="flex items-center gap-1.5">
-                      <AlertCircle size={13} className="shrink-0" />
-                      <span>No customer found for "{customerInput}".</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/party/form')}
-                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
-                    >
-                      Add Customer
-                    </button>
-                  </div>
-                )}
-                {formData.customer_id && (
-                  <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
-                    <span className="text-emerald-600">✓ Customer Linked</span>
-                    {formData.customer_name && (
-                      <>
-                        <span className="text-slate-300">|</span>
-                        <span>{formData.customer_name}</span>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Items Section */}
-              <div>
-                <label className={labelCls}>Process Items</label>
-
-                {/* Selected Items List */}
-                {selectedItems.length > 0 && (
-                  <div className="mb-3 border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
-                    <div className="bg-slate-100 px-4 py-2 border-b border-slate-300 flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                        Attached Items ({selectedItems.length})
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-semibold">
-                        Item Code &bull; Process Name &bull; Qty &bull; Price
-                      </span>
-                    </div>
-                    <div className="divide-y divide-slate-200">
-                      {selectedItems.map((item) => (
-                        <div key={item.item_code} className="px-4 py-3  bg-[white] hover:bg-slate-50 transition-colors">
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                            
-                            {/* Item details */}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
-                                  {item.item_code}
-                                </span>
-                                {item.drawing_number && (
-                                  <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
-                                    DRW: {item.drawing_number}
-                                  </span>
-                                )}
-                              </div>
-                              {item.description && (
-                                <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
-                              )}
-                            </div>
-                            
-                            {/* Process Name, Qty, Price, Actions */}
-                            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-                              
-                              {/* Process Name */}
-                              <div className="flex flex-col items-start sm:items-end">
-                                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-                                  Process Name *
-                                </label>
-                                <input
-                                  type="text"
-                                  list="process-names-list"
-                                  required
-                                  placeholder="e.g. Turning"
-                                  value={item.process_name}
-                                  onChange={(e) => handleProcessNameChange(item.item_code, e.target.value)}
-                                  className="w-36 px-2 py-1 font-semibold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
-                                />
-                              </div>
-
-                              {/* Qty */}
-                              <div className="flex flex-col items-end">
-                                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-                                  QTY *
-                                </label>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  min="0.001"
-                                  required
-                                  value={item.quantity}
-                                  onChange={(e) => handleQuantityChange(item.item_code, e.target.value)}
-                                  className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
-                                />
-                              </div>
-
-                              {/* Price */}
-                              <div className="flex flex-col items-end">
-                                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-                                  Price
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  placeholder="0.00"
-                                  value={item.price}
-                                  onChange={(e) => handlePriceChange(item.item_code, e.target.value)}
-                                  className="w-24 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
-                                />
-                              </div>
-
-                              {/* History button */}
-                              <button
-                                type="button"
-                                onClick={() => setHistoryItem(item.item_code)}
-                                className="p-1 mt-3.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
-                                title="View Quote History"
-                              >
-                                <History size={14} />
-                              </button>
-
-                              {/* Remove item button */}
-                              <button
-                                type="button"
-                                onClick={() => removeItem(item.item_code)}
-                                className="p-1 mt-3.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
-                                title="Remove item"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Mobile inline history panel */}
-                          {historyItem === item.item_code && (
-                            <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
-                              <ItemQuoteHistory
-                                code={historyItem}
-                                excludeRfq={null}
-                                onClose={() => setHistoryItem(null)}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Search item autocomplete */}
-                <div ref={itemRef} className="relative">
+                {/* Buyer (Vendor Name) Autocomplete */}
+                <div ref={buyerRef} className="relative">
+                  <label className={labelCls}>Vendor Buyer Name <b className="text-red-500">*</b></label>
                   <input
                     type="text"
-                    placeholder="Search item by code or description to attach..."
-                    value={itemSearch}
-                    onChange={(e) => handleItemSearch(e.target.value)}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = 'var(--theme-color)';
-                      setShowItemDropdown(true);
-                      fetchItems(itemSearch);
-                    }}
+                    placeholder="Search vendor buyer profile..."
+                    value={buyerInput}
+                    onChange={(e) => handleBuyerInput(e.target.value)}
+                    onFocus={() => setShowBuyerDropdown(true)}
                     className={inputCls}
                     onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
                     autoComplete="off"
                   />
-
-                  {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
+                  {showBuyerDropdown && buyerSuggestions.length > 0 && (
                     <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                      {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
+                      {buyerSuggestions.map(b => (
                         <button
-                          key={item.item_code}
+                          key={b.id}
                           type="button"
-                          onClick={() => addItem(item)}
-                          className="w-full text-left px-3.5 py-2 border-b border-slate-100 last:border-0 hover:bg-amber-50 transition-colors cursor-pointer"
+                          onClick={() => selectBuyer(b)}
+                          className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
                         >
-                          <div>
+                          <div className="font-bold text-xs text-slate-900">{b.name}</div>
+                          <div className="text-[10px] text-slate-500">{b.email} &bull; {b.phone}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {buyerNotFound && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No vendor buyer found for "{buyerInput}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/buyer/form')}
+                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                      >
+                        Add Buyer
+                      </button>
+                    </div>
+                  )}
+                  {formData.buyer_id && (
+                    <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
+                      <span className="text-emerald-600">✓ Buyer Linked</span>
+                      <span className="text-slate-300">|</span>
+                      <span>{formData.buyer_email}</span>
+                      <span className="text-slate-300">|</span>
+                      <span>{formData.buyer_phone}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Customer (Selling Entity) Autocomplete */}
+                <div ref={customerRef} className="relative">
+                  <label className={labelCls}>Customer Vendor (Seller) <b className="text-red-500">*</b></label>
+                  <input
+                    type="text"
+                    placeholder="Search source entity/vendor..."
+                    value={customerInput}
+                    onChange={(e) => handleCustomerInput(e.target.value)}
+                    onFocus={() => setShowCustomerDropdown(true)}
+                    className={inputCls}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    autoComplete="off"
+                  />
+                  {showCustomerDropdown && customerSuggestions.length > 0 && (
+                    <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {customerSuggestions.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectCustomer(c)}
+                          className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                        >
+                          <div className="font-bold text-xs text-slate-900">{c.name}</div>
+                          <div className="text-[10px] text-slate-500">ID: {c.customer_code || c.id} &bull; {c.address}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {customerNotFound && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>No customer found for "{customerInput}".</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/party/form')}
+                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                      >
+                        Add Customer
+                      </button>
+                    </div>
+                  )}
+                  {formData.customer_id && (
+                    <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
+                      <span className="text-emerald-600">✓ Customer Linked</span>
+                      <span className="text-slate-300">|</span>
+                      <span>ID: {formData.customer_id}</span>
+                      {formData.customer_name && (
+                        <>
+                          <span className="text-slate-300">|</span>
+                          <span>{formData.customer_name}</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Items Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className={labelCls}>Quotation Line Items</label>
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Total: ₹{calculateBasicValue(selectedItems).toFixed(2)}
+                    </span>
+                  </div>
+
+                  {selectedItems.length > 0 && (
+                    <div className="mb-3 border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
+                      <div className="divide-y divide-slate-200">
+                        {selectedItems.map((item) => (
+                          <div key={item.item_code} className="px-4 py-3  bg-[white] hover:bg-slate-50 transition-colors">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="min-w-0 flex-1 mr-4">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                                    {item.item_code}
+                                  </span>
+                                  {item.drawing_number && (
+                                    <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
+                                      DRW: {item.drawing_number}
+                                    </span>
+                                  )}
+                                </div>
+                                {item.description && (
+                                  <p className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</p>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-3 shrink-0 flex-wrap">
+                                <div className="flex flex-col items-start sm:items-end">
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Process Name *</label>
+                                  <input
+                                    type="text"
+                                    list="process-names-list"
+                                    required
+                                    placeholder="e.g. Turning"
+                                    value={item.process_name}
+                                    onChange={(e) => handleItemValueChange(item.item_code, 'process_name', e.target.value)}
+                                    className="w-32 px-1.5 py-1 text-center font-bold text-xs text-slate-800 bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  />
+                                </div>
+                                <div className="flex flex-col items-end">
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Qty *</label>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    required
+                                    value={item.quantity}
+                                    onChange={(e) => handleItemValueChange(item.item_code, 'quantity', e.target.value)}
+                                    className="w-16 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  />
+                                </div>
+                                <div className="flex flex-col items-end">
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Unit Price (₹) *</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    required
+                                    placeholder="0.00"
+                                    value={item.unit_price}
+                                    onChange={(e) => handleItemValueChange(item.item_code, 'unit_price', e.target.value)}
+                                    className="w-24 px-1.5 py-1 text-right font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setHistoryItem(item.item_code)}
+                                  className="p-1 mt-3.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
+                                  title="View Quote History"
+                                >
+                                  <History size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeItem(item.item_code)}
+                                  className="p-1 mt-3.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
+                                  title="Remove item"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Inline history panel for mobile/small screen */}
+                            {historyItem === item.item_code && (
+                              <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
+                                <ItemQuoteHistory
+                                  code={historyItem}
+                                  excludeRfq={null}
+                                  onClose={() => setHistoryItem(null)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add item input */}
+                  <div ref={itemRef} className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search and attach inventory catalog items..."
+                      value={itemInput}
+                      onChange={(e) => handleItemInput(e.target.value)}
+                      onFocus={() => setShowItemDropdown(true)}
+                      className={inputCls}
+                      onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                      autoComplete="off"
+                    />
+                    {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
+                      <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                        {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
+                          <button
+                            key={item.item_code}
+                            type="button"
+                            onClick={() => addItem(item)}
+                            className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                          >
                             <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
                               {item.item_code}
                             </span>
                             {item.drawing_number && <span className="text-[10px] text-slate-400 ml-2">DRW: {item.drawing_number}</span>}
                             <div className="text-[10px] text-slate-500 mt-1">{item.description}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {itemSearch.trim().length > 0 && itemSuggestions.length === 0 && (
-                    <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
-                      <div className="flex items-center gap-1.5">
-                        <AlertCircle size={13} className="shrink-0" />
-                        <span>No item found for "{itemSearch}".</span>
+                          </button>
+                        ))}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/item/form')}
-                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
-                      >
-                        Add Item
-                      </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
-                {selectedItems.length === 0 && (
-                  <p className="mt-2 text-xs text-slate-400 font-medium pl-1">
-                    No items added yet. Search above to attach items to this Buy Process Received Quotation.
-                  </p>
-                )}
-              </div>
+                {/* Terms and Conditions */}
+                <div>
+                  <label className={labelCls}>Terms and Conditions</label>
+                  <textarea
+                    rows={4}
+                    value={formData.terms_and_conditions}
+                    onChange={set('terms_and_conditions')}
+                    className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-xs placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] font-mono leading-relaxed"
+                    placeholder="Enter standard payment terms, delivery period, price validity..."
+                  />
+                </div>
 
-              {/* Action Buttons */}
-              <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: 'var(--theme-color)' }}
-                  onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
-                  onMouseLeave={(e) => e.target.style.filter = 'none'}
-                >
-                  {isLoading ? (
-                    <><RefreshCw size={14} className="animate-spin" /> Processing...</>
-                  ) : (
-                    <><Plus size={14} /> Save Process Received Quotation</>
-                  )}
-                </button>
-              </div>
+                {/* Form Buttons */}
+                <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBackToDirectory}
+                    className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: 'var(--theme-color)' }}
+                    onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
+                    onMouseLeave={(e) => e.target.style.filter = 'none'}
+                  >
+                    {isLoading ? (
+                      <><RefreshCw size={14} className="animate-spin" /> Saving...</>
+                    ) : (
+                      <><Plus size={14} /> Save Quotation</>
+                    )}
+                  </button>
+                </div>
 
+              </div>
             </form>
           </div>
         </div>
@@ -755,7 +705,6 @@ export default function CreateProcessReceivedQuotationForm() {
         )}
       </div>
 
-      {/* Datalist for Common Process Names */}
       <datalist id="process-names-list">
         {COMMON_PROCESSES.map((proc) => (
           <option key={proc} value={proc} />

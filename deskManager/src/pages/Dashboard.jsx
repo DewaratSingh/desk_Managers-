@@ -160,7 +160,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
             {/* List all trade at bottom */}
             {(() => {
-              const staticTypes = ['Sell', 'Buy', 'ARC', 'buyARC', 'sellARC', 'Process'];
+              const staticTypes = ['Sell', 'Buy', 'Buy Process', 'Sell Process', 'ARC', 'buyARC', 'sellARC', 'Process'];
               const filterOptions = [
                 ...staticTypes.map(t => ({ label: `Type: ${t}`, type: 'trade_type', value: t })),
                 ...allStatuses.map(s => ({ label: `Status: ${s.toUpperCase()}`, type: 'status', value: s }))
@@ -274,16 +274,16 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                               {trade.trade_id}
                             </td>
                             <td className="px-4 py-3 font-mono text-slate-700">
-                              {trade.ref_id}
+                              {trade.ref_id || '—'}
                             </td>
                             <td className="px-4 py-3">
-                              <span className="font-semibold text-slate-600 capitalize">{trade.trade_type}</span>
+                              <span className="font-semibold text-slate-600 capitalize">{(trade.trade_type || '').replace(/_/g, ' ')}</span>
                             </td>
                             <td className="px-4 py-3 font-semibold text-slate-700">
-                              {trade.party_id}
+                              {trade.party_id || '—'}
                             </td>
                             <td className="px-4 py-3 text-slate-500 font-semibold">
-                              {trade.contact_name}
+                              {trade.contact_name || '—'}
                             </td>
                             <td className="px-4 py-3 text-right font-semibold">
                               <span 
@@ -767,7 +767,7 @@ function TradeComparisonChart({ trades }) {
   const typeCounts = TYPES.map(t => ({
     ...t,
     count: (trades || []).filter(
-      tr => (tr.trade_type || '').toLowerCase() === t.key.toLowerCase()
+      tr => (tr.trade_type || '').toLowerCase().replace(/_/g, ' ') === t.key.toLowerCase()
     ).length,
   }));
 

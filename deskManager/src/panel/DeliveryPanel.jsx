@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Truck, Plus, List, Edit2, FileText, CheckCircle2, AlertCircle,
-  ClipboardCheck, XCircle, ChevronDown, ChevronUp, Loader2, DollarSign
+  ClipboardCheck, XCircle, ChevronDown, ChevronUp, Loader2, DollarSign,
+  GitCommit
 } from 'lucide-react';
 
 const fmtDate = (d) => {
@@ -641,6 +642,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                         <th className="px-4 py-2.5 text-right">Total</th>
                         <th className="px-4 py-2.5">Shipping Destination</th>
                         <th className="px-4 py-2.5 text-center">Next Activity</th>
+                        <th className="px-4 py-2.5 text-center">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100  bg-[white]">
@@ -712,6 +714,20 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
                                   <span className="text-slate-400 font-semibold">—</span>
                                 )}
                               </div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {item.history_id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/delivery/history/${item.history_id}`)}
+                                  className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-purple-600 hover:border-purple-600 bg-[white] transition-colors cursor-pointer inline-flex items-center justify-center"
+                                  title="View History Chart"
+                                >
+                                  <GitCommit size={14} />
+                                </button>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
                             </td>
                           </tr>
                         );

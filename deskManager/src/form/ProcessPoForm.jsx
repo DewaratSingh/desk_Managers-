@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { FileText, ArrowLeft, Layers, Package, RefreshCw, Trash2, Building2, User, Truck, Box, DollarSign, Search, CheckCircle2 } from 'lucide-react';
+import { FileText, ArrowLeft, Layers, Package, RefreshCw, Trash2, Building2, User, Truck, Box, DollarSign, Search, CheckCircle2, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import InventoryTraceSelectorModal from '../components/InventoryTraceSelectorModal';
@@ -54,9 +54,22 @@ export default function ProcessPoForm({ isContractOrder }) {
   const [sourceItems, setSourceItems] = useState([]); // Array of { item_code, description, trace_item_id, qty, available_qty }
   const [targetItems, setTargetItems] = useState([]); // Array of { item_code, description, qty, price }
 
-  // Financial Summary State
-  const [gstType, setGstType] = useState('CGST + SGST');
-  const [gstRate, setGstRate] = useState('18');
+  // Financial Summary State & Search-based GST (just like Sell PO)
+  const [gstType, setGstType] = useState('');
+  const [gstRate, setGstRate] = useState('');
+  const [summaryGstInput, setSummaryGstInput] = useState('');
+  const [summaryGstSuggestions, setSummaryGstSuggestions] = useState([]);
+  const [showSummaryGstDropdown, setShowSummaryGstDropdown] = useState(false);
+  const summaryGstRef = useRef(null);
+  const summaryGstTimeoutRef = useRef(null);
+
+  // Per-target-item GST search state (keyed by target item index)
+  const [targetGstSearchInput, setTargetGstSearchInput] = useState({});
+  const [targetGstDropdownOpen, setTargetGstDropdownOpen] = useState({});
+  const [targetGstSuggestions, setTargetGstSuggestions] = useState({});
+  const targetGstRefs = useRef({});
+  const targetGstTimeoutRefs = useRef({});
+
   const [transport, setTransport] = useState('0');
   const [packingForward, setPackingForward] = useState('0');
   const [other, setOther] = useState('0');
@@ -123,18 +136,11 @@ export default function ProcessPoForm({ isContractOrder }) {
     if (allSourceItems.length > 0) {
       const allowedCodes = allSourceItems.map(s => s.item_code).filter(Boolean);
       setRqSourceItemCodes(allowedCodes);
-      
-      // Auto-populate source items
-      setSourceItems(allSourceItems.map(s => ({
-        item_code: s.item_code || '',
-        description: s.description || '',
-        trace_item_id: s.trace_item_id || s.trace_id || null,
-        qty: String(s.qty || 1),
-        available_qty: s.available_qty || ''
-      })));
     } else {
-      setSourceItems([]);
+      setRqSourceItemCodes([]);
     }
+    // Do NOT auto-populate source items; user selects trace items from inventory modal
+    setSourceItems([]);
 
     if (allTargetItems.length > 0) {
       setTargetItems(allTargetItems.map(t => ({
@@ -195,17 +201,12 @@ export default function ProcessPoForm({ isContractOrder }) {
         process_name: t.process_name || ''
       })));
 
-      // Auto-fill Source Items with SAME item codes (same material to be processed)
+      // Allow trace selection for these source item codes, but do NOT autofill sourceItems
       const itemCodes = items.map(s => s.item_code).filter(Boolean);
       setRqSourceItemCodes(itemCodes);
-
-      setSourceItems(items.map(s => ({
-        item_code: s.item_code || '',
-        description: s.description || '',
-        trace_item_id: null,
-        qty: String(s.quantity || 1),
-        available_qty: ''
-      })));
+      setSourceItems([]);
+    } else {
+      setSourceItems([]);
     }
   };
 
@@ -233,16 +234,12 @@ export default function ProcessPoForm({ isContractOrder }) {
         process_name: t.process_name || ''
       })));
 
-      // Also set allowed source item codes to same codes
+      // Also set allowed source item codes to same codes, but do NOT autofill sourceItems
       const itemCodes = rq.items.map(s => s.item_code).filter(Boolean);
       setRqSourceItemCodes(itemCodes);
-      setSourceItems(rq.items.map(s => ({
-        item_code: s.item_code || '',
-        description: s.description || '',
-        trace_item_id: null,
-        qty: String(s.quantity || 1),
-        available_qty: ''
-      })));
+      setSourceItems([]);
+    } else {
+      setSourceItems([]);
     }
   };
 
@@ -403,10 +400,106 @@ export default function ProcessPoForm({ isContractOrder }) {
       if (partyRef.current && !partyRef.current.contains(e.target)) {
         setShowPartyDropdown(false);
       }
+      if (summaryGstRef.current && !summaryGstRef.current.contains(e.target)) {
+        setShowSummaryGstDropdown(false);
+      }
+      Object.keys(targetGstRefs.current).forEach(key => {
+        const ref = targetGstRefs.current[key];
+        if (ref && !ref.contains(e.target)) {
+          setTargetGstDropdownOpen(prev => ({ ...prev, [key]: false }));
+        }
+      });
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Summary GST Search Suggestions On-Demand Fetcher
+  const fetchSummaryGstSuggestions = (val) => {
+    if (summaryGstTimeoutRef.current) {
+      clearTimeout(summaryGstTimeoutRef.current);
+    }
+    const isSelectedFormat = /^[A-Z0-9\s+]+\s*\(\d+(\.\d+)?%\)$/i.test(val);
+    if (isSelectedFormat) {
+      return;
+    }
+    summaryGstTimeoutRef.current = setTimeout(() => {
+      fetch(`/api/gst-rates?q=${encodeURIComponent(val)}&limit=5`)
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          setSummaryGstSuggestions(Array.isArray(data) ? data : []);
+        })
+        .catch(console.error);
+    }, 200);
+  };
+
+  const handleSummaryGstSearch = (value) => {
+    setSummaryGstInput(value);
+    setGstType('');
+    setGstRate('');
+    setShowSummaryGstDropdown(true);
+    fetchSummaryGstSuggestions(value);
+  };
+
+  const selectSummaryGst = (gst) => {
+    setGstType(gst.type);
+    setGstRate(String(gst.rate));
+    setSummaryGstInput(`${gst.type} (${gst.rate}%)`);
+    setShowSummaryGstDropdown(false);
+  };
+
+  const clearSummaryGst = () => {
+    setGstType('');
+    setGstRate('');
+    setSummaryGstInput('');
+    setShowSummaryGstDropdown(false);
+  };
+
+  // Target Item GST Search Suggestions On-Demand Fetcher
+  const fetchTargetGstSuggestions = (idx, val) => {
+    if (targetGstTimeoutRefs.current[idx]) {
+      clearTimeout(targetGstTimeoutRefs.current[idx]);
+    }
+    const isSelectedFormat = /^[A-Z0-9\s+]+\s*\(\d+(\.\d+)?%\)$/i.test(val);
+    if (isSelectedFormat) {
+      return;
+    }
+    targetGstTimeoutRefs.current[idx] = setTimeout(() => {
+      fetch(`/api/gst-rates?q=${encodeURIComponent(val)}&limit=5`)
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          setTargetGstSuggestions(prev => ({ ...prev, [idx]: Array.isArray(data) ? data : [] }));
+        })
+        .catch(console.error);
+    }, 200);
+  };
+
+  const handleTargetGstSearch = (idx, value) => {
+    setTargetGstSearchInput(prev => ({ ...prev, [idx]: value }));
+    setTargetItems(prev => prev.map((t, i) => i === idx ? { ...t, gst_type: '', gst_rate: '' } : t));
+    setTargetGstDropdownOpen(prev => ({ ...prev, [idx]: true }));
+    fetchTargetGstSuggestions(idx, value);
+  };
+
+  const selectTargetItemGst = (idx, gst) => {
+    setTargetItems(prev => prev.map((t, i) =>
+      i === idx ? { ...t, gst_type: gst.type, gst_rate: String(gst.rate) } : t
+    ));
+    setTargetGstSearchInput(prev => ({ ...prev, [idx]: `${gst.type} (${gst.rate}%)` }));
+    setTargetGstDropdownOpen(prev => ({ ...prev, [idx]: false }));
+  };
+
+  const clearTargetItemGst = (idx) => {
+    setTargetItems(prev => prev.map((t, i) =>
+      i === idx ? { ...t, gst_type: '', gst_rate: '' } : t
+    ));
+    setTargetGstSearchInput(prev => ({ ...prev, [idx]: '' }));
+    setTargetGstDropdownOpen(prev => ({ ...prev, [idx]: false }));
+  };
+
+  const updateTargetItem = (index, field, value) => {
+    setTargetItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
+  };
 
   // Handlers for Source Items Selection
   const handleApplySourceSelections = (selectionsArray) => {
@@ -437,7 +530,9 @@ export default function ProcessPoForm({ isContractOrder }) {
         item_code: targetObj.item_code,
         description: targetObj.description || '',
         qty: targetObj.qty !== undefined ? String(targetObj.qty) : '1',
-        price: targetObj.price !== undefined ? String(targetObj.price) : '0'
+        price: targetObj.price !== undefined ? String(targetObj.price) : '0',
+        gst_type: '',
+        gst_rate: ''
       }
     ]);
 
@@ -450,18 +545,20 @@ export default function ProcessPoForm({ isContractOrder }) {
   };
 
   // Financial Calculations
+  const calcItemBasic = (item) => (parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0);
+  const calcItemGst = (item) => {
+    const itemRate = parseFloat(item.gst_rate);
+    const effectiveRate = !isNaN(itemRate) && item.gst_rate !== '' ? itemRate : (parseFloat(gstRate) || 0);
+    return (calcItemBasic(item) * effectiveRate) / 100;
+  };
+  const calcItemTotal = (item) => calcItemBasic(item) + calcItemGst(item);
+
   const calcTargetBasicTotal = () => {
-    return targetItems.reduce((sum, item) => {
-      const q = parseFloat(item.qty) || 0;
-      const p = parseFloat(item.price) || 0;
-      return sum + (q * p);
-    }, 0);
+    return targetItems.reduce((sum, item) => sum + calcItemBasic(item), 0);
   };
 
   const calcGstAmount = () => {
-    const basic = calcTargetBasicTotal();
-    const rate = parseFloat(gstRate) || 0;
-    return (basic * rate) / 100;
+    return targetItems.reduce((sum, item) => sum + calcItemGst(item), 0);
   };
 
   const calcGrandTotal = () => {
@@ -474,7 +571,7 @@ export default function ProcessPoForm({ isContractOrder }) {
     );
   };
 
-    // Submit Process PO Form
+  // Submit Process PO Form
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -493,12 +590,11 @@ export default function ProcessPoForm({ isContractOrder }) {
       return;
     }
 
-    // Derive source and target items if modal arrays are empty
     let finalSourceItems = sourceItems;
     let finalTargetItems = targetItems;
 
     if (finalSourceItems.length === 0) {
-      toast.error('Please enter at least one source item or target item in the table');
+      toast.error('Please select at least one source trace item from inventory');
       return;
     }
 
@@ -518,7 +614,7 @@ export default function ProcessPoForm({ isContractOrder }) {
         trade_type: 'BUY_PROCESS',
         seller: seller.trim(),
         party: party.trim(),
-        gst_type: gstType,
+        gst_type: gstType || null,
         gst_rate: parseFloat(gstRate) || 0,
         gst: calcGstAmount(),
         transport: parseFloat(transport) || 0,
@@ -530,7 +626,18 @@ export default function ProcessPoForm({ isContractOrder }) {
         message: message || null,
         job_ids: jobIds,
         source_items: finalSourceItems,
-        target_items: finalTargetItems
+        target_items: finalTargetItems.map(t => {
+          const itemRate = parseFloat(t.gst_rate);
+          const effectiveRate = !isNaN(itemRate) && t.gst_rate !== '' ? itemRate : (parseFloat(gstRate) || 0);
+          const effectiveType = t.gst_type || gstType || null;
+          return {
+            ...t,
+            qty: parseFloat(t.qty) || 0,
+            price: parseFloat(t.price) || 0,
+            gst_type: effectiveType,
+            gst_rate: effectiveRate
+          };
+        })
       };
 
       const res = await fetch('/api/process-po', {
@@ -610,12 +717,18 @@ export default function ProcessPoForm({ isContractOrder }) {
               </span>
             </div>
           ) : (
-          <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div
+            className="border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs"
+            style={{
+              backgroundColor: 'rgba(217, 53, 45, 0.03)',
+              borderColor: 'rgba(217, 53, 45, 0.2)'
+            }}
+          >
             <div className="space-y-0.5">
-              <span className="text-[10px] font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1">
-                <FileText size={12} className="text-indigo-600" /> Linked Received Quotation / Process RQ
+              <span className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1" style={{ color: 'var(--theme-color)' }}>
+                <FileText size={12} style={{ color: 'var(--theme-color)' }} /> Linked Received Quotation / Process RQ
               </span>
-              <p className="text-xs text-indigo-700 font-semibold m-0">
+              <p className="text-xs text-slate-600 font-semibold m-0">
                 {linkedRqLabel ? (
                   <span className="flex items-center gap-1.5 text-emerald-800 font-bold bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-lg w-fit mt-1">
                     <CheckCircle2 size={13} className="text-emerald-600" /> Pre-filled from Received Quotation: {linkedRqLabel}
@@ -638,13 +751,13 @@ export default function ProcessPoForm({ isContractOrder }) {
                 onFocus={() => {
                   if (rqSearchInput.trim()) setShowRqDropdown(true);
                 }}
-                className="w-full pl-8 pr-3.5 py-2  bg-[white] border border-indigo-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                className="w-full pl-8 pr-3.5 py-2 bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] shadow-2xs"
                 autoComplete="off"
               />
-              <Search size={14} className="absolute left-2.5 top-2.5 text-indigo-400" />
+              <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
 
               {showRqDropdown && rqSuggestions.length > 0 && (
-                <div className="absolute right-0 z-50 w-full sm:w-80 mt-1  bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto text-xs">
+                <div className="absolute right-0 z-50 w-full sm:w-80 mt-1 bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto text-xs">
                   {rqSuggestions.map((item, idx) => (
                     <button
                       key={idx}
@@ -669,7 +782,7 @@ export default function ProcessPoForm({ isContractOrder }) {
                           item._type === 'PROCESS_RECEIVED_QUOTATION'
                             ? 'bg-amber-50 text-amber-800 border-amber-300'
                             : item._type === 'PROCESS_RQ'
-                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              ? 'bg-slate-100 text-slate-700 border-slate-300'
                               : 'bg-slate-50 text-slate-700 border-slate-200'
                         }`}>
                           {item._type === 'PROCESS_RECEIVED_QUOTATION'
@@ -958,56 +1071,136 @@ export default function ProcessPoForm({ isContractOrder }) {
               </div>
 
               {targetItems.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {targetItems.map((tgt, idx) => {
                     const itemQty = parseFloat(tgt.qty) || 0;
                     const itemPrice = parseFloat(tgt.price) || 0;
-                    const itemTotal = itemQty * itemPrice;
+                    const itemBasic = itemQty * itemPrice;
+                    const itemGst = calcItemGst(tgt);
+                    const itemTotal = itemBasic + itemGst;
 
                     return (
-                      <div key={idx} className=" bg-[white] border border-emerald-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-                        <div className="space-y-0.5 flex-1">
-                          <div className="font-bold text-slate-900 text-xs">{tgt.item_code}</div>
-                          {tgt.description && <div className="text-[10px] text-slate-500 truncate">{tgt.description}</div>}
+                      <div key={idx} className="bg-[white] border border-emerald-200 rounded-xl p-3.5 space-y-3 shadow-2xs">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                          <div className="space-y-0.5 flex-1">
+                            <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                              <span>{tgt.item_code}</span>
+                              {tgt.process_name && (
+                                <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 rounded">
+                                  {tgt.process_name}
+                                </span>
+                              )}
+                            </div>
+                            {tgt.description && <div className="text-[10px] text-slate-500 truncate">{tgt.description}</div>}
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <span className="text-[9px] text-slate-400 font-bold block uppercase">Total</span>
+                              <span className="text-xs font-mono font-black text-emerald-950">₹{itemTotal.toFixed(2)}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTargetItem(idx)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 transition-colors cursor-pointer rounded-lg hover:bg-slate-100"
+                              title="Remove Target Item"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase">Target Qty:</span>
-                            <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg shadow-2xs">
-                              {tgt.qty || 0}
-                            </span>
+                        {/* Editable Qty, Unit Price, GST Rate Search, Item Total */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Target Qty *</label>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0.01"
+                              value={tgt.qty}
+                              onChange={(e) => updateTargetItem(idx, 'qty', e.target.value)}
+                              className="w-full px-2.5 py-1.5 font-bold text-xs text-slate-800 bg-[white] border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--theme-color)]"
+                            />
                           </div>
 
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price:</span>
-                            <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
-                              ₹{itemPrice.toFixed(2)}
-                            </span>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Unit Price (₹) *</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={tgt.price}
+                              onChange={(e) => updateTargetItem(idx, 'price', e.target.value)}
+                              className="w-full px-2.5 py-1.5 font-bold text-xs text-slate-800 bg-[white] border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--theme-color)]"
+                            />
                           </div>
 
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase">Total:</span>
-                            <span className="text-xs font-mono font-black text-emerald-950 bg-emerald-100/80 border border-emerald-300 px-2.5 py-1 rounded-lg shadow-2xs">
-                              ₹{itemTotal.toFixed(2)}
-                            </span>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveTargetItem(idx)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 transition-colors cursor-pointer rounded-lg hover:bg-slate-100"
-                            title="Remove Target Item"
+                          {/* GST Rate search for Target Item */}
+                          <div
+                            className="relative"
+                            style={{ zIndex: targetGstDropdownOpen[idx] ? 100 : 'auto' }}
+                            ref={el => targetGstRefs.current[idx] = el}
                           >
-                            <Trash2 size={14} />
-                          </button>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">GST Rate</label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder={gstType ? `Inherit: ${gstType} (${gstRate}%)` : "e.g. GST 18"}
+                                value={targetGstSearchInput[idx] ?? (tgt.gst_type ? `${tgt.gst_type} (${tgt.gst_rate}%)` : '')}
+                                onChange={(e) => handleTargetGstSearch(idx, e.target.value)}
+                                onFocus={() => {
+                                  setTargetGstDropdownOpen(prev => ({ ...prev, [idx]: true }));
+                                  fetchTargetGstSuggestions(idx, targetGstSearchInput[idx] || '');
+                                }}
+                                className="w-full pl-2.5 pr-6 py-1.5 text-xs text-slate-800 bg-[white] border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--theme-color)] font-medium"
+                                autoComplete="off"
+                              />
+                              {tgt.gst_type && (
+                                <button
+                                  type="button"
+                                  onClick={() => clearTargetItemGst(idx)}
+                                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+
+                            {targetGstDropdownOpen[idx] && (targetGstSuggestions[idx] || []).length > 0 && (
+                              <div
+                                className="absolute z-50 left-0 right-0 mt-1 bg-[white] border border-slate-300 rounded-lg shadow-xl max-h-44 overflow-y-auto"
+                                style={{ backgroundColor: '#ffffff', opacity: 1 }}
+                              >
+                                {(targetGstSuggestions[idx] || []).map(g => (
+                                  <button
+                                    key={g.id}
+                                    type="button"
+                                    onClick={() => selectTargetItemGst(idx, g)}
+                                    className="w-full text-left px-2.5 py-1.5 bg-[white] hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer block"
+                                    style={{ backgroundColor: '#ffffff' }}
+                                  >
+                                    <span className="font-bold text-xs text-slate-900">{g.type}</span>
+                                    <span className="text-[10px] text-slate-500 ml-1.5">({g.rate}%)</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Item Total (₹)</label>
+                            <div className="px-2.5 py-1.5 text-xs font-mono font-bold text-emerald-800 bg-emerald-50/60 border border-emerald-200 rounded-lg">
+                              ₹{itemTotal.toFixed(2)}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl  bg-[white] text-slate-400 text-xs font-medium">
+                <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl bg-[white] text-slate-400 text-xs font-medium">
                   No Target Items added. Click "Add Target Item" to select target product code, quantity & price.
                 </div>
               )}
@@ -1029,40 +1222,64 @@ export default function ProcessPoForm({ isContractOrder }) {
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                     Basic Value (₹)
                   </label>
-                  <div className="px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800">
+                  <div className="px-3.5 py-2 bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800">
                     ₹{calcTargetBasicTotal().toFixed(2)}
                   </div>
                 </div>
 
-                {/* GST Type */}
-                <div>
+                {/* GST Rate (Search-based autocomplete) */}
+                <div
+                  className="relative"
+                  style={{ zIndex: showSummaryGstDropdown ? 100 : 'auto' }}
+                  ref={summaryGstRef}
+                >
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    GST Type
+                    GST Rate
                   </label>
-                  <select
-                    value={gstType}
-                    onChange={(e) => setGstType(e.target.value)}
-                    className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
-                  >
-                    <option value="CGST + SGST">CGST + SGST</option>
-                    <option value="IGST">IGST</option>
-                    <option value="Exempt">Exempt</option>
-                  </select>
-                </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="e.g. GST 18"
+                      value={summaryGstInput || (gstType ? `${gstType} (${gstRate}%)` : '')}
+                      onChange={(e) => handleSummaryGstSearch(e.target.value)}
+                      onFocus={() => {
+                        setShowSummaryGstDropdown(true);
+                        fetchSummaryGstSuggestions(summaryGstInput || '');
+                      }}
+                      className="w-full pl-3 pr-7 py-2 bg-[white] border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                      autoComplete="off"
+                    />
+                    {gstType && (
+                      <button
+                        type="button"
+                        onClick={clearSummaryGst}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
 
-                {/* GST Rate % */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    GST Rate (%)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="18"
-                    value={gstRate}
-                    onChange={(e) => setGstRate(e.target.value)}
-                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
-                  />
+                  {showSummaryGstDropdown && summaryGstSuggestions.length > 0 && (
+                    <div
+                      className="absolute z-50 left-0 right-0 mt-1 bg-[white] border border-slate-300 rounded-xl shadow-xl max-h-48 overflow-y-auto"
+                      style={{ backgroundColor: '#ffffff', opacity: 1 }}
+                    >
+                      {summaryGstSuggestions.map(g => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => selectSummaryGst(g)}
+                          className="w-full text-left px-3 py-2 bg-[white] hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer block"
+                          style={{ backgroundColor: '#ffffff' }}
+                        >
+                          <span className="font-bold text-xs text-slate-900">{g.type}</span>
+                          <span className="text-[10px] text-slate-500 ml-1.5">({g.rate}%)</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="text-[10px] text-slate-500 mt-1 font-mono">
                     GST Amount: ₹{calcGstAmount().toFixed(2)}
                   </div>
@@ -1079,7 +1296,7 @@ export default function ProcessPoForm({ isContractOrder }) {
                     placeholder="0.00"
                     value={transport}
                     onChange={(e) => setTransport(e.target.value)}
-                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                    className="w-full px-3.5 py-2 bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   />
                 </div>
 
@@ -1094,15 +1311,12 @@ export default function ProcessPoForm({ isContractOrder }) {
                     placeholder="0.00"
                     value={packingForward}
                     onChange={(e) => setPackingForward(e.target.value)}
-                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                    className="w-full px-3.5 py-2 bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   />
                 </div>
 
-              </div>
-
-              {/* Other Charges & Grand Total Callout */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-2 border-t border-slate-200">
-                <div className="w-full sm:w-48">
+                {/* Other Charges */}
+                <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                     Other Charges (₹)
                   </label>
@@ -1112,11 +1326,14 @@ export default function ProcessPoForm({ isContractOrder }) {
                     placeholder="0.00"
                     value={other}
                     onChange={(e) => setOther(e.target.value)}
-                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                    className="w-full px-3.5 py-2 bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
                   />
                 </div>
 
-                {/* GRAND TOTAL CALLOUT BOX */}
+              </div>
+
+              {/* Grand Total Callout */}
+              <div className="flex justify-end pt-2 border-t border-slate-200">
                 <div className="w-full sm:w-auto p-4 rounded-2xl text-white shadow-md flex items-center gap-4 justify-between sm:justify-end" style={{ backgroundColor: 'var(--theme-color)' }}>
                   <div>
                     <span className="text-[10px] uppercase font-black text-white/80 tracking-wider block">

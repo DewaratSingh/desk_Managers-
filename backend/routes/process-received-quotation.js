@@ -2,6 +2,19 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 
+// GET next Process Received Quotation reference number
+router.get('/next-no', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT COUNT(*) FROM "processReceivedQuotation" WHERE company_id = $1', [req.user.company_id]);
+    const count = parseInt(result.rows[0].count) || 0;
+    const nextNo = `PRQ-${String(count + 1).padStart(4, '0')}`;
+    res.json({ nextNo });
+  } catch (err) {
+    console.error('Error fetching next process received quotation no:', err.message);
+    res.status(500).json({ error: 'Failed to generate next process received quotation number' });
+  }
+});
+
 // GET all Process Received Quotations (supports search & limit)
 router.get('/', async (req, res) => {
   const { q } = req.query || {};
@@ -11,8 +24,7 @@ router.get('/', async (req, res) => {
         prq.id,
         prq.quotation_number,
         prq.quotation_date,
-        prq.commercial_bid_due_date,
-        prq.technical_bid_due_date,
+        prq.terms_and_conditions,
         prq.buyer_id,
         b.name as buyer_name,
         b.email as buyer_email,
@@ -80,8 +92,7 @@ router.get('/:identifier', async (req, res) => {
         prq.id,
         prq.quotation_number,
         prq.quotation_date,
-        prq.commercial_bid_due_date,
-        prq.technical_bid_due_date,
+        prq.terms_and_conditions,
         prq.buyer_id,
         b.name as buyer_name,
         b.email as buyer_email,
@@ -142,27 +153,33 @@ router.post('/', async (req, res) => {
     received_quotation_no,
     quotation_date,
     date,
-    commercial_bid_due_date,
-    technical_bid_due_date,
     buyer_id,
     customer_id,
+    terms_and_conditions,
     items
   } = req.body || {};
 
-  const effectiveQtnNo = (quotation_number || quotation_no || received_quotation_no || '').trim();
+  let effectiveQtnNo = (quotation_number || quotation_no || received_quotation_no || '').trim();
   const effectiveQtnDate = quotation_date || date;
 
-  if (!effectiveQtnNo || !effectiveQtnDate || !commercial_bid_due_date || !technical_bid_due_date || !buyer_id || !customer_id) {
-    return res.status(400).json({ error: 'All header fields are required: Quotation number, dates, buyer, and customer' });
+  if (!effectiveQtnDate || !buyer_id || !customer_id) {
+    return res.status(400).json({ error: 'Quotation date, buyer, and customer are required' });
   }
 
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'At least one item with process name is required' });
+    return res.status(400).json({ error: 'At least one item is required' });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Auto-generate quotation_number if not provided
+    if (!effectiveQtnNo) {
+      const countRes = await client.query('SELECT COUNT(*) FROM "processReceivedQuotation" WHERE company_id = $1', [req.user.company_id]);
+      const count = parseInt(countRes.rows[0].count) || 0;
+      effectiveQtnNo = `PRQ-${String(count + 1).padStart(4, '0')}`;
+    }
 
     // 1. Check duplicate quotation_number
     const dupCheck = await client.query(
@@ -240,22 +257,20 @@ router.post('/', async (req, res) => {
       `INSERT INTO "processReceivedQuotation" (
         quotation_number,
         quotation_date,
-        commercial_bid_due_date,
-        technical_bid_due_date,
         buyer_id,
         customer_id,
         trade_id,
+        terms_and_conditions,
         status,
         company_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         effectiveQtnNo,
         effectiveQtnDate,
-        commercial_bid_due_date,
-        technical_bid_due_date,
         buyerDbId,
         customerDbId,
         tradeDbId,
+        terms_and_conditions || null,
         'active',
         req.user.company_id
       ]
@@ -266,15 +281,12 @@ router.post('/', async (req, res) => {
     const insertedItems = [];
     for (const item of items) {
       const itemCode = (item.itemcode || item.item_code || '').trim();
-      const processName = (item.process_name || item.processName || item['process name'] || '').trim();
+      const processName = (item.process_name || item.processName || item['process name'] || 'Processing').trim();
       const qty = parseFloat(item.quantity ?? item.QTY ?? item.qty ?? 1);
       const price = parseFloat(item.price ?? item.unit_price ?? 0);
 
       if (!itemCode) {
         throw new Error('Each attached item must have a valid item code');
-      }
-      if (!processName) {
-        throw new Error(`Process name is required for item "${itemCode}"`);
       }
       if (isNaN(qty) || qty <= 0) {
         throw new Error(`Quantity must be greater than 0 for item "${itemCode}"`);
@@ -328,21 +340,20 @@ router.put('/:identifier', async (req, res) => {
     received_quotation_no,
     quotation_date,
     date,
-    commercial_bid_due_date,
-    technical_bid_due_date,
     buyer_id,
     customer_id,
+    terms_and_conditions,
     items
   } = req.body || {};
 
   const effectiveQtnDate = quotation_date || date;
 
-  if (!effectiveQtnDate || !commercial_bid_due_date || !technical_bid_due_date || !buyer_id || !customer_id) {
-    return res.status(400).json({ error: 'All header fields are required: dates, buyer, and customer' });
+  if (!effectiveQtnDate || !buyer_id || !customer_id) {
+    return res.status(400).json({ error: 'All header fields are required: date, buyer, and customer' });
   }
 
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'At least one item with process name is required' });
+    return res.status(400).json({ error: 'At least one item is required' });
   }
 
   const client = await pool.connect();
@@ -398,18 +409,16 @@ router.put('/:identifier', async (req, res) => {
     const updateRes = await client.query(
       `UPDATE "processReceivedQuotation"
        SET quotation_date = $1,
-           commercial_bid_due_date = $2,
-           technical_bid_due_date = $3,
-           buyer_id = $4,
-           customer_id = $5
-       WHERE id = $6 AND company_id = $7
+           buyer_id = $2,
+           customer_id = $3,
+           terms_and_conditions = $4
+       WHERE id = $5 AND company_id = $6
        RETURNING *`,
       [
         effectiveQtnDate,
-        commercial_bid_due_date,
-        technical_bid_due_date,
         buyerDbId,
         customerDbId,
+        terms_and_conditions || null,
         currentRq.id,
         req.user.company_id
       ]
@@ -426,15 +435,12 @@ router.put('/:identifier', async (req, res) => {
     const insertedItems = [];
     for (const item of items) {
       const itemCode = (item.itemcode || item.item_code || '').trim();
-      const processName = (item.process_name || item.processName || item['process name'] || '').trim();
+      const processName = (item.process_name || item.processName || item['process name'] || 'Processing').trim();
       const qty = parseFloat(item.quantity ?? item.QTY ?? item.qty ?? 1);
       const price = parseFloat(item.price ?? item.unit_price ?? 0);
 
       if (!itemCode) {
         throw new Error('Each attached item must have a valid item code');
-      }
-      if (!processName) {
-        throw new Error(`Process name is required for item "${itemCode}"`);
       }
       if (isNaN(qty) || qty <= 0) {
         throw new Error(`Quantity must be greater than 0 for item "${itemCode}"`);

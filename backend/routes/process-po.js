@@ -893,4 +893,226 @@ router.put('/:id/complete-production', async (req, res) => {
   }
 });
 
+// PUT Update Process PO
+router.put('/:id', async (req, res) => {
+  const { id } = req.params;
+  const {
+    date_of_start,
+    date_of_end,
+    seller,
+    party,
+    gst_type,
+    gst_rate,
+    gst,
+    transport,
+    packing_forward,
+    other,
+    basic_value,
+    delivery_date,
+    shipping_address,
+    message,
+    source_items,
+    target_items
+  } = req.body || {};
+
+  if (!seller || !seller.trim()) {
+    return res.status(400).json({ error: 'Seller / Processor Vendor is required' });
+  }
+
+  if (!party || !party.trim()) {
+    return res.status(400).json({ error: 'Party / Client Customer is required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const companyId = req.user.company_id;
+
+    const isNum = /^\d+$/.test(id);
+    const existingRes = await client.query(
+      `SELECT * FROM process_po WHERE (${isNum ? 'id = $1 OR ' : ''}po_no = ${isNum ? '$2' : '$1'}) AND company_id = ${isNum ? '$3' : '$2'} LIMIT 1`,
+      isNum ? [parseInt(id), id, companyId] : [id, companyId]
+    );
+
+    if (existingRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Process PO not found' });
+    }
+
+    const currentPpo = existingRes.rows[0];
+    const ppoId = currentPpo.id;
+
+    const resolveItemId = async (codeOrId, desc = '') => {
+      if (!codeOrId) return null;
+      const strVal = String(codeOrId).trim();
+      const numVal = parseInt(strVal);
+      const isNum = !isNaN(numVal);
+
+      if (isNum) {
+        const res = await client.query(
+          `SELECT id FROM items WHERE (item_code = $1 OR id = $2) AND company_id = $3 LIMIT 1`,
+          [strVal, numVal, companyId]
+        );
+        if (res.rows.length > 0) return res.rows[0].id;
+      } else {
+        const res = await client.query(
+          `SELECT id FROM items WHERE item_code = $1 AND company_id = $2 LIMIT 1`,
+          [strVal, companyId]
+        );
+        if (res.rows.length > 0) return res.rows[0].id;
+      }
+
+      try {
+        const ins = await client.query(
+          `INSERT INTO items (item_code, description, company_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING
+           RETURNING id`,
+          [strVal, desc || strVal, companyId]
+        );
+        if (ins.rows.length > 0) return ins.rows[0].id;
+        const retry = await client.query(
+          `SELECT id FROM items WHERE item_code = $1 AND company_id = $2 LIMIT 1`,
+          [strVal, companyId]
+        );
+        return retry.rows.length > 0 ? retry.rows[0].id : null;
+      } catch (e) {
+        return null;
+      }
+    };
+
+    // Update header
+    await client.query(
+      `UPDATE process_po SET
+         date_of_start = $1,
+         date_of_end = $2,
+         seller = $3,
+         party = $4,
+         gst_type = $5,
+         gst_rate = $6,
+         gst = $7,
+         transport = $8,
+         packing_forward = $9,
+         other = $10,
+         basic_value = $11,
+         delivery_date = $12,
+         shipping_address = $13,
+         message = $14
+       WHERE id = $15 AND company_id = $16`,
+      [
+        date_of_start || currentPpo.date_of_start,
+        date_of_end || delivery_date || null,
+        seller.trim(),
+        party.trim(),
+        gst_type || null,
+        gst_rate !== undefined ? parseFloat(gst_rate) : currentPpo.gst_rate,
+        gst !== undefined ? parseFloat(gst) : currentPpo.gst,
+        transport !== undefined ? parseFloat(transport) : currentPpo.transport,
+        packing_forward !== undefined ? parseFloat(packing_forward) : currentPpo.packing_forward,
+        other !== undefined ? parseFloat(other) : currentPpo.other,
+        basic_value !== undefined ? parseFloat(basic_value) : currentPpo.basic_value,
+        delivery_date || date_of_end || null,
+        shipping_address || null,
+        message || null,
+        ppoId,
+        companyId
+      ]
+    );
+
+    // Update Source Items if provided
+    const normalizedSourceItems = Array.isArray(source_items) ? source_items : [];
+    if (normalizedSourceItems.length > 0) {
+      await client.query('DELETE FROM process_po_source_item WHERE process_po_id = $1 AND company_id = $2', [ppoId, companyId]);
+      for (const src of normalizedSourceItems) {
+        const srcItemId = await resolveItemId(src.item_code, src.description);
+        await client.query(
+          `INSERT INTO process_po_source_item (process_po_id, item_code, trace_item_id, qty, company_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            ppoId,
+            srcItemId,
+            src.trace_item_id ? parseInt(src.trace_item_id) : null,
+            parseFloat(src.qty) || 0,
+            companyId
+          ]
+        );
+      }
+    }
+
+    // Update Target Items if provided
+    const normalizedTargetItems = Array.isArray(target_items) ? target_items : [];
+    if (normalizedTargetItems.length > 0) {
+      await client.query('DELETE FROM process_po_target_item WHERE process_po_id = $1 AND company_id = $2', [ppoId, companyId]);
+      for (const tgt of normalizedTargetItems) {
+        const tgtItemId = await resolveItemId(tgt.item_code, tgt.description);
+        await client.query(
+          `INSERT INTO process_po_target_item (
+             process_po_id, item_code, qty, delivered_qty, price,
+             gst_type, gst_rate, shipping_address, delivery_date, status, company_id, process_name
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [
+            ppoId,
+            tgtItemId,
+            parseFloat(tgt.qty) || 0,
+            parseFloat(tgt.delivered_qty) || 0,
+            parseFloat(tgt.price) || 0,
+            tgt.gst_type || gst_type || null,
+            tgt.gst_rate !== undefined ? parseFloat(tgt.gst_rate) : (gst_rate ? parseFloat(gst_rate) : 0),
+            tgt.shipping_address || shipping_address || null,
+            tgt.delivery_date || delivery_date || date_of_end || null,
+            tgt.status || 'under Process PO',
+            companyId,
+            tgt.process_name || null
+          ]
+        );
+      }
+    }
+
+    // Update legacy/mapping row in process_po_item
+    if (normalizedSourceItems.length > 0 && normalizedTargetItems.length > 0) {
+      await client.query('DELETE FROM process_po_item WHERE process_po_id = $1 AND company_id = $2', [ppoId, companyId]);
+      const sourceDbId = await resolveItemId(normalizedSourceItems[0].item_code, normalizedSourceItems[0].description);
+      const targetDbId = await resolveItemId(normalizedTargetItems[0].item_code, normalizedTargetItems[0].description);
+      const totalSrcQty = normalizedSourceItems.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0);
+      const totalTgtQty = normalizedTargetItems.reduce((acc, t) => acc + (parseFloat(t.qty) || 0), 0);
+      const tgtPrice = parseFloat(normalizedTargetItems[0].price) || 0;
+      const srcTraceArray = normalizedSourceItems.filter(s => s.trace_item_id).map(s => ({ trace_id: s.trace_item_id, Qty: parseFloat(s.qty) || 0 }));
+
+      await client.query(
+        `INSERT INTO process_po_item (
+           process_po_id, source_item_id, target_item_id,
+           source_trace_id_array, price, source_qty, target_qty,
+           target_trace_id_array, company_id, process_name
+         ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9, $10)`,
+        [
+          ppoId,
+          sourceDbId,
+          targetDbId,
+          JSON.stringify(srcTraceArray),
+          tgtPrice,
+          totalSrcQty,
+          totalTgtQty,
+          JSON.stringify([]),
+          companyId,
+          normalizedTargetItems[0].process_name || null
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      message: 'Process PO updated successfully',
+      id: ppoId,
+      po_no: currentPpo.po_no,
+      trade_id: currentPpo.trade_id
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error updating Process PO:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to update Process PO' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

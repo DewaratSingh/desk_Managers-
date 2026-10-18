@@ -178,6 +178,17 @@ CREATE TABLE trace (
 );
 ```
 
+### `history`
+```sql
+CREATE TABLE history (
+  id           SERIAL        PRIMARY KEY,
+  price        NUMERIC(12,2) DEFAULT 0.00,
+  history      JSONB         DEFAULT '[]',
+  company_id   INTEGER       REFERENCES companies(id),
+  created_at   TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 
 
 ---
@@ -913,11 +924,10 @@ CREATE TABLE "processReceivedQuotation" (
   id                      SERIAL        PRIMARY KEY,
   quotation_number        VARCHAR(100)  NOT NULL,
   quotation_date          DATE          NOT NULL,
-  commercial_bid_due_date DATE          NOT NULL,
-  technical_bid_due_date  DATE          NOT NULL,
   buyer_id                INTEGER       REFERENCES buyers(id),
   customer_id             INTEGER       REFERENCES customers(id),
   trade_id                INTEGER       REFERENCES trades(id),
+  terms_and_conditions    TEXT,
   status                  VARCHAR(50)   DEFAULT 'active',
   company_id              INTEGER       REFERENCES companies(id),
   created_at              TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
@@ -1023,6 +1033,7 @@ job ──< target_item
 | `grns` | `rejection_items` | `[{item_code, quantity}]` |
 | `trace` | `history` | audit log array |
 | `contract_items` | `history` | `[{price, date}]` price snapshots |
+| `history` | `history` | `[{}, {}, []]` history array |
 | `process_po` | `job_ids` | `[job_id, ...]` |
 | `rq_process` | `job_ids` | `[job_id, ...]` |
 | `trace_item` | `process` | process step array |

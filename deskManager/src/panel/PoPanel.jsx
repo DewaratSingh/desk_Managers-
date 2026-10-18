@@ -101,38 +101,22 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
             Process Purchase Order
           </span>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
-              {purchaseOrder.po_no}
-            </span>
+            {purchaseOrder.po_no && (
+              <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                {purchaseOrder.po_no}
+              </span>
+            )}
             <Link
-              to={`/addDeliveryNote?trade_id=${encodeURIComponent(tradeId)}`}
-              className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+              to={`/updateProcessPurchaseOrder/${encodeURIComponent(purchaseOrder.po_no || purchaseOrder.id)}?trade_id=${encodeURIComponent(tradeId || '')}`}
+              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
             >
-              <Truck size={13} />
-              Create Delivery Note
+              <Edit2 size={10} /> Edit
             </Link>
           </div>
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Next Step Banner */}
-          <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-            <div>
-              <p className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
-                <Truck size={14} className="text-indigo-600" /> Next Step: Delivery Note (DN)
-              </p>
-              <p className="text-[11px] font-semibold text-indigo-700 mt-0.5">
-                Process PO is saved and registered. Proceed to dispatch finished goods by creating a Delivery Note.
-              </p>
-            </div>
-            <Link
-              to={`/addDeliveryNote?trade_id=${encodeURIComponent(tradeId)}`}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer shrink-0"
-            >
-              <Truck size={14} />
-              Create Delivery Note
-            </Link>
-          </div>
+          
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-slate-100">
             {[
@@ -234,17 +218,23 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                       
                       {/* Target Items */}
                       {targetItems.length > 0 && (
-                        <div className="border border-indigo-200 rounded-xl bg-indigo-50/30 p-4 space-y-2">
-                          <div className="flex items-center gap-2 border-b border-indigo-200/70 pb-2">
-                            <Package size={14} className="text-indigo-600" />
-                            <h3 className="text-[10px] font-black text-indigo-950 uppercase tracking-wider m-0">
+                        <div
+                          className="border rounded-xl p-4 space-y-2"
+                          style={{
+                            borderColor: 'rgba(217, 53, 45, 0.2)',
+                            backgroundColor: 'rgba(217, 53, 45, 0.02)'
+                          }}
+                        >
+                          <div className="flex items-center gap-2 border-b pb-2" style={{ borderColor: 'rgba(217, 53, 45, 0.15)' }}>
+                            <Package size={14} style={{ color: 'var(--theme-color)' }} />
+                            <h3 className="text-[10px] font-black uppercase tracking-wider m-0" style={{ color: 'var(--theme-color)' }}>
                               Target Output Products ({targetItems.length})
                             </h3>
                           </div>
                           
                           <div className="overflow-x-auto mt-2">
-                            <table className="w-full border-collapse text-left text-xs  bg-[white] rounded-lg overflow-hidden border border-indigo-100">
-                              <thead className="bg-indigo-50/50 border-b border-indigo-100 text-[9px] font-bold text-indigo-800 uppercase tracking-wider">
+                            <table className="w-full border-collapse text-left text-xs bg-[white] rounded-lg overflow-hidden border border-slate-200">
+                              <thead className="bg-slate-50 border-b border-slate-200 text-[9px] font-bold text-slate-600 uppercase tracking-wider">
                                 <tr>
                                   <th className="px-3 py-2">Item Code</th>
                                   <th className="px-3 py-2">Description</th>
@@ -257,7 +247,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                                   <th className="px-3 py-2">Trace / Status</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-indigo-50">
+                              <tbody className="divide-y divide-slate-100">
                                 {targetItems.map((tgt, tIdx) => {
                                   const poTgtItem = (purchaseOrder.target_items || purchaseOrder.items || []).find(i => 
                                     (i.item_code === tgt.item_code) || (i.target_item_code === tgt.item_code)
@@ -274,15 +264,22 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                                   const pendingQty = Math.max(0, (parseFloat(targetQty) || 0) - displayDeliveredQty);
                                   
                                   return (
-                                    <tr key={tIdx} className="hover:bg-indigo-50/30 transition-colors">
+                                    <tr key={tIdx} className="hover:bg-slate-50/60 transition-colors">
                                       <td className="px-3 py-2">
-                                        <span className="font-mono text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                                        <span
+                                          className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                                          style={{
+                                            color: 'var(--theme-color)',
+                                            borderColor: 'var(--theme-color)',
+                                            backgroundColor: 'rgba(217, 53, 45, 0.05)'
+                                          }}
+                                        >
                                           {tgt.item_code || '—'}
                                         </span>
                                       </td>
                                       <td className="px-3 py-2 text-slate-700 max-w-[120px] truncate">{tgt.description || poTgtItem.target_description || poTgtItem.description || '—'}</td>
                                       <td className="px-3 py-2 text-right font-bold text-slate-800">{targetQty}</td>
-                                      <td className="px-3 py-2 text-right font-black text-indigo-700">{pendingQty}</td>
+                                      <td className="px-3 py-2 text-right font-black" style={{ color: 'var(--theme-color)' }}>{pendingQty}</td>
                                       <td className="px-3 py-2 text-right font-mono font-bold text-slate-800">₹{fmt(price)}</td>
                                       <td className="px-3 py-2 text-right font-mono font-bold text-green-700">₹{fmt(poTgtItem.delivered_price || (deliveredQty * (price || 0)))}</td>
                                       <td className="px-3 py-2 text-right font-mono font-bold text-orange-600">₹{fmt(poTgtItem.remaining_price || (pendingQty * (price || 0)))}</td>
@@ -296,7 +293,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                                               const isDeliv = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'in inventory' || a.status === 'delivered' || a.status === 'completed';
                                               return (
                                                 <span key={ai} className={`inline-flex w-fit items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
-                                                  isDeliv ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                                  isDeliv ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-700'
                                                 }`}>
                                                   TR-{traceId}{qty ? ` × ${qty}` : ''}
                                                 </span>
@@ -381,13 +378,13 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
 
               {/* 2. Target Items Table */}
               <div>
-                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1 mb-2 mt-6">
-                  <List size={11} /> Target Output Products (Produced)
+                <p className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 mb-2 mt-6" style={{ color: 'var(--theme-color)' }}>
+                  <List size={11} style={{ color: 'var(--theme-color)' }} /> Target Output Products (Produced)
                 </p>
-                <div className="border border-indigo-200 rounded-lg overflow-x-auto shadow-2xs">
+                <div className="border border-slate-200 rounded-lg overflow-x-auto shadow-2xs">
                   <table className="w-full border-collapse text-left text-xs">
                     <thead>
-                      <tr className="bg-indigo-50/50 border-b border-indigo-200 text-[10px] font-bold text-indigo-800 uppercase tracking-wider">
+                      <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
                         <th className="px-4 py-2.5">Item Code</th>
                         <th className="px-4 py-2.5">Description</th>
                         <th className="px-4 py-2.5">Process Name</th>
@@ -400,7 +397,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                         <th className="px-4 py-2.5 w-32">Trace / Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-indigo-100  bg-[white]">
+                    <tbody className="divide-y divide-slate-100 bg-[white]">
                       {(purchaseOrder.target_items || purchaseOrder.items || []).map((item, idx) => {
                         const tgtAllocs = item.target_item_traceid_array || item.target_trace_id_array || [];
                         const itemPrice = parseFloat(item.price) || 0;
@@ -413,16 +410,23 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                         const pendingQty = Math.max(0, itemQty - displayDeliveredQty);
 
                         return (
-                          <tr key={`tgt-${idx}`} className="hover:bg-indigo-50/30 transition-colors">
+                          <tr key={`tgt-${idx}`} className="hover:bg-slate-50/60 transition-colors">
                             <td className="px-4 py-3">
-                              <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-900">
+                              <span
+                                className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border"
+                                style={{
+                                  color: 'var(--theme-color)',
+                                  borderColor: 'var(--theme-color)',
+                                  backgroundColor: 'rgba(217, 53, 45, 0.05)'
+                                }}
+                              >
                                 {item.target_item_code || item.item_code}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.target_description || item.description || '—'}</td>
                             <td className="px-4 py-3 text-slate-700 font-semibold">{item.process_name || '—'}</td>
                             <td className="px-4 py-3 text-right font-bold text-slate-800">{itemQty}</td>
-                            <td className="px-4 py-3 text-right font-black text-indigo-700">{pendingQty}</td>
+                            <td className="px-4 py-3 text-right font-black" style={{ color: 'var(--theme-color)' }}>{pendingQty}</td>
                             <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(itemPrice)}</td>
                             <td className="px-4 py-3 text-right font-mono font-bold text-green-700">₹{fmt(item.delivered_price || (deliveredQty * itemPrice))}</td>
                             <td className="px-4 py-3 text-right font-mono font-bold text-orange-600">₹{fmt(item.remaining_price || (pendingQty * itemPrice))}</td>
@@ -436,7 +440,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                                     const isDeliv = (purchaseOrder.status || '').toLowerCase() === 'delivered' || a.status === 'In Inventory' || a.status === 'in inventory' || a.status === 'delivered' || a.status === 'completed';
                                     return (
                                       <span key={ai} className={`inline-flex w-fit items-center text-[9px] font-bold px-2 py-0.5 rounded-full border ${
-                                        isDeliv ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                        isDeliv ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-700'
                                       }`}>
                                         TR-{traceId}{qty ? ` × ${qty}` : ''}
                                       </span>

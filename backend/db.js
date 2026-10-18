@@ -398,6 +398,10 @@ const initializeDatabase = async () => {
       ALTER TABLE delivery_note_items ADD CONSTRAINT delivery_note_items_process_target_trace_item_id_fkey FOREIGN KEY (process_target_trace_item_id) REFERENCES trace(id) ON DELETE SET NULL;
     `);
 
+    await client.query(`
+      ALTER TABLE delivery_note_items ADD COLUMN IF NOT EXISTS history_id INTEGER REFERENCES history(id) ON DELETE SET NULL;
+    `);
+
     // Migrate CHECK constraint to allow quantity >= 0
     await client.query(`
       ALTER TABLE delivery_note_items DROP CONSTRAINT IF EXISTS delivery_note_items_quantity_check;
@@ -841,16 +845,19 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         quotation_number VARCHAR(100) NOT NULL,
         quotation_date DATE NOT NULL,
-        commercial_bid_due_date DATE NOT NULL,
-        technical_bid_due_date DATE NOT NULL,
         buyer_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL,
         customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
         trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        terms_and_conditions TEXT,
         status VARCHAR(50) DEFAULT 'active',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (quotation_number, company_id)
       );
+
+      ALTER TABLE "processReceivedQuotation" DROP COLUMN IF EXISTS commercial_bid_due_date CASCADE;
+      ALTER TABLE "processReceivedQuotation" DROP COLUMN IF EXISTS technical_bid_due_date CASCADE;
+      ALTER TABLE "processReceivedQuotation" ADD COLUMN IF NOT EXISTS terms_and_conditions TEXT;
     `);
 
     // 37. Process Received Quotation Items (Buy Process)
@@ -872,6 +879,30 @@ const initializeDatabase = async () => {
     await client.query(`
       CREATE OR REPLACE VIEW processreceivedquotation AS SELECT * FROM "processReceivedQuotation";
       CREATE OR REPLACE VIEW processreceivedquotation_item AS SELECT * FROM "processReceivedQuotation_item";
+    `);
+
+    // 34. History Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS history (
+        id SERIAL PRIMARY KEY,
+        item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        item_code VARCHAR(100),
+        delivery_note_id INTEGER REFERENCES delivery_notes(id) ON DELETE CASCADE,
+        price NUMERIC(12, 2) DEFAULT 0.00,
+        history JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      ALTER TABLE history ADD COLUMN IF NOT EXISTS item_id INTEGER REFERENCES items(id) ON DELETE SET NULL;
+      ALTER TABLE history ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);
+      ALTER TABLE history ADD COLUMN IF NOT EXISTS delivery_note_id INTEGER REFERENCES delivery_notes(id) ON DELETE CASCADE;
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE VIEW "History" AS SELECT * FROM history;
     `);
 
     console.log('Database initialized successfully.');

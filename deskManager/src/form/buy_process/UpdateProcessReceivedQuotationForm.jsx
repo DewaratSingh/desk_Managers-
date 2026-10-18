@@ -10,8 +10,7 @@ const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded t
 const INITIAL_FORM = {
   quotation_number: '',
   quotation_date: '',
-  commercial_bid_due_date: '',
-  technical_bid_due_date: '',
+  terms_and_conditions: '',
   buyer_id: '',
   buyer_email: '',
   buyer_phone: '',
@@ -94,8 +93,7 @@ export default function UpdateProcessReceivedQuotationForm() {
         setFormData({
           quotation_number: data.quotation_number || '',
           quotation_date: data.quotation_date ? data.quotation_date.split('T')[0] : '',
-          commercial_bid_due_date: data.commercial_bid_due_date ? data.commercial_bid_due_date.split('T')[0] : '',
-          technical_bid_due_date: data.technical_bid_due_date ? data.technical_bid_due_date.split('T')[0] : '',
+          terms_and_conditions: data.terms_and_conditions || '',
           buyer_id: data.buyer_id || '',
           buyer_email: data.buyer_email || '',
           buyer_phone: data.buyer_phone || '',
@@ -298,8 +296,8 @@ export default function UpdateProcessReceivedQuotationForm() {
     e.preventDefault();
     setError(null);
 
-    if (!formData.quotation_date || !formData.commercial_bid_due_date || !formData.technical_bid_due_date) {
-      setError('Please fill in all required Process Received Quotation date fields');
+    if (!formData.quotation_date) {
+      setError('Please fill in the Quotation Date');
       return;
     }
 
@@ -327,13 +325,12 @@ export default function UpdateProcessReceivedQuotationForm() {
     setIsSubmitting(true);
     const payload = {
       quotation_date: formData.quotation_date,
-      commercial_bid_due_date: formData.commercial_bid_due_date,
-      technical_bid_due_date: formData.technical_bid_due_date,
+      terms_and_conditions: formData.terms_and_conditions,
       buyer_id: parseInt(formData.buyer_id),
       customer_id: formData.customer_id,
       items: selectedItems.map(item => ({
         item_code: item.item_code,
-        process_name: item.process_name.trim(),
+        process_name: (item.process_name || 'Processing').trim(),
         quantity: parseFloat(item.quantity) || 1,
         price: parseFloat(item.price) || 0
       }))
@@ -412,19 +409,17 @@ export default function UpdateProcessReceivedQuotationForm() {
           <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-4">
               
-              {/* Quotation No (Read Only in Edit Mode) */}
-              <div>
-                <label className={labelCls}>Quotation No.</label>
-                <input
-                  type="text"
-                  disabled
-                  value={formData.quotation_number}
-                  className={inputCls}
-                />
-              </div>
-
-              {/* Dates Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Quotation ID & Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Quotation ID</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={formData.quotation_number}
+                    className={inputCls}
+                  />
+                </div>
                 <div>
                   <label className={labelCls}>Quotation Date <b className="text-red-500">*</b></label>
                   <input
@@ -432,30 +427,6 @@ export default function UpdateProcessReceivedQuotationForm() {
                     required
                     value={formData.quotation_date}
                     onChange={setField('quotation_date')}
-                    className={inputCls}
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Commercial Bid Due <b className="text-red-500">*</b></label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.commercial_bid_due_date}
-                    onChange={setField('commercial_bid_due_date')}
-                    className={inputCls}
-                    onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Technical Bid Due <b className="text-red-500">*</b></label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.technical_bid_due_date}
-                    onChange={setField('technical_bid_due_date')}
                     className={inputCls}
                     onFocus={(e) => e.target.style.borderColor = 'var(--theme-color)'}
                     onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
@@ -769,6 +740,18 @@ export default function UpdateProcessReceivedQuotationForm() {
                     No items attached. Search above to attach items to this Buy Process Received Quotation.
                   </p>
                 )}
+              </div>
+
+              {/* Terms and Conditions */}
+              <div>
+                <label className={labelCls}>Terms and Conditions</label>
+                <textarea
+                  rows={4}
+                  value={formData.terms_and_conditions}
+                  onChange={setField('terms_and_conditions')}
+                  className="w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-xs placeholder:text-slate-400 focus:outline-none focus:border-[var(--theme-color)] font-mono leading-relaxed"
+                  placeholder="Enter standard payment terms, delivery period, price validity..."
+                />
               </div>
 
               {/* Action Buttons */}

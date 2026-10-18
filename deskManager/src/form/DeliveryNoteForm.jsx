@@ -1,18 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, RefreshCw, Tag, Package, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, RefreshCw, Tag, Package, X, Layers } from 'lucide-react';
 
 const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider";
 const inputCls = "w-full px-2 py-1  bg-[white] border border-slate-300 rounded text-xs placeholder:text-slate-400 font-semibold focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
 const isSellSideTrade = (t) => {
-  const norm = (t || '').toLowerCase().replace(/\s+/g, '');
+  const norm = (t || '').toLowerCase().replace(/[\s_]+/g, '');
   return norm === 'sell' || norm === 'sellarc';
 };
 
 const isBuySideTrade = (t) => {
-  const norm = (t || '').toLowerCase().replace(/\s+/g, '');
-  return norm === 'buy' || norm === 'buyarc' || norm === 'process' || norm === 'arc';
+  const norm = (t || '').toLowerCase().replace(/[\s_]+/g, '');
+  return norm === 'buy' || norm === 'buyarc' || norm === 'process' || norm === 'buyprocess' || norm === 'arc';
+};
+
+const isProcessTrade = (t) => {
+  const norm = (t || '').toLowerCase().replace(/[\s_]+/g, '');
+  return norm === 'process' || norm === 'buyprocess';
 };
 
 export default function DeliveryNoteForm() {
@@ -50,6 +55,7 @@ export default function DeliveryNoteForm() {
   // Each item: { item_code, description, drawing_number, original_qty, delivered_qty, remaining_qty, rate_per_piece, shipping_address, selected: bool, delivery_qty: number, inv_qty, sell_qty, process_qty, inv_details }
   const [items, setItems] = useState([]);
   const [tradeType, setTradeType] = useState('sell');
+  const [sourceItems, setSourceItems] = useState([]);
 
   useEffect(() => {
     if (location.state?.returnState) {
@@ -60,6 +66,7 @@ export default function DeliveryNoteForm() {
       setTradeId(returnState.tradeId);
       setTradeType(returnState.tradeType || 'sell');
       setFormData(returnState.formData);
+      if (returnState.sourceItems) setSourceItems(returnState.sourceItems);
       
       const mapped = returnState.items.map(it => {
         if (it.item_code === returnState.selectedItemCode) {
@@ -120,6 +127,7 @@ export default function DeliveryNoteForm() {
         const lookupRes = await fetch(`/api/delivery-notes/items-lookup/${encodeURIComponent(noteData.trade_id)}?exclude_dn_no=${encodeURIComponent(editingNo)}`);
         if (!lookupRes.ok) throw new Error('Failed to load item schema for trade');
         const lookupData = await lookupRes.json();
+        setSourceItems(Array.isArray(lookupData.source_items) ? lookupData.source_items : []);
 
         // Merge noteData items into lookupData items
         const mergedItems = await Promise.all(lookupData.items.map(async (lookupItem) => {
@@ -171,6 +179,7 @@ export default function DeliveryNoteForm() {
         const lookupData = await lookupRes.json();
         const detectedTradeType = lookupData.trade_type || 'sell';
         setTradeType(detectedTradeType);
+        setSourceItems(Array.isArray(lookupData.source_items) ? lookupData.source_items : []);
 
         // Check if there is autofillSell in state
         const autofillSell = location.state?.autofillSell;
@@ -356,13 +365,23 @@ export default function DeliveryNoteForm() {
     }));
   };
 
+  const handleItemPriceChange = (index, value) => {
+    setItems(prev => prev.map((item, idx) => {
+      if (idx !== index) return item;
+      return {
+        ...item,
+        rate_per_piece: value
+      };
+    }));
+  };
+
   const handleAddInInventory = (item) => {
     navigate('/inventory/form', {
       state: {
         autofill: {
           item_code:        item.item_code,
           qty:              item.inv_qty || item.delivery_qty || item.remaining_qty,
-          cost_price:       item.inv_details?.cost_price || item.rate_per_piece,
+          cost_price:       item.rate_per_piece !== undefined && item.rate_per_piece !== '' ? item.rate_per_piece : (item.inv_details?.cost_price || 0),
           trade_id:         tradeId,
           delivery_note_no: formData.delivery_note_no || editingNo || '',
           status:           'In Inventory',
@@ -375,7 +394,8 @@ export default function DeliveryNoteForm() {
             tradeType,
             editingNo,
             items,
-            selectedItemCode: item.item_code
+            selectedItemCode: item.item_code,
+            sourceItems
           }
         }
       }
@@ -640,6 +660,40 @@ export default function DeliveryNoteForm() {
             </div>
           </div>
 
+          {/* Source Consumed Summary (for Process Trades) */}
+          {isProcessTrade(tradeType) && sourceItems.length > 0 && (
+            <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 space-y-1.5 shadow-2xs">
+              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Source Consumed Summary
+              </span>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {sourceItems.map((src, i) => {
+                  const itemPrice = src.unit_price !== undefined && src.unit_price !== null && src.unit_price !== ''
+                    ? src.unit_price
+                    : (src.price !== undefined && src.price !== null ? src.price : null);
+                  return (
+                    <span
+                      key={i}
+                      className="bg-amber-50 text-amber-950 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow-2xs"
+                    >
+                      <span className="text-amber-900">{src.item_code}</span>
+                      <span className="text-amber-700">(Qty: {src.qty || 0}</span>
+                      {itemPrice !== null && (
+                        <>
+                          <span className="text-slate-400 font-medium">•</span>
+                          <span className="text-emerald-700 font-bold">
+                            ₹{parseFloat(itemPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </>
+                      )}
+                      <span className="text-amber-700">)</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Items selection */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
@@ -751,7 +805,21 @@ export default function DeliveryNoteForm() {
                         />
                       </td>
                       <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-800">
-                        ₹{parseFloat(item.rate_per_piece || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        {isProcessTrade(tradeType) ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-slate-400 text-xs font-bold">₹</span>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={item.rate_per_piece !== undefined ? item.rate_per_piece : ''}
+                              onChange={(e) => handleItemPriceChange(idx, e.target.value)}
+                              className="w-24 px-1.5 py-0.5 text-xs border border-slate-300 rounded font-bold text-right focus:outline-none focus:ring-1 focus:ring-[var(--theme-color)] bg-white"
+                            />
+                          </div>
+                        ) : (
+                          `₹${parseFloat(item.rate_per_piece || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                        )}
                       </td>
                       {isSellSideTrade(tradeType) && (
                         <td className="px-3 py-1.5 text-center">

@@ -29,6 +29,7 @@ const rqProcessRouter = require('./rq-process');
 const processPORouter = require('./process-po');
 const processRfqRouter = require('./process-rfq');
 const processReceivedQuotationRouter = require('./process-received-quotation');
+const historyRouter = require('./history');
 
 // Simple health check for API
 router.get('/health', (req, res) => {
@@ -70,5 +71,6 @@ router.use('/process-rfqs', processRfqRouter);
 router.use('/process-rfq', processRfqRouter);
 router.use('/process-received-quotations', processReceivedQuotationRouter);
 router.use('/process-received-quotation', processReceivedQuotationRouter);
+router.use('/history', historyRouter);
 
 module.exports = router;

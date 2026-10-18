@@ -670,22 +670,43 @@ export default function CreateProcessRfqForm() {
 
                   {showItemDropdown && itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).length > 0 && (
                     <div className="absolute z-30 w-full mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                      {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => (
-                        <button
-                          key={item.item_code}
-                          type="button"
-                          onClick={() => addItem(item)}
-                          className="w-full text-left px-3.5 py-2 border-b border-slate-100 last:border-0 hover:bg-violet-50 transition-colors cursor-pointer"
-                        >
-                          <div>
-                            <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
-                              {item.item_code}
-                            </span>
-                            {item.drawing_number && <span className="text-[10px] text-slate-400 ml-2">DRW: {item.drawing_number}</span>}
-                            <div className="text-[10px] text-slate-500 mt-1">{item.description}</div>
-                          </div>
-                        </button>
-                      ))}
+                      {itemSuggestions.filter(item => !selectedItems.some(i => i.item_code === item.item_code)).map(item => {
+                        const hasMargin = item.margin !== null && item.margin !== undefined && item.margin !== '';
+                        const marginNum = hasMargin ? parseFloat(item.margin) : null;
+                        return (
+                          <button
+                            key={item.item_code}
+                            type="button"
+                            onClick={() => addItem(item)}
+                            className="w-full text-left px-3.5 py-2.5 border-b border-slate-100 last:border-0 hover:bg-violet-50 transition-colors cursor-pointer flex items-center justify-between gap-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-bold text-xs text-slate-900 border px-1.5 py-0.25 rounded" style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217, 53, 45, 0.05)' }}>
+                                  {item.item_code}
+                                </span>
+                                {item.drawing_number && <span className="text-[10px] text-slate-400">DRW: {item.drawing_number}</span>}
+                              </div>
+                              <div className="text-[10px] text-slate-500 mt-1 truncate">{item.description}</div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              {hasMargin ? (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  marginNum < 0
+                                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                }`}>
+                                  Margin: {marginNum}%
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200">
+                                  Margin: —
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
 

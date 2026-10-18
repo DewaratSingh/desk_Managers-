@@ -63,7 +63,8 @@ router.get('/:delivery_note_no', async (req, res) => {
             'delivery_date', dni.delivery_date,
             'description', i.description,
             'drawing_number', i.drawing_number,
-            'next_activity', dni.next_activity
+            'next_activity', dni.next_activity,
+            'history_id', dni.history_id
           ) ORDER BY dni.id), '[]')
           FROM delivery_note_items dni
           LEFT JOIN items i ON dni.item_id = i.id AND i.company_id = dni.company_id
@@ -108,6 +109,16 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
     if (!po_no && !ro_no) return res.status(400).json({ error: 'No Purchase Order or Release Order found for this trade' });
 
     let items = [];
+    let sourceItemsForTrade = [];
+
+    let effectivePpoNo = (po_no && po_no.startsWith('PPO-')) ? po_no : null;
+    if (!effectivePpoNo && tradeDbId) {
+      const ppoCheck = await pool.query('SELECT po_no FROM process_po WHERE trade_id = $1 AND company_id = $2 LIMIT 1', [tradeDbId, req.user.company_id]);
+      if (ppoCheck.rows.length > 0) {
+        effectivePpoNo = ppoCheck.rows[0].po_no;
+      }
+    }
+
     if (ro_no) {
       const roRes = await pool.query('SELECT id FROM release_orders WHERE ro_no = $1 AND company_id = $2', [ro_no, req.user.company_id]);
       if (roRes.rows.length === 0) return res.status(404).json({ error: 'Release Order not found' });
@@ -144,41 +155,72 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
         [tradeDbId, roDbId, exclude_dn_no || null, req.user.company_id]
       );
       items = roItemsRes.rows;
-    } else if (po_no) {
-      if (po_no.startsWith('PPO-')) {
-        const ppoRes = await pool.query('SELECT id, job_ids FROM process_po WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
-        if (ppoRes.rows.length === 0) return res.status(404).json({ error: 'Process Purchase Order not found' });
-        const ppoDbId = ppoRes.rows[0].id;
-        
-        let jobIdsArray = [];
-        try {
-            if (typeof ppoRes.rows[0].job_ids === 'string') {
-               jobIdsArray = JSON.parse(ppoRes.rows[0].job_ids);
-            } else if (Array.isArray(ppoRes.rows[0].job_ids)) {
-               jobIdsArray = ppoRes.rows[0].job_ids;
-            }
-        } catch(e) {}
-        
-        let processNameMap = {};
-        if (jobIdsArray && jobIdsArray.length > 0) {
-           const jobsResult = await pool.query(
-             `SELECT j.process_name, (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items 
-              FROM job j 
-              WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int) AND j.company_id = $2`,
-             [JSON.stringify(jobIdsArray), req.user.company_id]
-           );
-           jobsResult.rows.forEach(job => {
-               const tgtGroups = job.target_items || [];
-               tgtGroups.forEach(ti => {
-                  if (Array.isArray(ti.items)) {
-                      ti.items.forEach(t => {
-                          processNameMap[t.item_code] = job.process_name;
-                      });
-                  }
-               });
-           });
-        }
+    } else if (effectivePpoNo) {
+      const ppoRes = await pool.query('SELECT id, job_ids FROM process_po WHERE po_no = $1 AND company_id = $2', [effectivePpoNo, req.user.company_id]);
+      if (ppoRes.rows.length === 0) return res.status(404).json({ error: 'Process Purchase Order not found' });
+      const ppoDbId = ppoRes.rows[0].id;
+      
+      let jobIdsArray = [];
+      try {
+          if (typeof ppoRes.rows[0].job_ids === 'string') {
+             jobIdsArray = JSON.parse(ppoRes.rows[0].job_ids);
+          } else if (Array.isArray(ppoRes.rows[0].job_ids)) {
+             jobIdsArray = ppoRes.rows[0].job_ids;
+          }
+      } catch(e) {}
+      
+      let processNameMap = {};
+      if (jobIdsArray && jobIdsArray.length > 0) {
+         const jobsResult = await pool.query(
+           `SELECT j.process_name, (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items 
+            FROM job j 
+            WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int) AND j.company_id = $2`,
+           [JSON.stringify(jobIdsArray), req.user.company_id]
+         );
+         jobsResult.rows.forEach(job => {
+             const tgtGroups = job.target_items || [];
+             tgtGroups.forEach(ti => {
+                if (Array.isArray(ti.items)) {
+                    ti.items.forEach(t => {
+                        processNameMap[t.item_code] = job.process_name;
+                    });
+                }
+             });
+         });
+      }
 
+      // Check process_po_target_item first
+      const ptiRes = await pool.query(
+        `SELECT
+          pti.id as process_po_target_item_id,
+          pti.item_code as target_item_id,
+          pti.process_name,
+          i.item_code,
+          COALESCE(pti.qty, 0) as original_qty,
+          COALESCE(pti.price, 0) as rate_per_piece,
+          i.description,
+          i.drawing_number,
+          COALESCE((
+            SELECT SUM(dni.quantity)
+            FROM delivery_note_items dni
+            JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+            WHERE dn.trade_id = $1 AND dn.company_id = $4
+              AND dni.item_id = pti.item_code
+              AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
+          ), 0) as delivered_qty
+        FROM process_po_target_item pti
+        LEFT JOIN items i ON pti.item_code = i.id AND i.company_id = pti.company_id
+        WHERE pti.process_po_id = $2 AND pti.company_id = $4
+        ORDER BY pti.id`,
+        [tradeDbId, ppoDbId, exclude_dn_no || null, req.user.company_id]
+      );
+
+      if (ptiRes.rows.length > 0) {
+        items = ptiRes.rows.map(row => ({
+          ...row,
+          process_name: processNameMap[row.item_code] || row.process_name || null
+        }));
+      } else {
         const ppoItemsRes = await pool.query(
           `SELECT
             poi.id as process_po_item_id,
@@ -215,7 +257,44 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
             linked_trace_item_id: targetTraceId
           };
         });
+      }
+
+      // Query source items used in that trade (showing item_code, qty, and unit_price)
+      const srcRes = await pool.query(
+        `SELECT
+           psi.id,
+           i.item_code,
+           psi.qty,
+           COALESCE(t.cost_price, 0) as unit_price
+         FROM process_po_source_item psi
+         LEFT JOIN items i ON psi.item_code = i.id AND i.company_id = psi.company_id
+         LEFT JOIN trace t ON psi.trace_item_id = t.id AND t.company_id = psi.company_id
+         WHERE psi.process_po_id = $1 AND psi.company_id = $2
+         ORDER BY psi.id`,
+        [ppoDbId, req.user.company_id]
+      );
+
+      if (srcRes.rows.length > 0) {
+        sourceItemsForTrade = srcRes.rows;
       } else {
+        const legacySrcRes = await pool.query(
+          `SELECT
+             poi.id,
+             i.item_code,
+             poi.source_qty as qty,
+             COALESCE((
+               SELECT cost_price FROM trace 
+               WHERE id = ((poi.source_trace_id_array->0->>'trace_id')::int)
+                 AND company_id = $2 LIMIT 1
+             ), 0) as unit_price
+           FROM process_po_item poi
+           LEFT JOIN items i ON poi.source_item_id = i.id AND i.company_id = poi.company_id
+           WHERE poi.process_po_id = $1 AND poi.company_id = $2`,
+          [ppoDbId, req.user.company_id]
+        );
+        sourceItemsForTrade = legacySrcRes.rows;
+      }
+    } else if (po_no) {
         const poRes = await pool.query('SELECT id FROM purchase_orders WHERE po_no = $1 AND company_id = $2', [po_no, req.user.company_id]);
         if (poRes.rows.length === 0) return res.status(404).json({ error: 'Purchase Order not found' });
         const poDbId = poRes.rows[0].id;
@@ -252,7 +331,6 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
         );
         items = poItemsRes.rows;
       }
-    }
 
     const mappedItems = items.map(item => {
       const original = parseFloat(item.original_qty) || 0;
@@ -267,10 +345,11 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
     });
 
     res.json({
-      po_no,
+      po_no: po_no || effectivePpoNo,
       ro_no,
       trade_type: trade.trade_type,
-      items: mappedItems
+      items: mappedItems,
+      source_items: sourceItemsForTrade
     });
   } catch (err) {
     console.error('Error in items-lookup:', err.message);
@@ -314,7 +393,7 @@ router.post('/', async (req, res) => {
     const tradeDbId = trade.id;
     const trade_code = trade.trade_id;
     const rawTradeType = (trade.trade_type || 'sell').toLowerCase().replace(/\s+/g, '');
-    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'buyarc';
+    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'buyarc' || rawTradeType === 'buy_process' || rawTradeType.includes('process');
 
     const docs = trade.documents || [];
     const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
@@ -381,29 +460,36 @@ router.post('/', async (req, res) => {
       const itemDbId = itemRes.rows[0].id;
 
       let traceIdForNextActivity = null;
+      let historyId = null;
 
       if (!isBuyTrade) {
         // SELL / ARC TRADE: deduct from existing trace rows
         const allocations = Array.isArray(item.stock_allocations) ? item.stock_allocations : [];
         let totalAllocCost = 0;
         let totalAllocQty = 0;
+        let collectedHistories = [];
 
         for (const alloc of allocations) {
           const allocQty = parseFloat(alloc.qty) || 0;
           const targetTraceId = parseInt(alloc.trace_id);
 
           if (targetTraceId && allocQty > 0) {
-            // Retrieve cost price from trace before updating or deleting
+            // Retrieve cost price and history from trace before updating or deleting
             const traceFetch = await client.query(
-              'SELECT cost_price FROM trace WHERE id = $1 AND company_id = $2',
+              'SELECT cost_price, history FROM trace WHERE id = $1 AND company_id = $2',
               [targetTraceId, companyId]
             );
-            const traceCost = traceFetch.rows.length > 0
-              ? (parseFloat(traceFetch.rows[0].cost_price) || 0)
-              : (parseFloat(alloc.cost_price) || 0);
-
-            totalAllocCost += allocQty * traceCost;
-            totalAllocQty += allocQty;
+            if (traceFetch.rows.length > 0) {
+              const row = traceFetch.rows[0];
+              totalAllocCost += allocQty * (parseFloat(row.cost_price) || 0);
+              totalAllocQty += allocQty;
+              if (Array.isArray(row.history) && row.history.length > 0) {
+                collectedHistories.push(row.history);
+              }
+            } else {
+              totalAllocCost += allocQty * (parseFloat(alloc.cost_price) || 0);
+              totalAllocQty += allocQty;
+            }
 
             const traceUpdate = await client.query(
               `UPDATE trace SET qty = GREATEST(qty - $1, 0) WHERE id = $2 AND company_id = $3 RETURNING qty`,
@@ -448,6 +534,58 @@ router.post('/', async (req, res) => {
             [poDbId, itemDbId, companyId]
           );
           if (poPriceRes.rows.length > 0) sellPrice = parseFloat(poPriceRes.rows[0].unit_price) || 0;
+        }
+
+        // If no stock allocations were chosen, check trace for this item
+        if (collectedHistories.length === 0) {
+          const fallbackTrace = await client.query(
+            'SELECT history FROM trace WHERE item_code = $1 AND company_id = $2 ORDER BY id DESC LIMIT 1',
+            [itemDbId, companyId]
+          );
+          if (fallbackTrace.rows.length > 0 && Array.isArray(fallbackTrace.rows[0].history) && fallbackTrace.rows[0].history.length > 0) {
+            collectedHistories.push(fallbackTrace.rows[0].history);
+          }
+        }
+
+        const sellStep = {
+          trace: 'Sell Delivery',
+          type: 'SELL',
+          action: 'Delivery Dispatch',
+          delivery_note_no: delivery_note_no,
+          trade_id: trade_code,
+          price: sellPrice,
+          sell_price: sellPrice,
+          cost_price: costPrice,
+          quantity: parseFloat(item.quantity) || 0,
+          date: delivery_date || new Date().toISOString().split('T')[0]
+        };
+
+        let finalHistoryArray = [];
+        if (collectedHistories.length === 1) {
+          finalHistoryArray = [...collectedHistories[0], sellStep];
+        } else if (collectedHistories.length > 1) {
+          finalHistoryArray = [
+            {
+              trace: 'Stock Allocation',
+              type: 'MERGED_STOCK',
+              action: 'Multiple Stock Batches',
+              sources: collectedHistories,
+              date: delivery_date || new Date().toISOString().split('T')[0]
+            },
+            sellStep
+          ];
+        } else {
+          finalHistoryArray = [sellStep];
+        }
+
+        // Insert into history table
+        const histRes = await client.query(
+          `INSERT INTO history (item_id, item_code, delivery_note_id, price, history, company_id)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING id`,
+          [itemDbId, item.item_code, dnDbId, sellPrice, JSON.stringify(finalHistoryArray), companyId]
+        );
+        if (histRes.rows.length > 0) {
+          historyId = histRes.rows[0].id;
         }
 
         // Update item margin in items table
@@ -625,8 +763,8 @@ router.post('/', async (req, res) => {
       require('fs').appendFileSync('debug.txt', `\\nDEBUG DN POST item=${item.item_code}: ppoDbId=${ppoDbId}, process_target_trace_item_id=${item.process_target_trace_item_id}, traceIdForNextActivity=${traceIdForNextActivity}, targetTraceRef=${targetTraceRef}\\n`);
 
       await client.query(
-        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity, process_target_trace_item_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity, process_target_trace_item_id, history_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           dnDbId,
           itemDbId,
@@ -636,7 +774,8 @@ router.post('/', async (req, res) => {
           item.delivery_date || null,
           companyId,
           JSON.stringify(next_activity),
-          targetTraceRef
+          targetTraceRef,
+          historyId
         ]
       );
 
@@ -743,7 +882,7 @@ router.put('/:delivery_note_no', async (req, res) => {
       }
     }
     const rawTradeType = (tradeRes.rows[0]?.trade_type || 'sell').toLowerCase().replace(/\s+/g, '');
-    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'buyarc';
+    const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'buyarc' || rawTradeType === 'buy_process' || rawTradeType.includes('process');
 
     // 3. Rewrite items
     await client.query('DELETE FROM delivery_note_items WHERE delivery_note_id = $1 AND company_id = $2', [dnDbId, companyId]);
@@ -754,28 +893,35 @@ router.put('/:delivery_note_no', async (req, res) => {
       const itemDbId = itemRes.rows[0].id;
 
       let traceIdForNextActivity = null;
+      let historyId = null;
 
       if (!isBuyTrade) {
         // SELL / ARC TRADE
         const allocations = Array.isArray(item.stock_allocations) ? item.stock_allocations : [];
         let totalAllocCost = 0;
         let totalAllocQty = 0;
+        let collectedHistories = [];
 
         for (const alloc of allocations) {
           const allocQty = parseFloat(alloc.qty) || 0;
           const targetTraceId = parseInt(alloc.trace_id);
           if (targetTraceId && allocQty > 0) {
-            // Retrieve cost price from trace before updating or deleting
+            // Retrieve cost price and history from trace before updating or deleting
             const traceFetch = await client.query(
-              'SELECT cost_price FROM trace WHERE id = $1 AND company_id = $2',
+              'SELECT cost_price, history FROM trace WHERE id = $1 AND company_id = $2',
               [targetTraceId, companyId]
             );
-            const traceCost = traceFetch.rows.length > 0
-              ? (parseFloat(traceFetch.rows[0].cost_price) || 0)
-              : (parseFloat(alloc.cost_price) || 0);
-
-            totalAllocCost += allocQty * traceCost;
-            totalAllocQty += allocQty;
+            if (traceFetch.rows.length > 0) {
+              const row = traceFetch.rows[0];
+              totalAllocCost += allocQty * (parseFloat(row.cost_price) || 0);
+              totalAllocQty += allocQty;
+              if (Array.isArray(row.history) && row.history.length > 0) {
+                collectedHistories.push(row.history);
+              }
+            } else {
+              totalAllocCost += allocQty * (parseFloat(alloc.cost_price) || 0);
+              totalAllocQty += allocQty;
+            }
 
             const traceUpdate = await client.query(
               `UPDATE trace SET qty = GREATEST(qty - $1, 0) WHERE id = $2 AND company_id = $3 RETURNING qty`,
@@ -818,6 +964,58 @@ router.put('/:delivery_note_no', async (req, res) => {
             [poDbId, itemDbId, companyId]
           );
           if (poPriceRes.rows.length > 0) sellPrice = parseFloat(poPriceRes.rows[0].unit_price) || 0;
+        }
+
+        // If no stock allocations were chosen, check trace for this item
+        if (collectedHistories.length === 0) {
+          const fallbackTrace = await client.query(
+            'SELECT history FROM trace WHERE item_code = $1 AND company_id = $2 ORDER BY id DESC LIMIT 1',
+            [itemDbId, companyId]
+          );
+          if (fallbackTrace.rows.length > 0 && Array.isArray(fallbackTrace.rows[0].history) && fallbackTrace.rows[0].history.length > 0) {
+            collectedHistories.push(fallbackTrace.rows[0].history);
+          }
+        }
+
+        const sellStep = {
+          trace: 'Sell Delivery',
+          type: 'SELL',
+          action: 'Delivery Dispatch',
+          delivery_note_no: delivery_note_no,
+          trade_id: trade_code,
+          price: sellPrice,
+          sell_price: sellPrice,
+          cost_price: costPrice,
+          quantity: parseFloat(item.quantity) || 0,
+          date: delivery_date || new Date().toISOString().split('T')[0]
+        };
+
+        let finalHistoryArray = [];
+        if (collectedHistories.length === 1) {
+          finalHistoryArray = [...collectedHistories[0], sellStep];
+        } else if (collectedHistories.length > 1) {
+          finalHistoryArray = [
+            {
+              trace: 'Stock Allocation',
+              type: 'MERGED_STOCK',
+              action: 'Multiple Stock Batches',
+              sources: collectedHistories,
+              date: delivery_date || new Date().toISOString().split('T')[0]
+            },
+            sellStep
+          ];
+        } else {
+          finalHistoryArray = [sellStep];
+        }
+
+        // Insert into history table
+        const histRes = await client.query(
+          `INSERT INTO history (item_id, item_code, delivery_note_id, price, history, company_id)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING id`,
+          [itemDbId, item.item_code, dnDbId, sellPrice, JSON.stringify(finalHistoryArray), companyId]
+        );
+        if (histRes.rows.length > 0) {
+          historyId = histRes.rows[0].id;
         }
 
         // Update item margin in items table
@@ -985,8 +1183,8 @@ router.put('/:delivery_note_no', async (req, res) => {
       const targetTraceRef = ppoDbId ? (traceIdForNextActivity || null) : null;
 
       await client.query(
-        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity, process_target_trace_item_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO delivery_note_items (delivery_note_id, item_id, quantity, rate_per_piece, shipping_address, delivery_date, company_id, next_activity, process_target_trace_item_id, history_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           dnDbId,
           itemDbId,
@@ -996,7 +1194,8 @@ router.put('/:delivery_note_no', async (req, res) => {
           item.delivery_date || null,
           companyId,
           JSON.stringify(next_activity),
-          targetTraceRef
+          targetTraceRef,
+          historyId
         ]
       );
 

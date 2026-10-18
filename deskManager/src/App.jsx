@@ -17,6 +17,7 @@ import CreateProcessRfqForm from './form/sell_process/CreateProcessRfqForm'
 import UpdateProcessRfqForm from './form/sell_process/UpdateProcessRfqForm'
 import CreateProcessReceivedQuotationForm from './form/buy_process/CreateProcessReceivedQuotationForm'
 import UpdateProcessReceivedQuotationForm from './form/buy_process/UpdateProcessReceivedQuotationForm'
+import UpdateProcessPurchaseOrderForm from './form/buy_process/UpdateProcessPurchaseOrderForm'
 import UpdateRfqForm from './form/Sell/RFQ/UpdateRfqForm'
 import CreateQuotationForm from './form/Sell/Quotation/CreateQuotationForm'
 import UpdateQuotationForm from './form/Sell/Quotation/UpdateQuotationForm'
@@ -35,6 +36,7 @@ import PurchaseOrderView from './pages/PurchaseOrderView'
 import ReleaseOrderView from './pages/ReleaseOrderView'
 import ProtectedRoute from './components/ProtectedRoute'
 import TraceHistory from './pages/TraceHistory'
+import DeliveryHistory from './pages/DeliveryHistory'
 import Layout from './layout/Layout'
 import AddCustomerView from './pages/AddCustomer'
 import AddBuyerView from './pages/AddBuyer'
@@ -81,6 +83,7 @@ function App() {
             <Route path="/item" element={<AddItemView />} />
             <Route path="/inventory" element={<InventoryView />} />
             <Route path="/inventory/trace-history/:id" element={<TraceHistory />} />
+            <Route path="/delivery/history/:id" element={<DeliveryHistory />} />
             <Route path="/inventory/sell" element={<SellStockForm />} />
             <Route path="/manufacture" element={<ManufactureList />} />
             <Route path="/manufactures" element={<ManufactureList />} />
@@ -107,6 +110,7 @@ function App() {
           <Route path="/addReceivedQuotation" element={<CreateReceivedQuotationForm />} />
           <Route path="/updateReceivedQuotation/:id" element={<UpdateReceivedQuotationForm />} />
           <Route path="/addProcessPurchaseOrder" element={<ProcessPoForm />} />
+          <Route path="/updateProcessPurchaseOrder/:id" element={<UpdateProcessPurchaseOrderForm />} />
           <Route path="/addProcessContractOrder" element={<ProcessPoForm isContractOrder={true} />} />
           <Route path="/party/form" element={<AddCustomerView />} />
           <Route path="/buyer/form" element={<AddBuyerView />} />
