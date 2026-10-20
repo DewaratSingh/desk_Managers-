@@ -172,19 +172,19 @@ export default function Settings() {
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-bold text-slate-700">Card & Form Background</label>
-                <p className="text-xs text-slate-500 mb-1">The background color for inner cards and forms.</p>
+                <p className="text-xs text-slate-500 mb-1">The background color for all cards, forms, and tables.</p>
                 <div className="flex items-center gap-3">
                   <input
                     type="color"
-                    value={theme.bgForm}
+                    value={theme.bgForm || '#ffffff'}
                     onChange={(e) => handleColorChange('bgForm', e.target.value)}
                     className="w-12 h-12 rounded cursor-pointer border-0 p-0 bg-transparent"
                   />
                   <input 
                     type="text" 
-                    value={theme.bgForm}
+                    value={theme.bgForm || '#ffffff'}
                     onChange={(e) => handleColorChange('bgForm', e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase  bg-[white]"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-secondary)] uppercase"
                   />
                 </div>
               </div>
@@ -250,20 +250,53 @@ export default function Settings() {
                 </div>
 
                 {/* Mock Content Area */}
-                <div className="flex-1 p-4 flex flex-col gap-3">
+                <div className="flex-1 p-4 flex flex-col gap-2.5">
                   <div className="h-4 w-24 rounded" style={{ backgroundColor: theme.textPrimary, opacity: 0.8 }}></div>
                   
+                  {/* Card / Form Container */}
                   <div 
-                    className="flex-1 rounded-lg border p-3 shadow-sm transition-colors duration-300"
-                    style={{ backgroundColor: theme.bgForm === 'transparent' ? 'transparent' : theme.bgForm, borderColor: theme.borderColor }}
+                    className="flex-1 rounded-lg border p-3 shadow-sm transition-colors duration-300 flex flex-col gap-2"
+                    style={{ backgroundColor: theme.bgForm || '#ffffff', borderColor: theme.borderColor }}
                   >
-                    <div className="h-3 w-32 rounded mb-4" style={{ backgroundColor: theme.textPrimary, opacity: 0.5 }}></div>
+                    <div className="flex items-center justify-between">
+                      <div className="h-3 w-28 rounded" style={{ backgroundColor: theme.textPrimary, opacity: 0.7 }}></div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'color-mix(in srgb, ' + theme.textPrimary + ' 8%, transparent)', color: theme.textPrimary }}>Form</span>
+                    </div>
+
+                    {/* Mock Input Tag showing App Background */}
+                    <div 
+                      className="w-full px-2.5 py-1.5 rounded text-[10px] border font-mono transition-colors duration-300 flex items-center justify-between shadow-2xs"
+                      style={{ backgroundColor: theme.bgApp, borderColor: theme.borderColor, color: theme.textPrimary }}
+                    >
+                      <span className="opacity-75">Input Tag (App Bg)</span>
+                    </div>
+
+                    {/* Mock Table showing Card & Form Background */}
+                    <div 
+                      className="w-full text-[9px] border rounded overflow-hidden transition-colors duration-300"
+                      style={{ borderColor: theme.borderColor }}
+                    >
+                      <div 
+                        className="px-2 py-1 border-b font-bold flex justify-between uppercase text-[8px]"
+                        style={{ backgroundColor: theme.bgForm || '#ffffff', borderColor: theme.borderColor, color: theme.textPrimary }}
+                      >
+                        <span>Table Head</span>
+                        <span>Value</span>
+                      </div>
+                      <div 
+                        className="px-2 py-1 flex justify-between"
+                        style={{ backgroundColor: theme.bgForm || '#ffffff', color: theme.textPrimary }}
+                      >
+                        <span className="opacity-80">Table Cell</span>
+                        <span className="font-mono font-bold">100</span>
+                      </div>
+                    </div>
                     
                     <button 
-                      className="px-4 py-2 rounded text-white text-xs font-bold transition-colors duration-300 shadow-sm"
+                      className="mt-1 px-3 py-1.5 rounded text-white text-[11px] font-bold transition-colors duration-300 shadow-sm self-start"
                       style={{ backgroundColor: theme.secondary }}
                     >
-                      Primary Action
+                      Save
                     </button>
                   </div>
                 </div>

@@ -101,15 +101,92 @@
 	border-color: var(--theme-secondary);
 }
 
+/* ==========================================================================
+   Card & Form Background, Table Background, and Input Theme System
+   ========================================================================== */
+
+/* 1. Every Table Background uses Card & Form Background (--bg-form) */
+:not(.pds-root) table,
+:not(.pds-root) table thead,
+:not(.pds-root) table thead tr,
+:not(.pds-root) table thead th,
+:not(.pds-root) table tbody,
+:not(.pds-root) table tbody tr,
+:not(.pds-root) table tbody td,
+:not(.pds-root) table tfoot,
+:not(.pds-root) table tfoot tr,
+:not(.pds-root) table tfoot td,
+:not(.pds-root) .overflow-x-auto,
+:not(.pds-root) div:has(> table),
+:not(.pds-root) div:has(> .overflow-x-auto > table) {
+	background-color: var(--bg-form) !important;
+	border-color: var(--border-color);
+}
+
+:not(.pds-root) table tbody tr:hover,
+:not(.pds-root) table tbody tr:hover td {
+	background-color: color-mix(in srgb, var(--text-primary) 6%, var(--bg-form)) !important;
+}
+
+/* 2. Every Form Background, Form Container & Card uses Card & Form Background (--bg-form) */
+:not(.pds-root) form,
+:not(.pds-root) div:has(> form),
+:not(.pds-root) div:has(> div > form),
+:not(.pds-root) .card,
+:not(.pds-root) .bg-\[white\],
+:not(.pds-root) [class*="bg-[white]"]:not(button):not(input):not(select):not(textarea):not(span.badge),
+:not(.pds-root) .bg-white,
+:not(.pds-root) [class*="bg-white"]:not(button):not(input):not(select):not(textarea):not(span.badge) {
+	background-color: var(--bg-form) !important;
+}
+
+/* 3. Input Tags use App Background (--bg-app) and change when App Background changes */
+:not(.pds-root) input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not(.bg-transparent),
+:not(.pds-root) select,
+:not(.pds-root) textarea {
+	background-color: var(--bg-app) !important;
+	color: var(--text-primary) !important;
+	border-color: var(--border-color);
+}
+
+:not(.pds-root) select option {
+	background-color: var(--bg-app) !important;
+	color: var(--text-primary) !important;
+}
+
+:not(.pds-root) input::placeholder,
+:not(.pds-root) textarea::placeholder {
+	color: var(--text-primary) !important;
+	opacity: 0.55;
+}
+
+/* Composite search containers with transparent input */
+:not(.pds-root) div:has(> input.bg-transparent):not([class*="bg-transparent"]) {
+	background-color: var(--bg-app) !important;
+}
+
+:not(.pds-root) input:disabled,
+:not(.pds-root) select:disabled,
+:not(.pds-root) textarea:disabled {
+	opacity: 0.65;
+	cursor: not-allowed;
+}
+
 @layer utilities {
-	. bg-[white] {
-		background-color: var(--bg-form, transparent) !important;
+	.bg-\[white\], [class*="bg-[white]"] {
+		background-color: var(--bg-form, #ffffff) !important;
+	}
+	.bg-white {
+		background-color: var(--bg-form, #ffffff) !important;
 	}
 	.bg-slate-50 {
 		background-color: transparent !important;
 	}
 	.bg-slate-100 {
 		background-color: transparent !important;
+	}
+	button.bg-slate-100, span.bg-slate-100 {
+		background-color: color-mix(in srgb, var(--text-primary) 8%, var(--bg-form, #ffffff)) !important;
 	}
 	.text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600 {
 		color: var(--text-primary) !important;

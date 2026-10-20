@@ -7,10 +7,19 @@ export const defaultTheme = {
   secondary: '#D9352D',
   bgApp: '#f1f5f9', // slate-100
   bgSidebar: '#0f172a', // usually same as primary initially
-  bgForm: 'transparent',
+  bgForm: '#ffffff', // Card & Form Background
   textPrimary: '#0f172a',
   textSidebar: '#ffffff',
   borderColor: '#cbd5e1'
+};
+
+const sanitizeTheme = (raw) => {
+  if (!raw || typeof raw !== 'object') return { ...defaultTheme };
+  const merged = { ...defaultTheme, ...raw };
+  if (!merged.bgForm || merged.bgForm === 'transparent') {
+    merged.bgForm = '#ffffff';
+  }
+  return merged;
 };
 
 export function ThemeProvider({ children }) {
@@ -21,7 +30,7 @@ export function ThemeProvider({ children }) {
       if (userStr) {
         const user = JSON.parse(userStr);
         if (user.theme && typeof user.theme === 'object' && Object.keys(user.theme).length > 0) {
-          return { ...defaultTheme, ...user.theme };
+          return sanitizeTheme(user.theme);
         }
       }
     } catch (e) {
@@ -32,7 +41,7 @@ export function ThemeProvider({ children }) {
     try {
       const saved = localStorage.getItem('deskmanager-theme');
       if (saved) {
-        return { ...defaultTheme, ...JSON.parse(saved) };
+        return sanitizeTheme(JSON.parse(saved));
       }
     } catch (e) {
       // ignore
@@ -56,11 +65,11 @@ export function ThemeProvider({ children }) {
         if (res.ok) {
           const data = await res.json();
           if (data?.user?.theme && typeof data.user.theme === 'object' && Object.keys(data.user.theme).length > 0) {
-            const merged = { ...defaultTheme, ...data.user.theme };
+            const merged = sanitizeTheme(data.user.theme);
             setTheme(merged);
             localStorage.setItem('deskmanager-theme', JSON.stringify(merged));
             // Update sessionStorage
-            sessionStorage.setItem('user', JSON.stringify(data.user));
+            sessionStorage.setItem('user', JSON.stringify({ ...data.user, theme: merged }));
           }
         }
       } catch (err) {

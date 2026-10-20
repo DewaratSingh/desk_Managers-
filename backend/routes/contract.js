@@ -5,20 +5,28 @@ const { pool } = require('../db');
 // Get all contracts
 router.get('/', async (req, res) => {
   try {
-    const { q } = req.query || {};
+    const { q, type } = req.query || {};
     const limit = req.query.limit ? parseInt(req.query.limit) : null;
     const offset = req.query.offset ? parseInt(req.query.offset) : 0;
     
     let query = `
-      SELECT c.*, b.name as buyer_name, b.email, b.phone 
+      SELECT c.*, b.name as buyer_name, b.email, b.phone, cu.name as party_name, cu.customer_code as party_code, cu.address as party_address 
       FROM contracts c
       LEFT JOIN buyers b ON c.buyer_id = b.id
+      LEFT JOIN customers cu ON c.customer_id = cu.id
       WHERE c.company_id = $1
     `;
     const params = [req.user.company_id];
+
+    if (type) {
+      const typeParamIdx = params.length + 1;
+      query += ` AND LOWER(c.type) = LOWER($${typeParamIdx})`;
+      params.push(type.trim());
+    }
     
     if (q) {
-      query += ' AND (c.company_name ILIKE $2 OR b.name ILIKE $2 OR b.email ILIKE $2)';
+      const qParamIdx = params.length + 1;
+      query += ` AND (c.company_name ILIKE $${qParamIdx} OR b.name ILIKE $${qParamIdx} OR b.email ILIKE $${qParamIdx} OR cu.name ILIKE $${qParamIdx} OR cu.customer_code ILIKE $${qParamIdx} OR CAST(c.id AS VARCHAR) ILIKE $${qParamIdx})`;
       params.push(`%${q}%`);
     }
     
@@ -44,9 +52,10 @@ router.get('/:id', async (req, res) => {
   const { id } = req.params;
   try {
     const contractRes = await pool.query(`
-      SELECT c.*, b.name as buyer_name, b.email, b.phone 
+      SELECT c.*, b.name as buyer_name, b.email, b.phone, cu.name as party_name, cu.customer_code as party_code, cu.address as party_address 
       FROM contracts c
       LEFT JOIN buyers b ON c.buyer_id = b.id
+      LEFT JOIN customers cu ON c.customer_id = cu.id
       WHERE c.id = $1 AND c.company_id = $2
     `, [id, req.user.company_id]);
     
@@ -74,7 +83,7 @@ router.get('/:id', async (req, res) => {
 
 // Create a new contract
 router.post('/', async (req, res) => {
-  const { company_name, buyer_id, type } = req.body || {};
+  const { company_name, buyer_id, type, customer_id } = req.body || {};
   if (!company_name) return res.status(400).json({ error: 'company_name required' });
   
   const validTypes = ['buy', 'sell', 'buy process', 'sell process'];
@@ -82,8 +91,8 @@ router.post('/', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'INSERT INTO contracts (company_name, buyer_id, company_id, type) VALUES ($1, $2, $3, $4) RETURNING *',
-      [company_name, buyer_id || null, req.user.company_id, contractType]
+      'INSERT INTO contracts (company_name, buyer_id, company_id, type, customer_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [company_name, buyer_id || null, req.user.company_id, contractType, customer_id || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -95,7 +104,7 @@ router.post('/', async (req, res) => {
 // Update a contract
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { company_name, buyer_id, type } = req.body || {};
+  const { company_name, buyer_id, type, customer_id } = req.body || {};
   
   if (!company_name) return res.status(400).json({ error: 'company_name required' });
 
@@ -104,8 +113,8 @@ router.put('/:id', async (req, res) => {
   
   try {
     const result = await pool.query(
-      'UPDATE contracts SET company_name = $1, buyer_id = $2, type = $3 WHERE id = $4 AND company_id = $5 RETURNING *',
-      [company_name, buyer_id || null, contractType, id, req.user.company_id]
+      'UPDATE contracts SET company_name = $1, buyer_id = $2, type = $3, customer_id = $4 WHERE id = $5 AND company_id = $6 RETURNING *',
+      [company_name, buyer_id || null, contractType, customer_id !== undefined ? customer_id : null, id, req.user.company_id]
     );
     
     if (result.rows.length === 0) return res.status(404).json({ error: 'Contract not found' });
@@ -126,6 +135,31 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting contract:', err.message);
     res.status(500).json({ error: 'Failed to delete contract' });
+  }
+});
+
+// Search contract items
+router.get('/:id/items', async (req, res) => {
+  const { id } = req.params;
+  const { q } = req.query || {};
+  try {
+    let query = `
+      SELECT ci.*, i.item_code, i.description, i.drawing_number, i.long_description
+      FROM contract_items ci
+      JOIN items i ON ci.item_id = i.id
+      WHERE ci.contract_id = $1 AND ci.company_id = $2
+    `;
+    const params = [id, req.user.company_id];
+    if (q) {
+      query += ` AND (i.item_code ILIKE $3 OR i.description ILIKE $3 OR i.drawing_number ILIKE $3)`;
+      params.push(`%${q}%`);
+    }
+    query += ` ORDER BY ci.created_at DESC LIMIT 15`;
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error searching contract items:', err.message);
+    res.status(500).json({ error: 'Failed to search contract items' });
   }
 });
 

@@ -263,6 +263,7 @@ const initializeDatabase = async () => {
         basic_value DECIMAL(12, 2) DEFAULT 0.00,
         packing_forward DECIMAL(12, 2) DEFAULT 0.00,
         delivery_date DATE,
+        status VARCHAR(50) DEFAULT 'RO',
         trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
         gst_type VARCHAR(50),
         gst_rate DECIMAL(5,2) DEFAULT 0.00,
@@ -313,6 +314,7 @@ const initializeDatabase = async () => {
         basic_value DECIMAL(12, 2) DEFAULT 0.00,
         packing_forward DECIMAL(12, 2) DEFAULT 0.00,
         delivery_date DATE,
+        status VARCHAR(50) DEFAULT 'RO',
         trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
         gst_type VARCHAR(50),
         gst_rate DECIMAL(5,2) DEFAULT 0.00,
@@ -326,6 +328,7 @@ const initializeDatabase = async () => {
     // Backfill existing ROs as 'sell'
     await client.query(`
       ALTER TABLE release_orders ADD COLUMN IF NOT EXISTS ro_type VARCHAR(10) DEFAULT 'sell';
+      ALTER TABLE release_orders ADD COLUMN IF NOT EXISTS contract_id INTEGER REFERENCES contracts(id) ON DELETE SET NULL;
       UPDATE release_orders SET ro_type = 'sell' WHERE ro_type IS NULL;
     `);
 
@@ -335,6 +338,10 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         ro_id INTEGER REFERENCES release_orders(id) ON DELETE CASCADE,
         item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        item_code VARCHAR(255),
+        description TEXT,
+        drawing_number VARCHAR(255),
+        process_name VARCHAR(255),
         quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
         unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price >= 0),
         gst_type VARCHAR(50),
@@ -344,9 +351,16 @@ const initializeDatabase = async () => {
         status VARCHAR(50) DEFAULT 'ordered',
         vendor VARCHAR(255) DEFAULT '',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (ro_id, item_id)
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE release_order_items ADD COLUMN IF NOT EXISTS item_code VARCHAR(255);
+      ALTER TABLE release_order_items ADD COLUMN IF NOT EXISTS description TEXT;
+      ALTER TABLE release_order_items ADD COLUMN IF NOT EXISTS drawing_number VARCHAR(255);
+      ALTER TABLE release_order_items ADD COLUMN IF NOT EXISTS process_name VARCHAR(255);
+      ALTER TABLE release_order_items DROP CONSTRAINT IF EXISTS release_order_items_ro_id_item_id_key;
     `);
 
     // 18. Delivery Notes Table
@@ -447,10 +461,15 @@ const initializeDatabase = async () => {
 
     // 22. Contracts and Contract Items
     await client.query(`
+      ALTER TABLE contracts ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
+      ALTER TABLE contracts ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'buy';
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS contracts (
         id SERIAL PRIMARY KEY,
         company_name VARCHAR(255),
         buyer_id INTEGER REFERENCES buyers(id) ON DELETE CASCADE,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -468,6 +487,21 @@ const initializeDatabase = async () => {
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (contract_id, item_id, company_id)
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS contract_items_process (
+        id SERIAL PRIMARY KEY,
+        contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE,
+        item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        processname VARCHAR(255),
+        price DECIMAL(12, 2) NOT NULL CHECK (price >= 0),
+        date DATE,
+        expiry_date DATE,
+        history JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -692,6 +726,8 @@ const initializeDatabase = async () => {
 
     await client.query(`
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS po_no VARCHAR(255);
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS contract_id INTEGER REFERENCES contracts(id) ON DELETE SET NULL;
+      ALTER TABLE process_po ADD COLUMN IF NOT EXISTS contract_ref VARCHAR(255);
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS date_of_start DATE;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS date_of_end DATE;
       ALTER TABLE process_po ADD COLUMN IF NOT EXISTS received_q_id INTEGER;
@@ -791,6 +827,70 @@ const initializeDatabase = async () => {
       ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS delivered_qty NUMERIC(12, 3) DEFAULT 0;
       ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS delivered_price DECIMAL(12, 2) DEFAULT 0;
       ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS remaining_price DECIMAL(12, 2) DEFAULT 0;
+    `);
+
+    // 33b. Process Release Order (Buy Process ARC)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS process_ro (
+        id SERIAL PRIMARY KEY,
+        ro_no VARCHAR(255) NOT NULL,
+        contract_id INTEGER REFERENCES contracts(id) ON DELETE SET NULL,
+        contract_ref VARCHAR(255),
+        date_of_start DATE,
+        date_of_end DATE,
+        seller VARCHAR(255) NOT NULL,
+        party VARCHAR(255) NOT NULL,
+        shipping_address TEXT,
+        message TEXT,
+        gst_type VARCHAR(50),
+        gst_rate DECIMAL(5, 2) DEFAULT 0.00,
+        gst DECIMAL(12, 2) DEFAULT 0.00,
+        transport DECIMAL(12, 2) DEFAULT 0.00,
+        packing_forward DECIMAL(12, 2) DEFAULT 0.00,
+        other DECIMAL(12, 2) DEFAULT 0.00,
+        basic_value DECIMAL(12, 2) DEFAULT 0.00,
+        delivery_date DATE,
+        status VARCHAR(50) DEFAULT 'RO',
+        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (ro_no, company_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS process_ro_target_item (
+        id SERIAL PRIMARY KEY,
+        process_ro_id INTEGER REFERENCES process_ro(id) ON DELETE CASCADE,
+        item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        item_code VARCHAR(255) NOT NULL,
+        description TEXT,
+        drawing_number VARCHAR(255),
+        process_name VARCHAR(255),
+        qty NUMERIC(12, 3) NOT NULL CHECK (qty > 0),
+        price DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        gst_type VARCHAR(50),
+        gst_rate DECIMAL(5, 2) DEFAULT 0.00,
+        shipping_address TEXT,
+        delivery_date DATE,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS process_ro_source_item (
+        id SERIAL PRIMARY KEY,
+        process_ro_id INTEGER REFERENCES process_ro(id) ON DELETE CASCADE,
+        item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        item_code VARCHAR(255) NOT NULL,
+        trace_item_id INTEGER,
+        qty NUMERIC(12, 3) NOT NULL CHECK (qty > 0),
+        description TEXT,
+        history JSONB,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE delivery_notes ADD COLUMN IF NOT EXISTS process_ro_id INTEGER REFERENCES process_ro(id) ON DELETE SET NULL;
+      ALTER TABLE process_ro ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'RO';
+      ALTER TABLE process_ro_source_item ADD COLUMN IF NOT EXISTS history JSONB;
     `);
 
     const defaultUnits = ['Piece', 'Set', 'Kg', 'Meter', 'Box', 'Litre'];

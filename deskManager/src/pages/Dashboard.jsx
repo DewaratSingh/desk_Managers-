@@ -5,6 +5,7 @@ import { hasPermission } from '../utils/permissions';
 
 const statusStyle = (s) => {
   const v = (s || '').toLowerCase();
+  if (v === 'ro' || v === 'release order') return { color: '#059669', borderColor: '#a7f3d0', backgroundColor: '#ecfdf5' };
   if (v === 'ordered')             return { color: '#4f46e5', borderColor: '#a5b4fc', backgroundColor: '#eef2ff' };
   if (v === 'quotation')           return { color: '#0369a1', borderColor: '#7dd3fc', backgroundColor: '#f0f9ff' };
   if (v === 'payment')             return { color: '#15803d', borderColor: '#86efac', backgroundColor: '#f0fdf4' };
@@ -156,7 +157,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             </div>
 
             {/* Top 10 Trades Chart (Line Graph) */}
-            <TradeComparisonChart trades={trades} />
+            {/* <TradeComparisonChart trades={trades} /> */}
 
             {/* List all trade at bottom */}
             {(() => {

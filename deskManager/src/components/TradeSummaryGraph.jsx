@@ -136,16 +136,19 @@ export default function TradeSummaryGraph({
     : (payments.length > 0 ? 100 : 0);
 
   // ── Node Definitions for Graph ──────────────────────────────────────────────
-  const isProcessTrade = (trade?.trade_type || '').toUpperCase() === 'PROCESS';
-  const isArcTrade = (trade?.trade_type || '').toUpperCase() === 'ARC' || (trade?.trade_type || '').toUpperCase() === 'BUYARC' || (trade?.trade_type || '').toUpperCase() === 'SELLARC';
+  const rawTradeType = (trade?.trade_type || '').toUpperCase();
+  const isProcessTrade = rawTradeType === 'PROCESS' || rawTradeType === 'BUY_PROCESS' || rawTradeType === 'SELL_PROCESS';
+  const isArcTrade = rawTradeType === 'ARC' || rawTradeType === 'BUYARC' || rawTradeType === 'SELLARC';
+  const hasRoDoc = docs.some(d => d.type === 'RO') || (releaseOrder != null);
+  const isRoDirectTrade = isArcTrade || (hasRoDoc && !docs.some(d => d.type === 'RFQ' || d.type === 'PR' || d.type === 'RQ_PROCESS' || d.type === 'QUOTATION' || d.type === 'RECEIVED_QUOTATION' || d.type === 'PROCESS_RFQ' || d.type === 'PROCESS_RECEIVED_QUOTATION'));
 
   const graphNodes = [];
 
   // Stage 1: RFQ / Process RQ
-  if (rfq || isProcessTrade || docs.some(d => d.type === 'RFQ' || d.type === 'PR' || d.type === 'RQ_PROCESS')) {
+  if (!isRoDirectTrade && (rfq || processRq || docs.some(d => d.type === 'RFQ' || d.type === 'PR' || d.type === 'RQ_PROCESS' || d.type === 'PROCESS_RFQ'))) {
     graphNodes.push({
       key: 'rfq',
-      stage: '01',
+      stage: String(graphNodes.length + 1).padStart(2, '0'),
       title: isProcessTrade ? 'Process Request' : 'Request (RFQ)',
       icon: FileText,
       panelKey: isProcessTrade ? 'process_rq' : 'rfq',
@@ -158,12 +161,12 @@ export default function TradeSummaryGraph({
   }
 
   // Stage 2: Quotation
-  if (quotation || receivedQuotation || docs.some(d => d.type === 'QUOTATION' || d.type === 'RECEIVED_QUOTATION') || rfq) {
+  if (!isRoDirectTrade && (quotation || receivedQuotation || docs.some(d => d.type === 'QUOTATION' || d.type === 'RECEIVED_QUOTATION' || d.type === 'PROCESS_RECEIVED_QUOTATION') || rfq)) {
     const qDoc = quotation || receivedQuotation;
     const qNo = qDoc?.quotation_no || qDoc?.received_quotation_no || docs.find(d => d.type === 'QUOTATION' || d.type === 'RECEIVED_QUOTATION')?.id;
     graphNodes.push({
       key: quotation ? 'quotation' : 'received_quotation',
-      stage: '02',
+      stage: String(graphNodes.length + 1).padStart(2, '0'),
       title: receivedQuotation ? 'Received Quotation' : 'Sales Quotation',
       icon: ShoppingCart,
       panelKey: quotation ? 'quotation' : 'received_quotation',
@@ -175,28 +178,31 @@ export default function TradeSummaryGraph({
     });
   }
 
-  // Stage 3: PO / RO
+  // Stage: PO / RO
   const poDoc = purchaseOrder || releaseOrder;
   const poNo = poDoc?.po_no || poDoc?.ro_no || poDoc?.process_po_no || docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER' || d.type === 'RO')?.id;
+  const isRo = isArcTrade || hasRoDoc || (releaseOrder != null);
+  const isProcRo = isRo && (isProcessTrade || releaseOrder?._is_process_ro || (poNo && String(poNo).startsWith('PRO-')));
+
   graphNodes.push({
-    key: isArcTrade ? 'ro' : 'po',
-    stage: '03',
-    title: isArcTrade ? 'Release Order (RO)' : 'Purchase Order (PO)',
-    icon: ShoppingCart,
-    panelKey: isArcTrade ? 'ro' : 'po',
+    key: isRo ? 'ro' : 'po',
+    stage: String(graphNodes.length + 1).padStart(2, '0'),
+    title: isProcRo ? 'Process Release Order (RO)' : (isRo ? 'Release Order (RO)' : (isProcessTrade ? 'Process Purchase Order (PO)' : 'Purchase Order (PO)')),
+    icon: isRo ? FileText : ShoppingCart,
+    panelKey: isRo ? 'ro' : 'po',
     status: poDoc ? 'completed' : (graphNodes.some(n => n.status === 'completed') ? 'in_progress' : 'pending'),
     docId: poNo,
-    details: poDoc?.vendor_name || poDoc?.customer_name || (totalOrderValue > 0 ? `₹${totalOrderValue.toLocaleString('en-IN')}` : 'Order committed'),
+    details: poDoc?.vendor_name || poDoc?.customer_name || poDoc?.seller || poDoc?.party || (totalOrderValue > 0 ? `₹${totalOrderValue.toLocaleString('en-IN')}` : 'Order committed'),
     meta: totalOrderedQty > 0 ? `${totalOrderedQty} total qty` : null,
-    date: poDoc?.created_at
+    date: poDoc?.date || poDoc?.ro_date || poDoc?.date_of_start || poDoc?.created_at
   });
 
-  // Stage 4: Delivery & GRN
+  // Stage: Delivery & GRN
   const hasDN = deliveryNotes.length > 0;
   const dnCount = deliveryNotes.length;
   graphNodes.push({
     key: 'delivery',
-    stage: '04',
+    stage: String(graphNodes.length + 1).padStart(2, '0'),
     title: 'Goods Delivery & GRN',
     icon: Truck,
     panelKey: 'delivery',
@@ -207,12 +213,12 @@ export default function TradeSummaryGraph({
     date: deliveryNotes[0]?.delivery_date || deliveryNotes[0]?.created_at
   });
 
-  // Stage 5: Invoice
+  // Stage: Invoice
   const hasInvoices = invoices.length > 0;
   const invCount = invoices.length;
   graphNodes.push({
     key: 'invoices',
-    stage: '05',
+    stage: String(graphNodes.length + 1).padStart(2, '0'),
     title: 'Invoicing & Billing',
     icon: Receipt,
     panelKey: 'delivery',
@@ -223,11 +229,11 @@ export default function TradeSummaryGraph({
     date: invoices[0]?.invoice_date || invoices[0]?.created_at
   });
 
-  // Stage 6: Payment
+  // Stage: Payment
   const hasPayments = payments.length > 0;
   graphNodes.push({
     key: 'payments',
-    stage: '06',
+    stage: String(graphNodes.length + 1).padStart(2, '0'),
     title: 'Payment Settlement',
     icon: CreditCard,
     panelKey: 'payments',

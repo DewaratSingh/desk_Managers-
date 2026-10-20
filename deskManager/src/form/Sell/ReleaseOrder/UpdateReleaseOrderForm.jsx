@@ -220,20 +220,21 @@ export default function UpdateReleaseOrderForm() {
     }
     const delay = setTimeout(async () => {
       try {
-        let items = contractItems;
-        if (items.length === 0 && selectedContract) {
-          items = await fetchContractItems(selectedContract);
-        }
-        if (items.length > 0) {
-          const lower = trimmed.toLowerCase();
-          const filtered = items.filter(i =>
-            (i.item_code || '').toLowerCase().includes(lower) ||
-            (i.description || '').toLowerCase().includes(lower)
-          ).slice(0, 5);
-          setItemSuggestions(filtered);
-          setShowItemDropdown(true);
+        if (selectedContract) {
+          const isProcess = selectedContract.type === 'buy process' || selectedContract.type === 'sell process';
+          const endpoint = isProcess
+            ? `/api/contracts/${selectedContract.id}/process-items?q=${encodeURIComponent(trimmed)}`
+            : `/api/contracts/${selectedContract.id}/items?q=${encodeURIComponent(trimmed)}`;
+          const res = await fetch(endpoint);
+          if (res.ok) {
+            const data = await res.json();
+            setItemSuggestions(Array.isArray(data) ? data : []);
+            setShowItemDropdown(true);
+          } else {
+            setItemSuggestions([]);
+          }
         } else {
-          const res = await fetch(`/api/arc-items?q=${encodeURIComponent(trimmed)}&limit=5`);
+          const res = await fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=8`);
           if (res.ok) {
             const data = await res.json();
             setItemSuggestions(Array.isArray(data) ? data : []);
@@ -245,7 +246,7 @@ export default function UpdateReleaseOrderForm() {
       }
     }, 200);
     return () => clearTimeout(delay);
-  }, [itemSearchInput, contractItems, selectedContract]);
+  }, [itemSearchInput, selectedContract]);
 
   const fetchRoDetails = async (roNo) => {
     setIsLoading(true);
@@ -319,24 +320,22 @@ export default function UpdateReleaseOrderForm() {
   };
 
   const fetchContractItems = async (contract) => {
-    if (!contract) return [];
+    if (!contract || !contract.id) return [];
     try {
-      let items = [];
-      if (contract.type === 'CUSTOMER') {
-        const res = await fetch(`/api/customer-contracts/${contract.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          items = data.items || [];
-        }
-      } else {
-        const res = await fetch(`/api/vendor-contracts/${contract.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          items = data.items || [];
-        }
+      const isProcess = contract.type === 'buy process' || contract.type === 'sell process';
+      const endpoint = isProcess
+        ? `/api/contracts/${contract.id}/process-items`
+        : `/api/contracts/${contract.id}`;
+      
+      const res = await fetch(endpoint);
+      if (res.ok) {
+        const data = await res.json();
+        const items = isProcess ? (Array.isArray(data) ? data : []) : (data.items || []);
+        setContractItems(items);
+        return items;
       }
-      setContractItems(items);
-      return items;
+      setContractItems([]);
+      return [];
     } catch (err) {
       console.error('Error fetching contract items:', err);
       setContractItems([]);
@@ -344,13 +343,14 @@ export default function UpdateReleaseOrderForm() {
     }
   };
 
-  const selectContract = async (contract) => {
+  const selectContract = (contract) => {
     setSelectedContract(contract);
     setContractInput(contract.company_name);
     setShowContractDropdown(false);
     setContractNotFound(false);
     setFormData(prev => ({ ...prev, contract_ref: String(contract.id) }));
-    await fetchContractItems(contract);
+    setItemSuggestions([]);
+    setShowItemDropdown(false);
   };
 
   const clearContract = () => {
@@ -359,6 +359,8 @@ export default function UpdateReleaseOrderForm() {
     setContractSuggestions([]);
     setContractNotFound(false);
     setContractItems([]);
+    setItemSuggestions([]);
+    setShowItemDropdown(false);
     setFormData(prev => ({ ...prev, contract_ref: '' }));
   };
 
@@ -366,6 +368,8 @@ export default function UpdateReleaseOrderForm() {
     setContractInput(value);
     setSelectedContract(null);
     setContractItems([]);
+    setItemSuggestions([]);
+    setShowItemDropdown(false);
     if (!value.trim()) {
       setContractSuggestions([]);
       setShowContractDropdown(false);
@@ -407,7 +411,10 @@ export default function UpdateReleaseOrderForm() {
   // Item Autocomplete handlers
   const handleItemSearchInput = (value) => {
     setItemSearchInput(value);
-    if (!value.trim()) { setItemSuggestions([]); setShowItemDropdown(false); }
+    if (!value.trim()) {
+      setItemSuggestions([]);
+      setShowItemDropdown(false);
+    }
   };
 
   const addRoItem = (item) => {
@@ -420,13 +427,14 @@ export default function UpdateReleaseOrderForm() {
       {
         item_code:        item.item_code,
         quantity:         1,
-        unit_price:       String(item.price || 0),
+        unit_price:       String(item.price != null ? item.price : 0),
         gst_type:         '',
         gst_rate:         '',
         shipping_address: '',
         delivery_date:    '',
-        description:      item.description || '',
+        description:      item.description || item.long_description || '',
         drawing_number:   item.drawing_number || '',
+        process_name:     item.processname || '',
         selected:         true
       }
     ]);
@@ -573,7 +581,8 @@ export default function UpdateReleaseOrderForm() {
 
     const payload = {
       ro_no:           editingNo,
-      contract_ref:    formData.contract_ref || null,
+      contract_id:     selectedContract?.id || null,
+      contract_ref:    selectedContract?.company_name || formData.contract_ref || null,
       ro_date:         formData.ro_date,
       delivery_date:   formData.delivery_date || null,
       buyer_id:        selectedBuyer.id,
@@ -586,6 +595,9 @@ export default function UpdateReleaseOrderForm() {
       packing_forward: parseFloat(formData.packing_forward) || 0,
       items: activeItems.map(i => ({
         item_code:        i.item_code,
+        description:      i.description || null,
+        drawing_number:   i.drawing_number || null,
+        process_name:     i.processname || i.process_name || null,
         quantity:         parseFloat(i.quantity)   || 0,
         unit_price:       parseFloat(i.unit_price) || 0,
         gst_type:         i.gst_type  || null,
@@ -878,50 +890,16 @@ export default function UpdateReleaseOrderForm() {
                 </span>
               </div>
 
-              {/* Add item search */}
-              <div ref={itemSearchRef} className="relative mb-3">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder={selectedContract ? "Search items from contract catalog..." : "Search items to add (item code or description)..."}
-                    value={itemSearchInput}
-                    onChange={(e) => handleItemSearchInput(e.target.value)}
-                    onFocus={() => { if (itemSearchInput.trim()) setShowItemDropdown(true); }}
-                    className={inputCls}
-                    autoComplete="off"
-                  />
-                  <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                </div>
-
-                {showItemDropdown && itemSuggestions.length > 0 && (
-                  <div className="absolute z-40 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                    {itemSuggestions.map(item => (
-                      <button
-                        key={item.item_code}
-                        type="button"
-                        onClick={() => addRoItem(item)}
-                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-bold text-xs text-slate-900">{item.item_code}</span>
-                          {item.price != null && (
-                            <span className="text-xs font-semibold text-emerald-700">₹{item.price}</span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-slate-500 truncate">{item.description}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
+              {/* Selected items list (Placed BEFORE search input) */}
               {roItems.length > 0 && (
-                <div className="border border-slate-300 rounded-lg overflow-x-auto bg-slate-50">
+                <div className="border border-slate-300 rounded-lg overflow-visible bg-slate-50 mb-3">
                   <div className="divide-y divide-slate-200">
                     {roItems.map(item => (
                       <div
                         key={item.item_code}
-                        className={`px-4 py-3  bg-[white] transition-colors ${!item.selected ? 'opacity-50 bg-slate-50' : ''}`}
+                        className={`px-4 py-3 bg-[white] transition-colors relative ${
+                          shipDropdownOpen[item.item_code] || gstDropdownOpen[item.item_code] ? 'z-30' : 'z-0'
+                        } ${!item.selected ? 'opacity-50 bg-slate-50' : ''}`}
                       >
                         {/* Row 1: Checkbox + Item Info */}
                         <div className="flex items-start justify-between gap-3">
@@ -946,6 +924,11 @@ export default function UpdateReleaseOrderForm() {
                                 {item.drawing_number && (
                                   <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.25 rounded">
                                     DRW: {item.drawing_number}
+                                  </span>
+                                )}
+                                {item.processname && (
+                                  <span className="text-[10px] text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.25 rounded font-bold">
+                                    {item.processname}
                                   </span>
                                 )}
                               </div>
@@ -1031,7 +1014,7 @@ export default function UpdateReleaseOrderForm() {
                               </div>
 
                               {gstDropdownOpen[item.item_code] && (gstSuggestions[item.item_code] || []).length > 0 && (
-                                <div className="absolute z-40 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
+                                <div className="absolute z-50 left-0 right-0 mt-1 bg-[white] border border-slate-300 rounded-lg shadow-xl overflow-hidden max-h-48 overflow-y-auto">
                                   {(gstSuggestions[item.item_code] || []).map(g => (
                                     <button
                                       key={g.id}
@@ -1089,7 +1072,7 @@ export default function UpdateReleaseOrderForm() {
                               </div>
 
                               {shipDropdownOpen[item.item_code] && (shipSuggestions[item.item_code] || []).length > 0 && (
-                                <div className="absolute z-40 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded shadow-lg overflow-hidden max-h-36 overflow-y-auto">
+                                <div className="absolute z-50 left-0 right-0 mt-1 bg-[white] border border-slate-300 rounded-lg shadow-xl overflow-hidden max-h-48 overflow-y-auto">
                                   {(shipSuggestions[item.item_code] || []).map(c => (
                                     <button
                                       key={c.id}
@@ -1111,6 +1094,70 @@ export default function UpdateReleaseOrderForm() {
                   </div>
                 </div>
               )}
+
+              {/* Add item search (Placed AFTER selected items) */}
+              <div ref={itemSearchRef} className="relative mb-3">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder={selectedContract ? "Type to search items from ARC contract..." : "Search items to add (item code or description)..."}
+                    value={itemSearchInput}
+                    onChange={(e) => handleItemSearchInput(e.target.value)}
+                    onFocus={() => {
+                      if (itemSearchInput.trim()) {
+                        setShowItemDropdown(true);
+                      }
+                    }}
+                    className={inputCls}
+                    autoComplete="off"
+                  />
+                  <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+
+                {showItemDropdown && itemSuggestions.length > 0 && (
+                  <div className="absolute z-40 left-0 right-0 mt-1 bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                    {itemSuggestions.map(item => (
+                      <button
+                        key={item.id ? `${item.item_code}-${item.id}` : item.item_code}
+                        type="button"
+                        onClick={() => addRoItem(item)}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-xs text-blue-600">{item.item_code}</span>
+                            {item.processname && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700">
+                                {item.processname}
+                              </span>
+                            )}
+                            {selectedContract && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wider">
+                                ARC Rate
+                              </span>
+                            )}
+                          </div>
+                          {item.price != null && (
+                            <div className="text-right">
+                              <span className="text-xs font-bold text-emerald-700">₹{parseFloat(item.price).toLocaleString()}</span>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                          {item.description || item.long_description || '—'}
+                          {item.drawing_number && <span className="text-slate-400"> &bull; DWG: {item.drawing_number}</span>}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {showItemDropdown && selectedContract && itemSearchInput.trim() && itemSuggestions.length === 0 && (
+                  <div className="absolute z-40 left-0 right-0 mt-1 bg-[white] border border-slate-300 rounded-lg shadow-lg p-3 text-center text-xs text-slate-500">
+                    No items found matching "{itemSearchInput}" in selected ARC contract "{selectedContract.company_name}"
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Additional Charges */}

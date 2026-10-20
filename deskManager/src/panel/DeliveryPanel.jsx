@@ -447,7 +447,7 @@ function GrnSection({ tradeId, deliveryNoteNo, dnItems, grns, onRefresh }) {
   );
 }
 
-export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = [], grns = [], payments = [], purchaseOrder, onRefresh, focusedDeliveryId }) {
+export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = [], grns = [], payments = [], purchaseOrder, releaseOrder, onRefresh, focusedDeliveryId }) {
   const navigate = useNavigate();
 
   // Set default selection to focusedDeliveryId if it matches one of our delivery notes
@@ -495,7 +495,7 @@ export default function DeliveryPanel({ tradeId, deliveryNotes = [], invoices = 
         <div className="max-w-sm mx-auto space-y-1">
           <h3 className="text-sm font-bold text-slate-800">No Delivery Note Registered</h3>
           <p className="text-xs text-slate-500 font-semibold text-center">
-            The Purchase Order has been registered. The next step is to log dispatches and generate a Delivery Note.
+            {releaseOrder ? 'The Release Order has been registered. The next step is to log dispatches and generate a Delivery Note.' : 'The Purchase Order has been registered. The next step is to log dispatches and generate a Delivery Note.'}
           </p>
         </div>
         <button

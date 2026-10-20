@@ -106,6 +106,11 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                 {purchaseOrder.po_no}
               </span>
             )}
+            {purchaseOrder.contract_ref && (
+              <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded flex items-center gap-1">
+                ARC: {purchaseOrder.contract_ref}
+              </span>
+            )}
             <Link
               to={`/updateProcessPurchaseOrder/${encodeURIComponent(purchaseOrder.po_no || purchaseOrder.id)}?trade_id=${encodeURIComponent(tradeId || '')}`}
               className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
@@ -124,6 +129,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
               { label: 'Delivery Date', value: fmtDate(purchaseOrder.delivery_date) },
               { label: 'Seller',      value: purchaseOrder.seller || '—' },
               { label: 'Party',       value: purchaseOrder.party || '—' },
+              ...(purchaseOrder.contract_ref ? [{ label: 'Contract Ref (ARC)', value: purchaseOrder.contract_ref }] : []),
             ].map(({ label, value }) => (
               <div key={label}>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>

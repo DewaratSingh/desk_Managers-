@@ -10,6 +10,7 @@ import ReceivedQuotationPanel from '../panel/ReceivedQuotationPanel';
 import ProcessRqPanel from '../panel/ProcessRqPanel';
 import PoPanel        from '../panel/PoPanel';
 import RoPanel        from '../panel/RoPanel';
+import ProcessRoPanel from '../panel/ProcessRoPanel';
 import DeliveryPanel  from '../panel/DeliveryPanel';
 import InvoicePanel   from '../panel/InvoicePanel';
 import PaymentPanel   from '../panel/PaymentPanel';
@@ -18,6 +19,7 @@ import TradeSummaryGraph from '../components/TradeSummaryGraph';
 // Status pill colours
 const statusStyle = (s) => {
   const v = (s || '').toLowerCase();
+  if (v === 'ro' || v === 'release order') return { color: '#059669', borderColor: '#a7f3d0', backgroundColor: '#ecfdf5' };
   if (v === 'ordered')             return { color: '#4f46e5', borderColor: '#a5b4fc', backgroundColor: '#eef2ff' };
   if (v === 'quotation')           return { color: '#0369a1', borderColor: '#7dd3fc', backgroundColor: '#f0f9ff' };
   if (v === 'process_rq' || v === 'rq_process' || v === 'r quotation' || v === 'r_quotation') return { color: '#0284c7', borderColor: '#bae6fd', backgroundColor: '#f0f9ff' };
@@ -238,7 +240,7 @@ export default function TradeView() {
       const recQtnDoc = docs.find(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
       const prDoc  = docs.find(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
       const poDoc  = docs.find(d => d.type?.toUpperCase() === 'PURCHASE_ORDER' || d.type?.toUpperCase() === 'PO');
-      const roDoc  = docs.find(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO');
+      const roDoc  = docs.find(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO' || d.type?.toUpperCase() === 'PROCESS_RO');
       const dnDocs = docs.filter(d => d.type?.toUpperCase() === 'DN' || d.type?.toUpperCase() === 'DELIVERY_NOTE');
       const invDocs = docs.filter(d => d.type?.toUpperCase() === 'INVOICE');
       const grnDocs = docs.filter(d => d.type?.toUpperCase() === 'GRN');
@@ -252,7 +254,11 @@ export default function TradeView() {
         recQtnDoc?.id ? fetchReceivedQTN(recQtnDoc.id) : Promise.resolve(setReceivedQuotation(null)),
         prDoc?.id ? fetchProcessRQ(prDoc.id) : Promise.resolve(setProcessRq(null)),
         poDoc?.id  ? fetchPO(poDoc.id, (tradeData.trade_type || '').toUpperCase() === 'PROCESS') : Promise.resolve(setPurchaseOrder(null)),
-        roDoc?.id  ? fetchRO(roDoc.id)     : Promise.resolve(setReleaseOrder(null)),
+        roDoc?.id  
+          ? fetchRO(roDoc.id)     
+          : ((tradeData.trade_type || '').toUpperCase() === 'BUY_PROCESS' 
+              ? fetchRO(tradeData.trade_id) 
+              : Promise.resolve(setReleaseOrder(null))),
         dnDocs.length > 0
           ? Promise.all(dnDocs.map(d => fetchDN(d.id))).then(notes => setDeliveryNotes(notes.filter(Boolean)))
           : Promise.resolve(setDeliveryNotes([])),
@@ -339,9 +345,25 @@ export default function TradeView() {
 
   const fetchRO = async (id) => {
     try {
+      if (String(id).startsWith('PRO-') || String(id).startsWith('TRD-')) {
+        const res = await fetch(`/api/process-ro/${encodeURIComponent(id)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setReleaseOrder({ ...(Array.isArray(data) ? data[0] : data), _is_process_ro: true });
+          return;
+        }
+      }
       const res = await fetch(`/api/release-orders/${encodeURIComponent(id)}`);
-      if (res.ok) setReleaseOrder(await res.json());
-    } catch (err) { console.error(err); }
+      if (res.ok) {
+        setReleaseOrder(await res.json());
+      } else {
+        const procRes = await fetch(`/api/process-ro/${encodeURIComponent(id)}`);
+        if (procRes.ok) {
+          const data = await procRes.json();
+          setReleaseOrder({ ...(Array.isArray(data) ? data[0] : data), _is_process_ro: true });
+        }
+      }
+    } catch (err) { console.error('fetchRO error:', err); }
   };
 
   const fetchDN = async (id) => {
@@ -430,7 +452,7 @@ export default function TradeView() {
   const hasRecQtnDoc = docs.some(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
   const hasProcessRecQtnDoc = docs.some(d => d.type?.toUpperCase() === 'PROCESS_RECEIVED_QUOTATION');
   const hasPoDoc = docs.some(d => d.type?.toUpperCase() === 'PURCHASE_ORDER' || d.type?.toUpperCase() === 'PO');
-  const hasRoDoc = docs.some(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO');
+  const hasRoDoc = docs.some(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO' || d.type?.toUpperCase() === 'PROCESS_RO') || Boolean(releaseOrder);
   const hasProcessRqDoc = docs.some(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
   const isProcessTrade = (trade.trade_type || '').toUpperCase() === 'PROCESS' || (trade.trade_type || '').toUpperCase() === 'BUY_PROCESS';
 
@@ -504,7 +526,7 @@ export default function TradeView() {
     });
   }
 
-  if (hasPoDoc || hasQuotationDoc || hasRecQtnDoc || (isProcessTrade && (hasProcessRqDoc || hasProcessRecQtnDoc || processReceivedQuotation))) {
+  if (hasPoDoc || (!hasRoDoc && (hasQuotationDoc || hasRecQtnDoc || (isProcessTrade && (hasProcessRqDoc || hasProcessRecQtnDoc || processReceivedQuotation))))) {
     let poLabel = (rfq && hasQuotationDoc) ? '③ Purchase Order' : '② Purchase Order';
     if (panels.length === 0) {
       poLabel = isProcessTrade ? '① Process Purchase Order' : '① Purchase Order';
@@ -529,11 +551,16 @@ export default function TradeView() {
 
   const isArc = (trade.trade_type || '').toUpperCase() === 'ARC' || (trade.trade_type || '').toUpperCase() === 'BUYARC' || (trade.trade_type || '').toUpperCase() === 'SELLARC';
 
-  if (isArc || hasRoDoc) {
+  if (isArc || hasRoDoc || (trade.trade_type || '').toUpperCase() === 'BUY_PROCESS') {
+    const isProcRo = isProcessTrade || releaseOrder?._is_process_ro || (releaseOrder?.ro_no && String(releaseOrder.ro_no).startsWith('PRO-'));
     panels.push({
       key: 'ro',
-      label: '① Release Order',
-      component: <RoPanel releaseOrder={releaseOrder} purchaseOrder={purchaseOrder} tradeId={trade.trade_id} />
+      label: isProcRo ? '① Process Release Order' : '① Release Order',
+      component: isProcRo ? (
+        <ProcessRoPanel releaseOrder={releaseOrder} tradeId={trade.trade_id} />
+      ) : (
+        <RoPanel releaseOrder={releaseOrder} purchaseOrder={purchaseOrder} tradeId={trade.trade_id} />
+      )
     });
   }
 
@@ -552,40 +579,39 @@ export default function TradeView() {
     const expectedTotal = purchaseOrder ? calcPoTotal(purchaseOrder) : (releaseOrder ? calcPoTotal(releaseOrder) : 0);
 
     let paymentLabel = '④ Payments';
-    if (isArc) {
-      paymentLabel = '② Payments';
+    if (isArc || (isProcessTrade && hasRoDoc)) {
+      paymentLabel = '③ Payments';
     } else if (!rfq) {
       paymentLabel = '③ Payments';
     }
 
+    const showDelivery = (isArc || hasRoDoc) ? hasRoDoc : hasPoDoc;
 
-
-  const showDelivery = isArc ? hasRoDoc : hasPoDoc;
-
-  if (showDelivery) {
-    let deliveryLabel = '④ Delivery & Invoicing';
-    if (isArc) {
-      deliveryLabel = '③ Delivery & Invoicing';
-    } else if (rfq) {
-      deliveryLabel = '⑤ Delivery & Invoicing';
+    if (showDelivery) {
+      let deliveryLabel = '④ Delivery & Invoicing';
+      if (isArc || (isProcessTrade && hasRoDoc)) {
+        deliveryLabel = '② Delivery & Invoicing';
+      } else if (rfq) {
+        deliveryLabel = '⑤ Delivery & Invoicing';
+      }
+      panels.push({
+        key: 'delivery',
+        label: deliveryLabel,
+        component: (
+          <DeliveryPanel
+            tradeId={trade.trade_id}
+            deliveryNotes={deliveryNotes}
+            invoices={invoices}
+            grns={grns}
+            payments={payments}
+            purchaseOrder={purchaseOrder || releaseOrder}
+            releaseOrder={releaseOrder}
+            onRefresh={() => fetchTradeDetails(trade.trade_id)}
+            focusedDeliveryId={deliveryId}
+          />
+        )
+      });
     }
-    panels.push({
-      key: 'delivery',
-      label: deliveryLabel,
-      component: (
-        <DeliveryPanel
-          tradeId={trade.trade_id}
-          deliveryNotes={deliveryNotes}
-          invoices={invoices}
-          grns={grns}
-          payments={payments}
-          purchaseOrder={purchaseOrder}
-          onRefresh={() => fetchTradeDetails(trade.trade_id)}
-          focusedDeliveryId={deliveryId}
-        />
-      )
-    });
-  }
     panels.push({
       key: 'payments',
       label: paymentLabel,
@@ -614,6 +640,7 @@ export default function TradeView() {
     PURCHASE_ORDER: 'Purchase Order',
     PO:             'Purchase Order',
     RO:             'Release Order',
+    PROCESS_RO:     'Process Release Order',
     INVOICE:        'Invoice',
     DN:             'Delivery Note',
     GRN:            'GRN',

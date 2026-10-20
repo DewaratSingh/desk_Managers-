@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { FileText, ArrowLeft, Layers, Package, RefreshCw, Trash2, Building2, User, Truck, Box, DollarSign, Search, CheckCircle2, X } from 'lucide-react';
+import { FileText, ArrowLeft, Layers, Package, RefreshCw, Trash2, Building2, User, Truck, Box, DollarSign, Search, CheckCircle2, X, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import InventoryTraceSelectorModal from '../components/InventoryTraceSelectorModal';
@@ -20,6 +20,7 @@ export default function ProcessPoForm({ isContractOrder }) {
   const queryTradeId = searchParams.get('trade_id');
   const queryRqId = searchParams.get('received_q_id') || searchParams.get('rq_id') || searchParams.get('number') || searchParams.get('rq_process_id');
   const queryRecQtnNo = searchParams.get('received_quotation_no') || searchParams.get('quotation_no');
+  const queryContractId = searchParams.get('contract_id') || searchParams.get('arc_id');
 
   // Header State
   const [poNo, setPoNo] = useState('');
@@ -35,6 +36,23 @@ export default function ProcessPoForm({ isContractOrder }) {
   const [showRqDropdown, setShowRqDropdown] = useState(false);
   const [linkedRqLabel, setLinkedRqLabel] = useState('');
   const rqRef = useRef(null);
+
+  // Contract Reference (ARC) Search State (for Buy Process Contract Order Mode)
+  const [contractInput, setContractInput] = useState('');
+  const [selectedContract, setSelectedContract] = useState(null);
+  const [contractSuggestions, setContractSuggestions] = useState([]);
+  const [showContractDropdown, setShowContractDropdown] = useState(false);
+  const [contractNotFound, setContractNotFound] = useState(false);
+  const [contractLoading, setContractLoading] = useState(false);
+  const [contractItemsCount, setContractItemsCount] = useState(0);
+  const contractRef = useRef(null);
+
+  // Item Code Search State (within selected ARC contract for Buy Process)
+  const [contractItems, setContractItems] = useState([]);
+  const [itemSearchInput, setItemSearchInput] = useState('');
+  const [itemSuggestions, setItemSuggestions] = useState([]);
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
+  const itemSearchRef = useRef(null);
 
   // Seller Search State (Compulsory)
   const [seller, setSeller] = useState('');
@@ -81,13 +99,18 @@ export default function ProcessPoForm({ isContractOrder }) {
 
   // Auto-fetch next PO Number
   useEffect(() => {
-    fetch('/api/process-po/next-no')
+    const endpoint = isContractOrderMode ? '/api/process-ro/next-no' : '/api/process-po/next-no';
+    fetch(endpoint)
       .then(r => r.ok ? r.json() : {})
       .then(data => {
-        if (data.po_no) setPoNo(data.po_no);
+        if (isContractOrderMode && data.ro_no) {
+          setPoNo(data.ro_no);
+        } else if (data.po_no) {
+          setPoNo(data.po_no);
+        }
       })
       .catch(console.error);
-  }, []);
+  }, [isContractOrderMode]);
 
   // State for restricting inventory trace modal to source items defined in RQ
   const [rqSourceItemCodes, setRqSourceItemCodes] = useState([]);
@@ -307,6 +330,285 @@ export default function ProcessPoForm({ isContractOrder }) {
     }
   }, [queryRqId, queryRecQtnNo, queryTradeId]);
 
+  // Select an ARC Contract and auto-fill Seller, Party, Shipping Address & Load Items Catalog
+  const selectContract = async (contract) => {
+    if (!contract) return;
+    setSelectedContract(contract);
+    const label = contract.company_name ? `${contract.company_name} (ARC-${contract.id})` : `ARC-${contract.id}`;
+    setContractInput(label);
+    setShowContractDropdown(false);
+    setContractNotFound(false);
+
+    // Auto-fill Seller / Processor
+    const sName = contract.buyer_name || contract.company_name || '';
+    if (sName) {
+      setSeller(sName);
+      setSellerInput(sName);
+    }
+
+    // Auto-fill Party / Customer
+    const pName = contract.party_name || '';
+    if (pName) {
+      setParty(pName);
+      setPartyInput(pName);
+    }
+
+    // Auto-fill Shipping Address from party_address
+    if (contract.party_address) {
+      setShippingAddress(contract.party_address);
+    }
+
+    // Fetch process items for this contract
+    try {
+      setContractLoading(true);
+      const res = await fetch(`/api/contracts/${contract.id}/process-items?limit=100`);
+      if (res.ok) {
+        const items = await res.json();
+        const list = Array.isArray(items) ? items : [];
+        setContractItems(list);
+        setContractItemsCount(list.length);
+        if (list.length > 0) {
+          toast.success(`ARC-${contract.id} linked: ${list.length} item(s) available. Search item code to add target item.`);
+        } else {
+          toast.info('Selected ARC contract has no process items registered.');
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching process items:', err);
+      toast.error('Failed to load process items for contract');
+    } finally {
+      setContractLoading(false);
+    }
+
+    // Target items are added via item code search, not all at once
+    setTargetItems([]);
+    setSourceItems([]);
+    setRqSourceItemCodes([]);
+  };
+
+  const clearContract = () => {
+    setSelectedContract(null);
+    setContractInput('');
+    setContractSuggestions([]);
+    setContractNotFound(false);
+    setContractItems([]);
+    setContractItemsCount(0);
+    setItemSearchInput('');
+    setItemSuggestions([]);
+    setShowItemDropdown(false);
+    setTargetItems([]);
+    setSourceItems([]);
+    setSeller('');
+    setSellerInput('');
+    setParty('');
+    setPartyInput('');
+    setShippingAddress('');
+    setMessage('');
+  };
+
+  // Debounced search for items within the selected ARC contract
+  useEffect(() => {
+    if (!isContractOrderMode) return;
+    const trimmed = itemSearchInput.trim();
+    if (!trimmed) {
+      if (selectedContract && contractItems.length > 0) {
+        setItemSuggestions(contractItems.slice(0, 15));
+      } else {
+        setItemSuggestions([]);
+      }
+      return;
+    }
+
+    const lower = trimmed.toLowerCase();
+    const filtered = contractItems.filter(i =>
+      (i.item_code || '').toLowerCase().includes(lower) ||
+      (i.description || '').toLowerCase().includes(lower) ||
+      (i.processname || '').toLowerCase().includes(lower) ||
+      (i.drawing_number || '').toLowerCase().includes(lower)
+    ).slice(0, 15);
+
+    setItemSuggestions(filtered);
+    setShowItemDropdown(true);
+  }, [itemSearchInput, contractItems, selectedContract, isContractOrderMode]);
+
+  const handleItemSearchFocus = () => {
+    if (!selectedContract) {
+      toast.info('Please search and select an ARC contract first.');
+      return;
+    }
+    if (contractItems.length > 0) {
+      const trimmed = itemSearchInput.trim().toLowerCase();
+      if (!trimmed) {
+        setItemSuggestions(contractItems.slice(0, 15));
+      } else {
+        const filtered = contractItems.filter(i =>
+          (i.item_code || '').toLowerCase().includes(trimmed) ||
+          (i.description || '').toLowerCase().includes(trimmed) ||
+          (i.processname || '').toLowerCase().includes(trimmed) ||
+          (i.drawing_number || '').toLowerCase().includes(trimmed)
+        ).slice(0, 15);
+        setItemSuggestions(filtered);
+      }
+      setShowItemDropdown(true);
+    }
+  };
+
+  const addItemFromArc = (item) => {
+    if (!item) return;
+
+    // Check if duplicate
+    const alreadyExists = targetItems.some(
+      t => t.item_code === item.item_code && (t.process_name || '') === (item.processname || '')
+    );
+    if (alreadyExists) {
+      toast.warn(`Item ${item.item_code} (${item.processname || 'Standard'}) is already added.`);
+      setShowItemDropdown(false);
+      return;
+    }
+
+    // Auto-fill other fields if empty
+    if (selectedContract) {
+      const sName = selectedContract.buyer_name || selectedContract.company_name || '';
+      if (sName && !seller) {
+        setSeller(sName);
+        setSellerInput(sName);
+      }
+      const pName = selectedContract.party_name || '';
+      if (pName && !party) {
+        setParty(pName);
+        setPartyInput(pName);
+      }
+      if (selectedContract.party_address && !shippingAddress) {
+        setShippingAddress(selectedContract.party_address);
+      }
+    }
+
+    if (item.processname && !message) {
+      setMessage(item.processname);
+    }
+
+    // Auto-fill target item
+    const newTarget = {
+      item_code: item.item_code || '',
+      description: item.description || '',
+      drawing_number: item.drawing_number || '',
+      process_name: item.processname || '',
+      qty: '1', // editable quantity
+      price: String(item.price !== undefined && item.price !== null ? item.price : 0), // auto-filled price
+      gst_type: '',
+      gst_rate: ''
+    };
+
+    setTargetItems(prev => [...prev, newTarget]);
+    setItemSearchInput('');
+    setShowItemDropdown(false);
+    toast.success(`Target item ${item.item_code} added with ARC rate ₹${item.price || 0}`);
+  };
+
+  const addAllItemsFromArc = () => {
+    if (!contractItems || contractItems.length === 0) return;
+    const existingKeys = new Set(targetItems.map(t => `${t.item_code}__${t.process_name || ''}`));
+    const itemsToAdd = contractItems.filter(it => !existingKeys.has(`${it.item_code}__${it.processname || ''}`));
+
+    if (itemsToAdd.length === 0) {
+      toast.info('All items from this ARC contract are already added.');
+      return;
+    }
+
+    // Auto-fill other fields if not set
+    if (selectedContract) {
+      const sName = selectedContract.buyer_name || selectedContract.company_name || '';
+      if (sName && !seller) { setSeller(sName); setSellerInput(sName); }
+      const pName = selectedContract.party_name || '';
+      if (pName && !party) { setParty(pName); setPartyInput(pName); }
+      if (selectedContract.party_address && !shippingAddress) setShippingAddress(selectedContract.party_address);
+    }
+
+    const mapped = itemsToAdd.map(it => ({
+      item_code: it.item_code || '',
+      description: it.description || '',
+      drawing_number: it.drawing_number || '',
+      process_name: it.processname || '',
+      qty: '1',
+      price: String(it.price !== undefined && it.price !== null ? it.price : 0),
+      gst_type: '',
+      gst_rate: ''
+    }));
+
+    setTargetItems(prev => [...prev, ...mapped]);
+    toast.success(`Added ${mapped.length} target item(s) from ARC contract`);
+  };
+
+  // Debounced search for contracts of type 'buy process'
+  useEffect(() => {
+    if (!isContractOrderMode) return;
+    const trimmed = contractInput.trim();
+    if (!trimmed) {
+      setContractSuggestions([]);
+      setShowContractDropdown(false);
+      setContractNotFound(false);
+      return;
+    }
+    if (selectedContract && (
+      selectedContract.company_name === contractInput ||
+      `ARC-${selectedContract.id}` === contractInput ||
+      contractInput.includes(`ARC-${selectedContract.id}`)
+    )) {
+      setShowContractDropdown(false);
+      return;
+    }
+
+    setContractLoading(true);
+    const timer = setTimeout(() => {
+      fetch(`/api/contracts?type=buy process&q=${encodeURIComponent(trimmed)}&limit=10`)
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          const list = Array.isArray(data) ? data : [];
+          setContractSuggestions(list);
+          setContractNotFound(list.length === 0);
+          setShowContractDropdown(true);
+        })
+        .catch(err => {
+          console.error('Error fetching contracts:', err);
+          setContractSuggestions([]);
+          setContractNotFound(true);
+        })
+        .finally(() => setContractLoading(false));
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [contractInput, selectedContract, isContractOrderMode]);
+
+  const handleContractFocus = () => {
+    if (contractSuggestions.length > 0) {
+      setShowContractDropdown(true);
+    } else if (!contractInput.trim()) {
+      setContractLoading(true);
+      fetch('/api/contracts?type=buy process&limit=10')
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          const list = Array.isArray(data) ? data : [];
+          setContractSuggestions(list);
+          setShowContractDropdown(list.length > 0);
+        })
+        .catch(console.error)
+        .finally(() => setContractLoading(false));
+    } else {
+      setShowContractDropdown(true);
+    }
+  };
+
+  // Initial Pre-fill for ARC Contract if queryContractId is present
+  useEffect(() => {
+    if (!isContractOrderMode || !queryContractId) return;
+    fetch(`/api/contracts/${encodeURIComponent(queryContractId)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) selectContract(data);
+      })
+      .catch(console.error);
+  }, [isContractOrderMode, queryContractId]);
+
   // Debounced Linked Process RQ / Received Quotation Lookup
   useEffect(() => {
     const trimmed = rqSearchInput.trim();
@@ -393,6 +695,12 @@ export default function ProcessPoForm({ isContractOrder }) {
     const handleClickOutside = (e) => {
       if (rqRef.current && !rqRef.current.contains(e.target)) {
         setShowRqDropdown(false);
+      }
+      if (contractRef.current && !contractRef.current.contains(e.target)) {
+        setShowContractDropdown(false);
+      }
+      if (itemSearchRef.current && !itemSearchRef.current.contains(e.target)) {
+        setShowItemDropdown(false);
       }
       if (sellerRef.current && !sellerRef.current.contains(e.target)) {
         setShowSellerDropdown(false);
@@ -576,7 +884,7 @@ export default function ProcessPoForm({ isContractOrder }) {
     e.preventDefault();
 
     if (!poNo || !poNo.trim()) {
-      toast.error('Process PO Number is required');
+      toast.error(isContractOrderMode ? 'Process RO Number is required' : 'Process PO Number is required');
       return;
     }
 
@@ -605,12 +913,18 @@ export default function ProcessPoForm({ isContractOrder }) {
 
     setIsSaving(true);
     try {
+      const endpoint = isContractOrderMode ? '/api/process-ro' : '/api/process-po';
       const payload = {
+        ro_no: poNo.trim(),
         po_no: poNo.trim(),
         date_of_start: dateOfStart,
         date_of_end: dateOfEnd || null,
         received_q_id: isContractOrderMode ? null : (receivedQId || queryRqId || null),
         trade_id: isContractOrderMode ? null : (queryTradeId || null),
+        contract_id: isContractOrderMode && selectedContract ? selectedContract.id : null,
+        contract_ref: isContractOrderMode && selectedContract
+          ? (selectedContract.company_name || `ARC-${selectedContract.id}`)
+          : null,
         trade_type: 'BUY_PROCESS',
         seller: seller.trim(),
         party: party.trim(),
@@ -640,7 +954,7 @@ export default function ProcessPoForm({ isContractOrder }) {
         })
       };
 
-      const res = await fetch('/api/process-po', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -648,10 +962,11 @@ export default function ProcessPoForm({ isContractOrder }) {
 
       if (res.ok) {
         const data = await res.json();
+        const displayNo = data.ro_no || data.po_no || '';
         toast.success(
           isContractOrderMode
-            ? `Buy Process Contract Order ${data.po_no || ''} created successfully!`
-            : `Process Purchase Order ${data.po_no || ''} created successfully!`
+            ? `Buy Process Contract Order ${displayNo} created successfully!`
+            : `Process Purchase Order ${displayNo} created successfully!`
         );
         const destTradeId = data.trade_id || queryTradeId;
         navigate(destTradeId ? `/trade/${encodeURIComponent(destTradeId)}` : '/dashboard');
@@ -703,18 +1018,240 @@ export default function ProcessPoForm({ isContractOrder }) {
 
           {/* LINKED RECEIVED QUOTATION / PROCESS RQ BANNER & SELECTOR OR CONTRACT ORDER BADGE */}
           {isContractOrderMode ? (
-            <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1">
-                  <FileText size={12} className="text-amber-600" /> Direct Buy Process Contract Order
-                </span>
-                <p className="text-xs text-amber-800 font-semibold m-0">
-                  Direct entry mode (no auto-fill). Enter processor seller, client party, output products and raw materials. A new trade will be automatically registered with next-step delivery.
-                </p>
+            <div
+              className="border rounded-2xl p-5 space-y-4 shadow-2xs"
+              style={{
+                backgroundColor: 'rgba(217, 119, 6, 0.03)',
+                borderColor: 'rgba(217, 119, 6, 0.25)'
+              }}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/60 pb-3">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 text-amber-800">
+                    <FileText size={13} className="text-amber-600" /> Buy Process Contract Order Workflow
+                  </span>
+                  <p className="text-xs text-slate-600 font-medium m-0">
+                    Process RO No &rarr; Search ARC Contract &rarr; Search Item Code in ARC to auto-fill Seller, Party &amp; Target Products.
+                  </p>
+                </div>
+                {selectedContract && (
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-lg w-fit">
+                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                    <span>Linked: <strong>{selectedContract.company_name || `ARC-${selectedContract.id}`}</strong></span>
+                    <span className="text-emerald-300">|</span>
+                    <span className="text-[10px] font-mono text-emerald-700">ARC-{selectedContract.id}</span>
+                    {contractItems.length > 0 && (
+                      <>
+                        <span className="text-emerald-300">|</span>
+                        <span className="text-[10px] text-blue-700 font-bold">{contractItems.length} catalog items</span>
+                      </>
+                    )}
+                  </span>
+                )}
               </div>
-              <span className="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-lg border border-amber-300 whitespace-nowrap">
-                Direct Trade Mode
-              </span>
+
+              {/* The 3 Sequential Setup Fields: 1. Process No -> 2. Search Arc -> 3. Search Item Code */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                {/* 1. Process RO No */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-amber-200 text-amber-900 text-[10px] font-black inline-flex items-center justify-center">1</span>
+                    Process RO No. <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. PRO-0001"
+                    value={poNo}
+                    onChange={(e) => setPoNo(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                  />
+                </div>
+
+                {/* 2. Search for ARC */}
+                <div ref={contractRef} className="relative">
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-amber-200 text-amber-900 text-[10px] font-black inline-flex items-center justify-center">2</span>
+                    Search for ARC <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Type to search ARC (Company, Party, ID)..."
+                      value={contractInput}
+                      onChange={(e) => {
+                        setContractInput(e.target.value);
+                        setShowContractDropdown(true);
+                      }}
+                      onFocus={handleContractFocus}
+                      className="w-full pl-8 pr-8 py-2 bg-[white] border border-amber-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs text-slate-800 placeholder-slate-400"
+                      autoComplete="off"
+                    />
+                    <Search size={14} className="absolute left-2.5 top-2.5 text-amber-600" />
+                    {selectedContract && (
+                      <button
+                        type="button"
+                        onClick={clearContract}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
+                        title="Clear ARC Contract"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dropdown for ARC contracts */}
+                  {showContractDropdown && (
+                    <div className="absolute left-0 z-50 w-full sm:w-96 mt-1 bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto text-xs divide-y divide-slate-100">
+                      {contractLoading ? (
+                        <div className="p-3 text-center text-slate-400 flex items-center justify-center gap-2">
+                          <RefreshCw size={13} className="animate-spin text-amber-600" /> Loading contracts...
+                        </div>
+                      ) : contractSuggestions.length > 0 ? (
+                        contractSuggestions.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              selectContract(c);
+                            }}
+                            className="w-full text-left p-3 hover:bg-amber-50/60 transition-colors cursor-pointer flex flex-col gap-1"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-slate-900 truncate">
+                                {c.company_name || 'Unnamed Company'}
+                              </span>
+                              <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 rounded border border-amber-300 shrink-0">
+                                {c.type || 'buy process'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                              <span className="font-mono font-bold text-slate-600">ARC-{c.id}</span>
+                              {c.buyer_name && (
+                                <>
+                                  <span>&bull;</span>
+                                  <span>Processor: <strong className="text-slate-700">{c.buyer_name}</strong></span>
+                                </>
+                              )}
+                              {c.party_name && (
+                                <>
+                                  <span>&bull;</span>
+                                  <span>Party: <strong className="text-slate-700">{c.party_name}</strong></span>
+                                </>
+                              )}
+                            </div>
+                          </button>
+                        ))
+                      ) : contractNotFound ? (
+                        <div className="p-3 text-slate-500 text-center flex items-center justify-center gap-1.5">
+                          <AlertCircle size={14} className="text-amber-500 shrink-0" />
+                          <span>No &apos;buy process&apos; contracts found matching &quot;{contractInput}&quot;</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Search for Item Code in ARC */}
+                <div ref={itemSearchRef} className="relative">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-emerald-200 text-emerald-900 text-[10px] font-black inline-flex items-center justify-center">3</span>
+                      Search Item Code (in ARC)
+                    </label>
+                    {selectedContract && contractItems.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={addAllItemsFromArc}
+                        className="text-[10px] text-amber-800 hover:text-amber-950 font-bold underline cursor-pointer"
+                        title="Add all process items from this ARC contract"
+                      >
+                        + Add All ({contractItems.length})
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder={
+                        !selectedContract
+                          ? 'Select ARC contract first...'
+                          : `Search item code in ARC (${contractItems.length} items)...`
+                      }
+                      disabled={!selectedContract}
+                      value={itemSearchInput}
+                      onChange={(e) => {
+                        setItemSearchInput(e.target.value);
+                        setShowItemDropdown(true);
+                      }}
+                      onFocus={handleItemSearchFocus}
+                      className="w-full pl-8 pr-8 py-2 bg-[white] border border-emerald-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs text-slate-800 placeholder-slate-400 disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      autoComplete="off"
+                    />
+                    <Search size={14} className="absolute left-2.5 top-2.5 text-emerald-600" />
+                    {itemSearchInput && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setItemSearchInput('');
+                          setShowItemDropdown(false);
+                        }}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dropdown for Item Code search results */}
+                  {showItemDropdown && selectedContract && (
+                    <div className="absolute right-0 z-50 w-full sm:w-96 mt-1 bg-[white] border border-slate-300 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto text-xs divide-y divide-slate-100">
+                      {itemSuggestions.length > 0 ? (
+                        itemSuggestions.map((item) => (
+                          <button
+                            key={item.id ? `${item.item_code}-${item.id}` : item.item_code}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              addItemFromArc(item);
+                            }}
+                            className="w-full text-left p-3 hover:bg-emerald-50/60 transition-colors cursor-pointer flex flex-col gap-1"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-bold text-xs text-slate-900">{item.item_code}</span>
+                                {item.processname && (
+                                  <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-violet-100 text-violet-800 rounded border border-violet-200">
+                                    {item.processname}
+                                  </span>
+                                )}
+                              </div>
+                              {item.price != null && (
+                                <span className="font-bold text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                                  ₹{parseFloat(item.price).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-500 truncate">
+                              {item.description || item.long_description || '—'}
+                              {item.drawing_number && (
+                                <span className="text-slate-400 font-mono"> &bull; DWG: {item.drawing_number}</span>
+                              )}
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="p-3 text-center text-xs text-slate-500">
+                          No items found matching &quot;{itemSearchInput}&quot; in ARC contract
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+              </div>
             </div>
           ) : (
           <div
@@ -810,20 +1347,22 @@ export default function ProcessPoForm({ isContractOrder }) {
             {/* BASIC HEADER METADATA SECTION */}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
               
-              {/* Process PO No */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Process PO No. <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. PPO-0001"
-                  value={poNo}
-                  onChange={(e) => setPoNo(e.target.value)}
-                  className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
-                />
-              </div>
+              {/* Process PO No (shown here in normal mode; in contract order mode it is in workflow step 1 above) */}
+              {!isContractOrderMode && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Process PO No. <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. PPO-0001"
+                    value={poNo}
+                    onChange={(e) => setPoNo(e.target.value)}
+                    className="w-full px-3.5 py-2  bg-[white] border border-slate-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[var(--theme-color)] transition-all"
+                  />
+                </div>
+              )}
 
               {/* Start Date */}
               <div>
@@ -1200,8 +1739,15 @@ export default function ProcessPoForm({ isContractOrder }) {
                   })}
                 </div>
               ) : (
-                <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl bg-[white] text-slate-400 text-xs font-medium">
-                  No Target Items added. Click "Add Target Item" to select target product code, quantity & price.
+                <div className="p-6 text-center border border-dashed border-emerald-300/80 rounded-xl bg-[white] text-slate-500 text-xs font-medium space-y-1">
+                  <p className="font-bold text-slate-700 m-0">No Target Items added yet.</p>
+                  <p className="text-[11px] text-slate-400 m-0">
+                    {isContractOrderMode
+                      ? selectedContract
+                        ? 'Search an item code from the ARC contract in step 3 above to add target output products with agreed rates.'
+                        : 'Select an ARC contract in step 2 above, then search item code to add target products.'
+                      : 'Click "Add Target Item" to select target product code, quantity & price.'}
+                  </p>
                 </div>
               )}
             </div>

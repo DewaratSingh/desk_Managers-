@@ -1,5 +1,6 @@
-import { FileText, List, Edit2, Plus, ExternalLink, Building2, User } from 'lucide-react';
+import { FileText, List, Edit2, Plus, ExternalLink, Building2, User, Truck } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import ProcessRoPanel from './ProcessRoPanel';
 
 const fmtDate = (d) => {
   if (!d) return '—';
@@ -19,6 +20,10 @@ const statusColor = (s) => {
 };
 
 export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
+  if (releaseOrder?._is_process_ro || releaseOrder?.source_items?.length > 0 || (releaseOrder?.ro_no && String(releaseOrder.ro_no).startsWith('PRO-'))) {
+    return <ProcessRoPanel releaseOrder={releaseOrder} tradeId={tradeId} />;
+  }
+
   // Prompt card when PO exists but no RO yet
   if (!releaseOrder) {
     if (!purchaseOrder) return null;
@@ -66,6 +71,14 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
           <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
             {releaseOrder.ro_no}
           </span>
+          {/* Dispatch / Delivery Note shortcut */}
+          <Link
+            to={`/addDeliveryNote?trade_id=${encodeURIComponent(tradeId)}`}
+            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-white rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            style={{ backgroundColor: 'var(--theme-color)' }}
+          >
+            <Truck size={11} /> Create Delivery Note
+          </Link>
           {/* View full detail page */}
           <Link
             to={`/release-order/${encodeURIComponent(releaseOrder.ro_no)}`}
@@ -154,10 +167,29 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
                   return (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3">
-                        <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border"
-                          style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' }}>
-                          {item.item_code}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-xs px-1.5 py-0.5 rounded border"
+                              style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)', backgroundColor: 'rgba(217,53,45,0.05)' }}>
+                              {item.item_code}
+                            </span>
+                            {item.drawing_number && (
+                              <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded">
+                                DRW: {item.drawing_number}
+                              </span>
+                            )}
+                            {item.process_name && (
+                              <span className="text-[10px] text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.2 rounded font-bold">
+                                {item.process_name}
+                              </span>
+                            )}
+                          </div>
+                          {item.shipping_address && (
+                            <span className="text-[10px] text-slate-400 truncate max-w-xs" title={item.shipping_address}>
+                              Ship: {item.shipping_address}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-slate-700 font-medium max-w-[160px] truncate">{item.description || '—'}</td>
                       <td className="px-4 py-3 text-right font-bold text-slate-800">{item.quantity}</td>

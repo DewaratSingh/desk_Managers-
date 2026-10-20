@@ -17,6 +17,7 @@ router.get('/', async (req, res) => {
           (SELECT prq.quotation_number FROM "processReceivedQuotation" prq WHERE prq.trade_id = t.id AND prq.company_id = t.company_id ORDER BY prq.id LIMIT 1),
           (SELECT prfq.rfq_number FROM "processRFQ" prfq WHERE prfq.trade_id = t.id AND prfq.company_id = t.company_id ORDER BY prfq.id LIMIT 1),
           (SELECT ro.ro_no FROM release_orders ro WHERE ro.trade_id = t.id AND ro.company_id = t.company_id ORDER BY ro.id LIMIT 1),
+          (SELECT pro.ro_no FROM process_ro pro WHERE pro.trade_id = t.id AND pro.company_id = t.company_id ORDER BY pro.id LIMIT 1),
           (SELECT pr.number FROM rq_process pr WHERE pr.trade_id = t.id AND pr.company_id = t.company_id ORDER BY pr.id LIMIT 1),
           (SELECT ppo.po_no FROM process_po ppo WHERE ppo.trade_id = t.id AND ppo.company_id = t.company_id ORDER BY ppo.id LIMIT 1),
           (SELECT po.po_no FROM purchase_orders po WHERE po.trade_id = t.id AND po.company_id = t.company_id ORDER BY po.id LIMIT 1),
@@ -29,6 +30,7 @@ router.get('/', async (req, res) => {
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name) FROM "processReceivedQuotation" prq JOIN customers c ON prq.customer_id = c.id WHERE prq.trade_id = t.id AND prq.company_id = t.company_id ORDER BY prq.id LIMIT 1),
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name) FROM "processRFQ" prfq JOIN customers c ON prfq.customer_id = c.id WHERE prfq.trade_id = t.id AND prfq.company_id = t.company_id ORDER BY prfq.id LIMIT 1),
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name) FROM release_orders ro JOIN customers c ON ro.customer_id = c.id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id ORDER BY ro.id LIMIT 1),
+          (SELECT NULLIF(pro.party, '') FROM process_ro pro WHERE pro.trade_id = t.id AND pro.company_id = t.company_id ORDER BY pro.id LIMIT 1),
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name, NULLIF(pr.party, '')) FROM rq_process pr LEFT JOIN customers c ON pr.customer_id = c.id WHERE pr.trade_id = t.id AND pr.company_id = t.company_id ORDER BY pr.id LIMIT 1),
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name, NULLIF(ppo.party, '')) FROM process_po ppo LEFT JOIN "processReceivedQuotation" prq ON ppo.received_q_id = prq.id LEFT JOIN customers c ON prq.customer_id = c.id WHERE ppo.trade_id = t.id AND ppo.company_id = t.company_id ORDER BY ppo.id LIMIT 1),
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name) FROM purchase_orders po LEFT JOIN received_quotations rq ON po.received_quotation_id = rq.id LEFT JOIN customers c ON rq.customer_id = c.id WHERE po.trade_id = t.id AND po.company_id = t.company_id ORDER BY po.id LIMIT 1),
@@ -40,6 +42,7 @@ router.get('/', async (req, res) => {
           (SELECT b.name FROM "processReceivedQuotation" prq JOIN buyers b ON prq.buyer_id = b.id WHERE prq.trade_id = t.id AND prq.company_id = t.company_id ORDER BY prq.id LIMIT 1),
           (SELECT b.name FROM "processRFQ" prfq JOIN buyers b ON prfq.buyer_id = b.id WHERE prfq.trade_id = t.id AND prfq.company_id = t.company_id ORDER BY prfq.id LIMIT 1),
           (SELECT b.name FROM release_orders ro JOIN buyers b ON ro.buyer_id = b.id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id ORDER BY ro.id LIMIT 1),
+          (SELECT NULLIF(pro.seller, '') FROM process_ro pro WHERE pro.trade_id = t.id AND pro.company_id = t.company_id ORDER BY pro.id LIMIT 1),
           (SELECT COALESCE(b.name, NULLIF(pr.seller, '')) FROM rq_process pr LEFT JOIN buyers b ON pr.party_id = b.id WHERE pr.trade_id = t.id AND pr.company_id = t.company_id ORDER BY pr.id LIMIT 1),
           (SELECT COALESCE(b.name, NULLIF(ppo.seller, '')) FROM process_po ppo LEFT JOIN "processReceivedQuotation" prq ON ppo.received_q_id = prq.id LEFT JOIN buyers b ON prq.buyer_id = b.id WHERE ppo.trade_id = t.id AND ppo.company_id = t.company_id ORDER BY ppo.id LIMIT 1),
           (SELECT b.name FROM purchase_orders po LEFT JOIN received_quotations rq ON po.received_quotation_id = rq.id LEFT JOIN buyers b ON rq.buyer_id = b.id WHERE po.trade_id = t.id AND po.company_id = t.company_id ORDER BY po.id LIMIT 1),
@@ -52,6 +55,7 @@ router.get('/', async (req, res) => {
               COALESCE(
                 (SELECT SUM(poi.quantity) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = t.id AND po.company_id = t.company_id),
                 (SELECT SUM(roi.quantity) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id),
+                (SELECT SUM(proi.qty) FROM process_ro pro JOIN process_ro_target_item proi ON pro.id = proi.process_ro_id WHERE pro.trade_id = t.id AND pro.company_id = t.company_id),
                 (SELECT SUM(ppi.qty) FROM process_po pp JOIN process_po_target_item ppi ON pp.id = ppi.process_po_id WHERE pp.trade_id = t.id AND pp.company_id = t.company_id),
                 (SELECT SUM(poi.target_qty) FROM process_po pp JOIN process_po_item poi ON pp.id = poi.process_po_id WHERE pp.trade_id = t.id AND pp.company_id = t.company_id),
                 0
@@ -89,6 +93,7 @@ router.get('/', async (req, res) => {
         t.trade_id ILIKE $${idx}
         OR EXISTS (SELECT 1 FROM purchase_orders po WHERE po.trade_id = t.id AND po.company_id = t.company_id AND po.po_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM release_orders ro WHERE ro.trade_id = t.id AND ro.company_id = t.company_id AND ro.ro_no ILIKE $${idx})
+        OR EXISTS (SELECT 1 FROM process_ro pro WHERE pro.trade_id = t.id AND pro.company_id = t.company_id AND (pro.ro_no ILIKE $${idx} OR pro.party ILIKE $${idx} OR pro.seller ILIKE $${idx}))
         OR EXISTS (SELECT 1 FROM delivery_notes dn WHERE dn.trade_id = t.id AND dn.company_id = t.company_id AND dn.delivery_note_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM quotations q WHERE q.trade_id = t.id AND q.company_id = t.company_id AND q.quotation_no ILIKE $${idx})
         OR EXISTS (SELECT 1 FROM received_quotations rq WHERE rq.trade_id = t.id AND rq.company_id = t.company_id AND rq.received_quotation_no ILIKE $${idx})

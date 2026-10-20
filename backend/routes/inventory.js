@@ -205,7 +205,7 @@ router.get('/item/:item_code/availability', async (req, res) => {
   }
 });
 
-// POST Create or merge inventory entry
+// POST Create inventory entry
 router.post('/', async (req, res) => {
   const {
     item_code,
@@ -213,8 +213,7 @@ router.post('/', async (req, res) => {
     cost_price,
     location,
     status,
-    history,
-    selected_inventory_id // if merging into existing bin
+    history
   } = req.body || {};
 
   if (!item_code) return res.status(400).json({ error: 'item_code is required' });
@@ -228,24 +227,22 @@ router.post('/', async (req, res) => {
     if (itemRes.rows.length === 0) throw new Error(`Item ${item_code} not found`);
     const itemDbId = itemRes.rows[0].id;
 
-    let targetInvId = selected_inventory_id ? parseInt(selected_inventory_id) : null;
     const targetLocation = location || 'Default Location';
     
     // Find or create inventory bin
-    if (!targetInvId) {
-      const invCheck = await client.query(
-        'SELECT id FROM inventory WHERE LOWER(location) = LOWER($1) AND company_id = $2',
+    let targetInvId = null;
+    const invCheck = await client.query(
+      'SELECT id FROM inventory WHERE LOWER(location) = LOWER($1) AND company_id = $2',
+      [targetLocation, companyId]
+    );
+    if (invCheck.rows.length > 0) {
+      targetInvId = invCheck.rows[0].id;
+    } else {
+      const invInsert = await client.query(
+        'INSERT INTO inventory (location, company_id) VALUES ($1, $2) RETURNING id',
         [targetLocation, companyId]
       );
-      if (invCheck.rows.length > 0) {
-        targetInvId = invCheck.rows[0].id;
-      } else {
-        const invInsert = await client.query(
-          'INSERT INTO inventory (location, company_id) VALUES ($1, $2) RETURNING id',
-          [targetLocation, companyId]
-        );
-        targetInvId = invInsert.rows[0].id;
-      }
+      targetInvId = invInsert.rows[0].id;
     }
 
     const addedQty = parseFloat(qty) || 0;
@@ -253,38 +250,13 @@ router.post('/', async (req, res) => {
     const targetStatus = status || 'In Inventory';
     const traceHistory = history || [];
 
-    // Check if we can merge into an existing trace row in that bin
-    const traceCheck = await client.query(
-      `SELECT id, qty, cost_price FROM trace 
-       WHERE item_code = $1 AND inventory_id = $2 AND LOWER(status) = LOWER($3) AND company_id = $4`,
-      [itemDbId, targetInvId, targetStatus, companyId]
+    // Always insert new trace row (no quantity merging when selecting same location)
+    const traceInsert = await client.query(
+      `INSERT INTO trace (item_code, qty, cost_price, inventory_id, history, status, company_id)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7) RETURNING id`,
+      [itemDbId, addedQty, addedPrice, targetInvId, JSON.stringify(traceHistory), targetStatus, companyId]
     );
-
-    let finalTraceId = null;
-    if (traceCheck.rows.length > 0) {
-      // Merge
-      const exRow = traceCheck.rows[0];
-      const exQty = parseFloat(exRow.qty) || 0;
-      const exPrice = parseFloat(exRow.cost_price) || 0;
-      const newQty = exQty + addedQty;
-      const newPrice = newQty > 0 ? ((exQty * exPrice) + (addedQty * addedPrice)) / newQty : addedPrice;
-
-      await client.query(
-        `UPDATE trace 
-         SET qty = $1, cost_price = $2 
-         WHERE id = $3 AND company_id = $4`,
-        [newQty, newPrice, exRow.id, companyId]
-      );
-      finalTraceId = exRow.id;
-    } else {
-      // Insert new trace row
-      const traceInsert = await client.query(
-        `INSERT INTO trace (item_code, qty, cost_price, inventory_id, history, status, company_id)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7) RETURNING id`,
-        [itemDbId, addedQty, addedPrice, targetInvId, JSON.stringify(traceHistory), targetStatus, companyId]
-      );
-      finalTraceId = traceInsert.rows[0].id;
-    }
+    const finalTraceId = traceInsert.rows[0].id;
 
     await client.query('COMMIT');
     

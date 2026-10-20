@@ -291,24 +291,22 @@ export default function CreateContractOrderForm() {
   };
 
   const fetchContractItems = async (contract) => {
-    if (!contract) return [];
+    if (!contract || !contract.id) return [];
     try {
-      let items = [];
-      if (contract.type === 'CUSTOMER') {
-        const res = await fetch(`/api/customer-contracts/${contract.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          items = data.items || [];
-        }
-      } else {
-        const res = await fetch(`/api/vendor-contracts/${contract.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          items = data.items || [];
-        }
+      const isProcess = contract.type === 'buy process' || contract.type === 'sell process';
+      const endpoint = isProcess
+        ? `/api/contracts/${contract.id}/process-items`
+        : `/api/contracts/${contract.id}`;
+      
+      const res = await fetch(endpoint);
+      if (res.ok) {
+        const data = await res.json();
+        const items = isProcess ? (Array.isArray(data) ? data : []) : (data.items || []);
+        setContractItems(items);
+        return items;
       }
-      setContractItems(items);
-      return items;
+      setContractItems([]);
+      return [];
     } catch (err) {
       console.error('Error fetching contract items:', err);
       setContractItems([]);

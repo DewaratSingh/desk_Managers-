@@ -17,7 +17,7 @@ import { toast } from 'react-toastify';
 const renderIconForStep = (step) => {
   if (step.type === 'SELL') return <Truck size={20} className="text-emerald-500" />;
   if (step.type === 'BUY') return <Briefcase size={20} className="text-blue-500" />;
-  if (step.type === 'PROCESS_PO' || step.action === 'Manufacture Production') return <GitBranch size={20} className="text-purple-500" />;
+  if (step.type === 'PROCESS_PO' || step.type === 'PROCESS_RO' || step.action === 'Manufacture Production' || step.action === 'Process RO Delivery') return <GitBranch size={20} className="text-purple-500" />;
   return <GitCommit size={20} className="text-amber-500" />;
 };
 
@@ -25,6 +25,7 @@ const getStepTitle = (step) => {
   if (step.type === 'SELL') return 'Sell Delivery (Dispatched)';
   if (step.type === 'BUY') return 'Purchased Stock';
   if (step.action === 'Manufacture Production') return 'Manufacture Production';
+  if (step.action === 'Process RO Delivery' || step.type === 'PROCESS_RO') return 'Process RO Delivery (Produced)';
   if (step.type === 'MERGED_STOCK') return 'Merged Stock Allocation';
   if (step.type) return step.type;
   return 'Trace Activity';
@@ -32,7 +33,7 @@ const getStepTitle = (step) => {
 
 // A recursive component that renders a linear sequence of history steps.
 // If a step contains 'sources', it branches horizontally.
-const HistoryBranch = ({ historyArray }) => {
+const HistoryBranch = ({ historyArray, isRoot = false }) => {
   if (!Array.isArray(historyArray) || historyArray.length === 0) {
     return null;
   }
@@ -46,13 +47,18 @@ const HistoryBranch = ({ historyArray }) => {
         const hasSources = Array.isArray(step.sources) && step.sources.length > 0;
         const isLast = idx === reversedHistory.length - 1 && !hasSources;
         const isSellStep = step.type === 'SELL';
+        const isTrueRoot = isRoot && idx === 0;
 
         return (
           <div key={idx} className="flex flex-col items-center w-full">
             {/* The Node Card */}
             <div
               className={`bg-[var(--bg-form)] border shadow-md rounded-2xl w-[340px] relative z-10 transition-transform hover:-translate-y-1 hover:shadow-xl cursor-default animate-fade-in-up ${
-                isSellStep ? 'border-emerald-400 ring-2 ring-emerald-400/20' : 'border-slate-200 hover:border-slate-300'
+                isTrueRoot
+                  ? 'border-emerald-500 ring-4 ring-emerald-500/25 shadow-xl'
+                  : isSellStep
+                  ? 'border-emerald-400 ring-2 ring-emerald-400/20'
+                  : 'border-slate-200 hover:border-slate-300'
               }`}
             >
               <div
@@ -65,9 +71,16 @@ const HistoryBranch = ({ historyArray }) => {
                     {renderIconForStep(step)}
                   </div>
                   <div>
-                    <span className={`font-black text-sm ${isSellStep ? 'text-emerald-900' : 'text-slate-800'}`}>
-                      {getStepTitle(step)}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`font-black text-sm ${isSellStep ? 'text-emerald-900' : 'text-slate-800'}`}>
+                        {getStepTitle(step)}
+                      </span>
+                      {isTrueRoot && (
+                        <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-emerald-600 text-white shadow-xs">
+                          Root Node
+                        </span>
+                      )}
+                    </div>
                     {isSellStep && step.price !== undefined && (
                       <span className="block text-xs font-mono font-black text-emerald-600">
                         Sell Price: ₹{parseFloat(step.price).toFixed(2)}
@@ -120,7 +133,7 @@ const HistoryBranch = ({ historyArray }) => {
                     {step.sources.map((srcArray, srcIdx) => (
                       <div key={srcIdx} className="flex flex-col items-center relative">
                         <div className="w-0.5 h-6 bg-slate-300 absolute -top-6"></div>
-                        <HistoryBranch historyArray={srcArray} />
+                        <HistoryBranch historyArray={srcArray} isRoot={false} />
                       </div>
                     ))}
                   </div>
@@ -151,6 +164,31 @@ export default function DeliveryHistory() {
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const containerRef = useRef(null);
+  const contentRef = useRef(null);
+
+  const autoCenterView = () => {
+    if (!containerRef.current || !contentRef.current) {
+      setPosition({ x: 0, y: 50 });
+      setScale(1);
+      return;
+    }
+    const containerW = containerRef.current.clientWidth;
+    const contentW = contentRef.current.scrollWidth;
+    let initialScale = 1;
+    if (contentW > containerW && containerW > 0) {
+      // Fit wide branch tree comfortably within the viewport with margin
+      initialScale = Math.max(0.4, Math.min(1, (containerW - 80) / contentW));
+    }
+    setPosition({ x: 0, y: 50 });
+    setScale(initialScale);
+  };
+
+  useEffect(() => {
+    if (historyRecord) {
+      const timer = setTimeout(autoCenterView, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [historyRecord]);
 
   useEffect(() => {
     fetchHistoryData();
@@ -218,8 +256,7 @@ export default function DeliveryHistory() {
   };
 
   const handleResetView = () => {
-    setPosition({ x: 0, y: 50 });
-    setScale(1);
+    autoCenterView();
   };
 
   const historyArray = Array.isArray(historyRecord?.history)
@@ -280,10 +317,10 @@ export default function DeliveryHistory() {
           <button
             onClick={handleResetView}
             className="flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-            title="Reset Pan & Zoom"
+            title="Center Root Node & Reset Zoom"
           >
             <RotateCcw size={12} />
-            Reset View
+            Center Root Node
           </button>
           <div className="flex items-center gap-2 text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
             <Move size={14} className="text-slate-500" />
@@ -319,13 +356,14 @@ export default function DeliveryHistory() {
           </div>
         ) : (
           <div
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-max min-w-full flex justify-center pt-8 pb-32 select-none"
+            ref={contentRef}
+            className="absolute top-0 left-1/2 origin-top flex flex-col items-center pt-8 pb-32 select-none transition-transform duration-75 ease-linear"
             style={{
               transform: `translate(calc(-50% + ${position.x}px), ${position.y}px) scale(${scale})`,
-              transformOrigin: 'top center'
+              width: 'max-content'
             }}
           >
-            <HistoryBranch historyArray={historyArray} />
+            <HistoryBranch historyArray={historyArray} isRoot={true} />
           </div>
         )}
       </div>

@@ -34,6 +34,15 @@ export default function ArcView() {
   const [companyName, setCompanyName] = useState('');
   const [buyerId, setBuyerId] = useState('');
   const [contractType, setContractType] = useState('buy');
+
+  // Party / Company Auto-complete state
+  const [partyInput, setPartyInput] = useState('');
+  const [selectedParty, setSelectedParty] = useState(null);
+  const [partySuggestions, setPartySuggestions] = useState([]);
+  const [showPartyDropdown, setShowPartyDropdown] = useState(false);
+  const [partyNotFound, setPartyNotFound] = useState(false);
+  const partyManualRef = useRef(false);
+  const partyRef = useRef(null);
   
   // Buyer Auto-complete state
   const [buyerInput, setBuyerInput] = useState('');
@@ -72,12 +81,25 @@ export default function ArcView() {
         const c = location.state.editingContract;
         setEditingContract(c);
         setCompanyName(c.company_name || '');
+        setPartyInput(c.party_name || c.company_name || '');
+        setSelectedParty(
+          c.customer_id
+            ? {
+                db_id: c.customer_id,
+                name: c.party_name || c.company_name,
+                id: c.party_code || '',
+                address: c.party_address || ''
+              }
+            : (c.company_name ? { name: c.company_name } : null)
+        );
         setBuyerId(c.buyer_id || '');
         setBuyerInput(c.buyer_name ? `${c.buyer_name} (${c.email || ''})` : (c.buyer_id || ''));
         setContractType(c.type || 'buy');
       } else {
         setEditingContract(null);
         setCompanyName('');
+        setPartyInput('');
+        setSelectedParty(null);
         setBuyerId('');
         setBuyerInput('');
         setContractType('buy');
@@ -98,6 +120,9 @@ export default function ArcView() {
       }
       if (buyerRef.current && !buyerRef.current.contains(event.target)) {
         setShowBuyerDropdown(false);
+      }
+      if (partyRef.current && !partyRef.current.contains(event.target)) {
+        setShowPartyDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -121,6 +146,33 @@ export default function ArcView() {
     }, 200);
     return () => clearTimeout(delayDebounceFn);
   }, [buyerInput]);
+
+  const searchParties = (query) => {
+    if (!query) {
+      setPartySuggestions([]);
+      setPartyNotFound(false);
+      return;
+    }
+    fetch(`/api/customers?q=${encodeURIComponent(query)}&limit=6`)
+      .then(r => r.json())
+      .then(data => {
+        const results = Array.isArray(data) ? data : [];
+        setPartySuggestions(results);
+        setPartyNotFound(results.length === 0);
+      })
+      .catch((err) => {
+        console.error('Error fetching parties:', err);
+        setPartySuggestions([]);
+      });
+  };
+
+  useEffect(() => {
+    if (!partyManualRef.current) return;
+    const delayDebounceFn = setTimeout(() => {
+      searchParties(partyInput.trim());
+    }, 200);
+    return () => clearTimeout(delayDebounceFn);
+  }, [partyInput]);
 
   const fetchContracts = async (searchVal = searchQuery) => {
     setIsLoading(true);
@@ -186,10 +238,43 @@ export default function ArcView() {
     setBuyerNotFound(false);
   };
 
+  const handlePartyInput = (value) => {
+    partyManualRef.current = true;
+    setPartyInput(value);
+    setCompanyName(value);
+    setSelectedParty(null);
+    setShowPartyDropdown(true);
+  };
+
+  const selectParty = (p) => {
+    partyManualRef.current = false;
+    setSelectedParty(p);
+    setCompanyName(p.name);
+    setPartyInput(p.name);
+    setShowPartyDropdown(false);
+    setPartyNotFound(false);
+  };
+
+  const clearParty = () => {
+    partyManualRef.current = false;
+    setSelectedParty(null);
+    setCompanyName('');
+    setPartyInput('');
+    setPartySuggestions([]);
+    setShowPartyDropdown(false);
+    setPartyNotFound(false);
+  };
+
   const handleSaveContract = async (e) => {
     e.preventDefault();
     setError(null);
     
+    const finalCompanyName = selectedParty ? selectedParty.name : companyName.trim();
+    if (!finalCompanyName) {
+      setError('Please select or enter a valid Party / Company Name');
+      return;
+    }
+
     if (!buyerId) {
       setError('Please select and link a valid Buyer');
       return;
@@ -198,7 +283,12 @@ export default function ArcView() {
     setIsLoading(true);
     
     try {
-      const payload = { company_name: companyName, buyer_id: buyerId, type: contractType };
+      const payload = { 
+        company_name: finalCompanyName, 
+        customer_id: selectedParty?.db_id || null,
+        buyer_id: buyerId, 
+        type: contractType 
+      };
       let res;
       if (editingContract) {
         res = await fetch(`/api/contracts/${editingContract.id}`, {
@@ -474,6 +564,11 @@ export default function ArcView() {
                     </div>
                   </div>
                   <h3 className="font-bold text-lg text-slate-900 mb-1">{contract.company_name}</h3>
+                  {contract.party_code && (
+                    <div className="text-[11px] font-semibold text-slate-500 mb-1.5">
+                      Party Code: <span className="font-mono text-blue-600 font-bold">{contract.party_code}</span>
+                    </div>
+                  )}
                   {contract.buyer_name && (
                     <div className="text-xs font-semibold text-slate-500 mb-2">
                       Buyer: <span className="text-slate-700">{contract.buyer_name}</span> {contract.email ? `(${contract.email})` : ''}
@@ -524,18 +619,99 @@ export default function ArcView() {
 
           <div className=" bg-[white] border border-slate-300 rounded-lg p-6 shadow-sm">
             <form onSubmit={handleSaveContract} className="space-y-4">
-              <div>
+              <div ref={partyRef} className="relative">
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                  Contract / Company Name <span className="text-red-500">*</span>
+                  Party / Company Name <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
-                  placeholder="e.g. Acme Corp Annual Rate"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Search party by name or party code..."
+                    value={partyInput}
+                    onChange={(e) => handlePartyInput(e.target.value)}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = 'var(--theme-color)';
+                      partyManualRef.current = true;
+                      setShowPartyDropdown(true);
+                      if (partyInput.trim()) searchParties(partyInput.trim());
+                    }}
+                    onBlur={(e) => e.target.style.borderColor = 'rgb(203, 213, 225)'}
+                    className="w-full px-3 py-2 pr-8 border border-slate-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                    autoComplete="off"
+                  />
+                  {(partyInput || selectedParty) && (
+                    <button
+                      type="button"
+                      onClick={clearParty}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-0.5 rounded cursor-pointer"
+                      title="Clear selection"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {showPartyDropdown && partySuggestions.length > 0 && (
+                  <div className="absolute z-30 w-full mt-1 bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                    {partySuggestions.map(p => (
+                      <button
+                        key={p.db_id || p.id}
+                        type="button"
+                        onClick={() => selectParty(p)}
+                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-900">{p.name}</span>
+                          {p.id && (
+                            <span className="font-mono text-[10px] text-blue-600 font-semibold bg-blue-50 px-1.5 py-0.5 rounded">
+                              {p.id}
+                            </span>
+                          )}
+                        </div>
+                        {p.address && (
+                          <div className="text-[10px] text-slate-500 truncate mt-0.5">{p.address}</div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {partyNotFound && partyInput.trim() && (
+                  <div className="mt-2 flex items-center justify-between gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-bold">
+                    <div className="flex items-center gap-1.5">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>No party found for "{partyInput}".</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/party/form')}
+                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[9px] transition-colors cursor-pointer uppercase tracking-wider"
+                    >
+                      Add Party
+                    </button>
+                  </div>
+                )}
+
+                {selectedParty && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
+                    <span className="text-emerald-600 font-bold">✓ Party Linked</span>
+                    <span className="text-slate-300">|</span>
+                    <span className="text-slate-800">{selectedParty.name}</span>
+                    {selectedParty.id && (
+                      <>
+                        <span className="text-slate-300">|</span>
+                        <span className="font-mono text-blue-600">{selectedParty.id}</span>
+                      </>
+                    )}
+                    {selectedParty.address && (
+                      <>
+                        <span className="text-slate-300">|</span>
+                        <span className="text-slate-500 truncate max-w-xs">{selectedParty.address}</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -662,6 +838,12 @@ export default function ArcView() {
           <div className=" bg-[white] border border-slate-300 rounded-xl p-6 flex justify-between items-start shadow-sm">
             <div>
               <h1 className="text-2xl font-bold text-slate-900 m-0">{selectedContract.company_name}</h1>
+              {selectedContract.party_code && (
+                <div className="text-xs font-semibold text-slate-500 mt-1">
+                  Party Code: <span className="font-mono text-blue-600 font-bold">{selectedContract.party_code}</span>
+                  {selectedContract.party_address && <span className="text-slate-400 font-normal"> &bull; {selectedContract.party_address}</span>}
+                </div>
+              )}
               {selectedContract.buyer_name && (
                 <div className="mt-2 space-y-1">
                   <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">

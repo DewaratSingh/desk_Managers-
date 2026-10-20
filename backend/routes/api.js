@@ -27,6 +27,7 @@ const manufactureRouter = require('./manufacture');
 
 const rqProcessRouter = require('./rq-process');
 const processPORouter = require('./process-po');
+const processRoRouter = require('./process-ro');
 const processRfqRouter = require('./process-rfq');
 const processReceivedQuotationRouter = require('./process-received-quotation');
 const historyRouter = require('./history');
@@ -67,6 +68,7 @@ router.use('/manufacture', manufactureRouter);
 
 router.use('/rq-process', rqProcessRouter);
 router.use('/process-po', processPORouter);
+router.use('/process-ro', processRoRouter);
 router.use('/process-rfqs', processRfqRouter);
 router.use('/process-rfq', processRfqRouter);
 router.use('/process-received-quotations', processReceivedQuotationRouter);

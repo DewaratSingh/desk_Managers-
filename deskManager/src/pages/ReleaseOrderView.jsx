@@ -146,8 +146,22 @@ export default function ReleaseOrderView() {
   const fetchRo = async () => {
     setIsLoading(true); setError(null);
     try {
+      if (String(ro_no).startsWith('PRO-')) {
+        const res = await fetch(`/api/process-ro/${encodeURIComponent(ro_no)}`);
+        if (res.ok) {
+          setRo(await res.json());
+          return;
+        }
+      }
       const res = await fetch(`/api/release-orders/${encodeURIComponent(ro_no)}`);
-      if (!res.ok) throw new Error('Release order not found');
+      if (!res.ok) {
+        const procRes = await fetch(`/api/process-ro/${encodeURIComponent(ro_no)}`);
+        if (procRes.ok) {
+          setRo(await procRes.json());
+          return;
+        }
+        throw new Error('Release order not found');
+      }
       setRo(await res.json());
     } catch (err) { setError(err.message); }
     finally { setIsLoading(false); }

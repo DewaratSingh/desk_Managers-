@@ -2,18 +2,27 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // needed to access :contractId from parent
 const { pool } = require('../db');
 
-// GET all process items for a contract
+// GET all process items for a contract (with optional search query q)
 router.get('/', async (req, res) => {
   const { contractId } = req.params;
+  const { q } = req.query || {};
+  const limit = req.query.limit ? parseInt(req.query.limit) : 100;
   try {
-    const result = await pool.query(
-      `SELECT cip.*, i.item_code, i.description, i.drawing_number, i.long_description
-       FROM contract_items_process cip
-       JOIN items i ON cip.item_id = i.id
-       WHERE cip.contract_id = $1 AND cip.company_id = $2
-       ORDER BY cip.created_at DESC`,
-      [contractId, req.user.company_id]
-    );
+    let query = `
+      SELECT cip.*, i.item_code, i.description, i.drawing_number, i.long_description
+      FROM contract_items_process cip
+      JOIN items i ON cip.item_id = i.id
+      WHERE cip.contract_id = $1 AND cip.company_id = $2
+    `;
+    const params = [contractId, req.user.company_id];
+    if (q) {
+      query += ` AND (i.item_code ILIKE $3 OR i.description ILIKE $3 OR cip.processname ILIKE $3 OR i.drawing_number ILIKE $3)`;
+      params.push(`%${q}%`);
+    }
+    const limitIdx = params.length + 1;
+    query += ` ORDER BY cip.created_at DESC LIMIT $${limitIdx}`;
+    params.push(limit);
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching process contract items:', err.message);

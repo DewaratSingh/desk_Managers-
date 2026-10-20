@@ -101,6 +101,8 @@ router.get('/', async (req, res) => {
          ppo.date_of_start, 
          ppo.date_of_end, 
          ppo.received_q_id,
+         ppo.contract_id,
+         ppo.contract_ref,
          ppo.job_ids,
          ppo.trade_id,
          ppo.seller,
@@ -216,6 +218,8 @@ router.get('/:id', async (req, res) => {
          ppo.date_of_end AS delivery_date, 
          ppo.date_of_end,
          ppo.received_q_id,
+         ppo.contract_id,
+         ppo.contract_ref,
          ppo.job_ids,
          ppo.trade_id,
          ppo.seller,
@@ -358,6 +362,8 @@ router.post('/', async (req, res) => {
     date_of_end,
     received_q_id,
     trade_id,
+    contract_id,
+    contract_ref,
     seller,
     party,
     gst_type,
@@ -527,10 +533,11 @@ router.post('/', async (req, res) => {
     const insertRes = await client.query(
       `INSERT INTO process_po (
          po_no, date_of_start, date_of_end, received_q_id, trade_id,
+         contract_id, contract_ref,
          seller, party, gst_type, gst_rate, gst, transport,
          packing_forward, other, basic_value, delivery_date,
          shipping_address, message, job_ids, company_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20)
        RETURNING id, created_at`,
       [
         po_no.trim(),
@@ -538,6 +545,8 @@ router.post('/', async (req, res) => {
         date_of_end || delivery_date || null,
         received_q_id ? parseInt(received_q_id) : null,
         tradeDbId,
+        contract_id ? parseInt(contract_id) : null,
+        contract_ref ? String(contract_ref).trim() : null,
         seller.trim(),
         party.trim(),
         gst_type || null,

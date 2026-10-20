@@ -7,16 +7,19 @@ router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        ro.ro_no, ro.contract_ref, ro.ro_date, ro.delivery_date,
+        ro.id, ro.ro_no, ro.contract_id, ro.contract_ref, ro.ro_date, ro.delivery_date,
         ro.gst, ro.transport, ro.other, ro.basic_value, ro.packing_forward,
-        t.trade_id, ro.buyer_id, c.customer_code AS party_id, ro.created_at,
+        t.trade_id, ro.buyer_id, ro.customer_id as customer_db_id, c.customer_code AS party_id, c.customer_code, ro.created_at,
         b.name as buyer_name, b.email as buyer_email, b.phone as buyer_phone,
         c.name as customer_name, c.address as customer_address,
+        ct.company_name as contract_company_name,
         t.status AS trade_status,
         (
           SELECT COALESCE(json_agg(json_build_object(
-            'item_code', i.item_code,
-            'description', i.description,
+            'item_code', COALESCE(roi.item_code, i.item_code),
+            'description', COALESCE(roi.description, i.description),
+            'drawing_number', COALESCE(roi.drawing_number, i.drawing_number),
+            'process_name', roi.process_name,
             'quantity', roi.quantity,
             'unit_price', roi.unit_price,
             'gst_rate', roi.gst_rate,
@@ -38,14 +41,15 @@ router.get('/', async (req, res) => {
               WHERE g.delivery_note_id IN (
                 SELECT id FROM delivery_notes WHERE ro_id = ro.id AND company_id = ro.company_id
               )
-              AND i.item_code = elem->>'item_code' AND g.company_id = ro.company_id
+              AND COALESCE(roi.item_code, i.item_code) = elem->>'item_code' AND g.company_id = ro.company_id
             ), 0)
           )), '[]')
           FROM release_order_items roi
-          JOIN items i ON roi.item_id = i.id
+          LEFT JOIN items i ON roi.item_id = i.id
           WHERE roi.ro_id = ro.id AND roi.company_id = ro.company_id
         ) as items
       FROM release_orders ro
+      LEFT JOIN contracts ct ON ro.contract_id = ct.id
       LEFT JOIN buyers b ON ro.buyer_id = b.id
       LEFT JOIN customers c ON ro.customer_id = c.id
       LEFT JOIN trades t ON ro.trade_id = t.id
@@ -82,14 +86,15 @@ router.get('/*ro_no', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        ro.ro_no, ro.contract_ref, ro.ro_date, ro.delivery_date,
+        ro.id, ro.ro_no, ro.contract_id, ro.contract_ref, ro.ro_date, ro.delivery_date,
         ro.gst, ro.transport, ro.other, ro.basic_value, ro.packing_forward,
-        t.trade_id, ro.buyer_id, c.customer_code as customer_id,
+        t.trade_id, ro.buyer_id, c.id as customer_db_id, c.customer_code as customer_id, c.customer_code,
         b.name as buyer_name, b.email as buyer_email, b.phone as buyer_phone,
         c.name as customer_name, c.address as customer_address,
+        ct.company_name as contract_company_name,
         (
           SELECT COALESCE(json_agg(json_build_object(
-            'item_code', i.item_code,
+            'item_code', COALESCE(roi.item_code, i.item_code),
             'quantity', roi.quantity,
             'unit_price', roi.unit_price,
             'gst_type', roi.gst_type,
@@ -98,8 +103,9 @@ router.get('/*ro_no', async (req, res) => {
             'delivery_date', roi.delivery_date,
             'status', roi.status,
             'vendor', roi.vendor,
-            'description', i.description,
-            'drawing_number', i.drawing_number,
+            'description', COALESCE(roi.description, i.description),
+            'drawing_number', COALESCE(roi.drawing_number, i.drawing_number),
+            'process_name', roi.process_name,
             'delivered_qty', COALESCE((
               SELECT SUM(dni.quantity)
               FROM delivery_note_items dni
@@ -113,7 +119,7 @@ router.get('/*ro_no', async (req, res) => {
               WHERE g.delivery_note_id IN (
                 SELECT id FROM delivery_notes WHERE ro_id = ro.id AND company_id = ro.company_id
               )
-              AND i.item_code = elem->>'item_code' AND g.company_id = ro.company_id
+              AND COALESCE(roi.item_code, i.item_code) = elem->>'item_code' AND g.company_id = ro.company_id
             ), 0)
           ) ORDER BY roi.id), '[]')
           FROM release_order_items roi
@@ -121,6 +127,7 @@ router.get('/*ro_no', async (req, res) => {
           WHERE roi.ro_id = ro.id AND roi.company_id = ro.company_id
         ) as items
       FROM release_orders ro
+      LEFT JOIN contracts ct ON ro.contract_id = ct.id
       LEFT JOIN buyers b ON ro.buyer_id = b.id
       LEFT JOIN customers c ON ro.customer_id = c.id
       LEFT JOIN trades t ON ro.trade_id = t.id
@@ -140,7 +147,7 @@ router.get('/*ro_no', async (req, res) => {
 // Create a RO
 router.post('/', async (req, res) => {
   const {
-    ro_no, contract_ref, ro_date, delivery_date,
+    ro_no, contract_id, contract_ref, ro_date, delivery_date,
     buyer_id, customer_id, trade_id: req_trade_id,
     transport, other, basic_value, packing_forward, items
   } = req.body || {};
@@ -157,12 +164,19 @@ router.post('/', async (req, res) => {
     const dupCheck = await client.query('SELECT ro_no FROM release_orders WHERE ro_no = $1 AND company_id = $2', [ro_no, req.user.company_id]);
     if (dupCheck.rows.length > 0) throw new Error('Release Order number already exists');
 
-    // Resolve customerDbId
-    const custRes = await client.query('SELECT id FROM customers WHERE customer_code = $1 AND company_id = $2', [customer_id, req.user.company_id]);
-    if (custRes.rows.length === 0) throw new Error('Customer not found');
-    const customerDbId = custRes.rows[0].id;
+    // Resolve customerDbId (supports numeric id or customer_code string)
+    let customerDbId = null;
+    if (typeof customer_id === 'number' || /^\d+$/.test(String(customer_id).trim())) {
+      const custRes = await client.query('SELECT id FROM customers WHERE id = $1 AND company_id = $2', [parseInt(customer_id), req.user.company_id]);
+      if (custRes.rows.length > 0) customerDbId = custRes.rows[0].id;
+    }
+    if (!customerDbId && customer_id) {
+      const custRes = await client.query('SELECT id FROM customers WHERE customer_code = $1 AND company_id = $2', [customer_id, req.user.company_id]);
+      if (custRes.rows.length > 0) customerDbId = custRes.rows[0].id;
+    }
+    if (!customerDbId) throw new Error('Customer not found');
 
-    // Resolve or generate trade
+    // Resolve or generate trade ("Push Once")
     let tradeDbId = null;
     let trade_code = null;
     if (req_trade_id) {
@@ -178,7 +192,7 @@ router.post('/', async (req, res) => {
       // Check duplicate trade_id
       const tradeDupCheck = await client.query('SELECT id FROM trades WHERE trade_id = $1 AND company_id = $2', [trade_code, req.user.company_id]);
       if (tradeDupCheck.rows.length > 0) {
-        throw new Error('Trade ID already exists for this order');
+        trade_code = `${trade_code}-${Date.now().toString().slice(-4)}`;
       }
 
       // Determine trade type: sellARC for RO, buyARC for ContractOrder
@@ -205,10 +219,11 @@ router.post('/', async (req, res) => {
     // Insert RO header
     const roRes = await client.query(
       `INSERT INTO release_orders
-        (ro_no, contract_ref, buyer_id, customer_id, ro_date, gst, transport, other, basic_value, packing_forward, trade_id, delivery_date, company_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+        (ro_no, contract_id, contract_ref, buyer_id, customer_id, ro_date, gst, transport, other, basic_value, packing_forward, trade_id, delivery_date, company_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
       [
         ro_no,
+        contract_id ? parseInt(contract_id) : null,
         contract_ref || null,
         buyer_id ? parseInt(buyer_id) : null,
         customerDbId,
@@ -225,21 +240,27 @@ router.post('/', async (req, res) => {
     );
     const roDbId = roRes.rows[0].id;
 
-    // Insert items
+    // Insert items with full info snapshot
     if (Array.isArray(items) && items.length > 0) {
       for (const item of items) {
-        const itemRes = await client.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item.item_code, req.user.company_id]);
+        const itemRes = await client.query('SELECT id, description, drawing_number FROM items WHERE item_code = $1 AND company_id = $2', [item.item_code, req.user.company_id]);
         if (itemRes.rows.length === 0) {
           throw new Error(`Item ${item.item_code} not found`);
         }
         const itemDbId = itemRes.rows[0].id;
+        const itemDbRow = itemRes.rows[0];
+
         await client.query(
           `INSERT INTO release_order_items
-            (ro_id, item_id, quantity, unit_price, gst_type, gst_rate, shipping_address, delivery_date, company_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            (ro_id, item_id, item_code, description, drawing_number, process_name, quantity, unit_price, gst_type, gst_rate, shipping_address, delivery_date, company_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
           [
             roDbId,
             itemDbId,
+            item.item_code,
+            item.description || itemDbRow.description || null,
+            item.drawing_number || itemDbRow.drawing_number || null,
+            item.process_name || item.processname || null,
             parseFloat(item.quantity)  || 1,
             parseFloat(item.unit_price) || 0,
             item.gst_type  || null,
@@ -272,7 +293,7 @@ router.post('/', async (req, res) => {
 router.put('/*ro_no', async (req, res) => {
   const ro_no = Array.isArray(req.params.ro_no) ? req.params.ro_no.join('/') : req.params.ro_no;
   const {
-    contract_ref, ro_date, delivery_date,
+    contract_id, contract_ref, ro_date, delivery_date,
     buyer_id, customer_id,
     transport, other, basic_value, packing_forward, items
   } = req.body || {};
@@ -285,10 +306,17 @@ router.put('/*ro_no', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Resolve customerDbId
-    const custRes = await client.query('SELECT id FROM customers WHERE customer_code = $1 AND company_id = $2', [customer_id, req.user.company_id]);
-    if (custRes.rows.length === 0) throw new Error('Customer not found');
-    const customerDbId = custRes.rows[0].id;
+    // Resolve customerDbId (supports numeric id or customer_code string)
+    let customerDbId = null;
+    if (typeof customer_id === 'number' || /^\d+$/.test(String(customer_id).trim())) {
+      const custRes = await client.query('SELECT id FROM customers WHERE id = $1 AND company_id = $2', [parseInt(customer_id), req.user.company_id]);
+      if (custRes.rows.length > 0) customerDbId = custRes.rows[0].id;
+    }
+    if (!customerDbId && customer_id) {
+      const custRes = await client.query('SELECT id FROM customers WHERE customer_code = $1 AND company_id = $2', [customer_id, req.user.company_id]);
+      if (custRes.rows.length > 0) customerDbId = custRes.rows[0].id;
+    }
+    if (!customerDbId) throw new Error('Customer not found');
 
     // Compute total GST from items
     const totalGst = Array.isArray(items)
@@ -301,11 +329,12 @@ router.put('/*ro_no', async (req, res) => {
 
     const updateResult = await client.query(
       `UPDATE release_orders
-       SET contract_ref = $1, buyer_id = $2, customer_id = $3, ro_date = $4,
-           gst = $5, transport = $6, other = $7, basic_value = $8,
-           packing_forward = $9, delivery_date = $10
-       WHERE ro_no = $11 AND company_id = $12 RETURNING id`,
+       SET contract_id = $1, contract_ref = $2, buyer_id = $3, customer_id = $4, ro_date = $5,
+           gst = $6, transport = $7, other = $8, basic_value = $9,
+           packing_forward = $10, delivery_date = $11
+       WHERE ro_no = $12 AND company_id = $13 RETURNING id`,
       [
+        contract_id ? parseInt(contract_id) : null,
         contract_ref || null,
         buyer_id ? parseInt(buyer_id) : null,
         customerDbId,
@@ -328,18 +357,24 @@ router.put('/*ro_no', async (req, res) => {
     await client.query('DELETE FROM release_order_items WHERE ro_id = $1 AND company_id = $2', [roDbId, req.user.company_id]);
     if (Array.isArray(items) && items.length > 0) {
       for (const item of items) {
-        const itemRes = await client.query('SELECT id FROM items WHERE item_code = $1 AND company_id = $2', [item.item_code, req.user.company_id]);
+        const itemRes = await client.query('SELECT id, description, drawing_number FROM items WHERE item_code = $1 AND company_id = $2', [item.item_code, req.user.company_id]);
         if (itemRes.rows.length === 0) {
           throw new Error(`Item ${item.item_code} not found`);
         }
         const itemDbId = itemRes.rows[0].id;
+        const itemDbRow = itemRes.rows[0];
+
         await client.query(
           `INSERT INTO release_order_items
-            (ro_id, item_id, quantity, unit_price, gst_type, gst_rate, shipping_address, delivery_date, company_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            (ro_id, item_id, item_code, description, drawing_number, process_name, quantity, unit_price, gst_type, gst_rate, shipping_address, delivery_date, company_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
           [
             roDbId,
             itemDbId,
+            item.item_code,
+            item.description || itemDbRow.description || null,
+            item.drawing_number || itemDbRow.drawing_number || null,
+            item.process_name || item.processname || null,
             parseFloat(item.quantity)  || 1,
             parseFloat(item.unit_price) || 0,
             item.gst_type  || null,

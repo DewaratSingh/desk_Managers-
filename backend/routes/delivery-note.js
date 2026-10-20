@@ -101,15 +101,10 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
     const docs = trade.documents || [];
 
     const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
-    const roDoc = docs.find(d => d.type === 'RO');
+    const roDoc = docs.find(d => d.type === 'RO' || d.type === 'PROCESS_RO');
 
     const po_no = poDoc ? poDoc.id : null;
     const ro_no = roDoc ? roDoc.id : null;
-
-    if (!po_no && !ro_no) return res.status(400).json({ error: 'No Purchase Order or Release Order found for this trade' });
-
-    let items = [];
-    let sourceItemsForTrade = [];
 
     let effectivePpoNo = (po_no && po_no.startsWith('PPO-')) ? po_no : null;
     if (!effectivePpoNo && tradeDbId) {
@@ -119,20 +114,90 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
       }
     }
 
-    if (ro_no) {
+    let effectiveProNo = (ro_no && ro_no.startsWith('PRO-')) ? ro_no : null;
+    if (!effectiveProNo && tradeDbId) {
+      const proCheck = await pool.query('SELECT ro_no FROM process_ro WHERE trade_id = $1 AND company_id = $2 LIMIT 1', [tradeDbId, req.user.company_id]);
+      if (proCheck.rows.length > 0) {
+        effectiveProNo = proCheck.rows[0].ro_no;
+      }
+    }
+
+    if (!po_no && !ro_no && !effectivePpoNo && !effectiveProNo) return res.status(400).json({ error: 'No Purchase Order or Release Order found for this trade' });
+
+    let items = [];
+    let sourceItemsForTrade = [];
+
+    if (effectiveProNo) {
+      const proRes = await pool.query('SELECT id, ro_no FROM process_ro WHERE (ro_no = $1 OR id::text = $1) AND company_id = $2', [effectiveProNo, req.user.company_id]);
+      if (proRes.rows.length > 0) {
+        const proDbId = proRes.rows[0].id;
+
+        const proItemsRes = await pool.query(
+          `SELECT
+            pti.id as process_ro_target_item_id,
+            pti.item_id,
+            COALESCE(pti.item_code, i.item_code) as item_code,
+            pti.qty as original_qty,
+            pti.price as rate_per_piece,
+            pti.shipping_address,
+            pti.delivery_date,
+            COALESCE(pti.description, i.description) as description,
+            COALESCE(pti.drawing_number, i.drawing_number) as drawing_number,
+            pti.process_name,
+            COALESCE((
+              SELECT SUM(dni.quantity)
+              FROM delivery_note_items dni
+              JOIN delivery_notes dn ON dni.delivery_note_id = dn.id
+              LEFT JOIN items di ON dni.item_id = di.id
+              WHERE dn.trade_id = $1 AND dn.company_id = $4
+                AND (dni.item_id = pti.item_id OR di.item_code = pti.item_code)
+                AND ($3::varchar IS NULL OR dn.delivery_note_no != $3)
+            ), 0) - COALESCE((
+              SELECT SUM((elem->>'quantity')::numeric)
+              FROM grns g
+              CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+              WHERE g.trade_id = $1 AND g.company_id = $4
+                AND elem->>'item_code' = COALESCE(pti.item_code, i.item_code)
+                AND ($3::varchar IS NULL OR (SELECT delivery_note_no FROM delivery_notes WHERE id = g.delivery_note_id) != $3)
+            ), 0) as delivered_qty
+          FROM process_ro_target_item pti
+          LEFT JOIN items i ON pti.item_id = i.id AND i.company_id = pti.company_id
+          WHERE pti.process_ro_id = $2 AND pti.company_id = $4
+          ORDER BY pti.id`,
+          [tradeDbId, proDbId, exclude_dn_no || null, req.user.company_id]
+        );
+        items = proItemsRes.rows;
+
+        const srcRes = await pool.query(
+          `SELECT
+             psi.id,
+             COALESCE(psi.item_code, i.item_code) as item_code,
+             psi.qty,
+             COALESCE(t.cost_price, 0) as unit_price
+           FROM process_ro_source_item psi
+           LEFT JOIN items i ON psi.item_id = i.id AND i.company_id = psi.company_id
+           LEFT JOIN trace t ON psi.trace_item_id = t.id AND t.company_id = psi.company_id
+           WHERE psi.process_ro_id = $1 AND psi.company_id = $2
+           ORDER BY psi.id`,
+          [proDbId, req.user.company_id]
+        );
+        sourceItemsForTrade = srcRes.rows;
+      }
+    } else if (ro_no) {
       const roRes = await pool.query('SELECT id FROM release_orders WHERE ro_no = $1 AND company_id = $2', [ro_no, req.user.company_id]);
       if (roRes.rows.length === 0) return res.status(404).json({ error: 'Release Order not found' });
       const roDbId = roRes.rows[0].id;
 
       const roItemsRes = await pool.query(
         `SELECT
-          i.item_code,
+          COALESCE(roi.item_code, i.item_code) as item_code,
           roi.quantity as original_qty,
           roi.unit_price as rate_per_piece,
           roi.shipping_address,
           roi.delivery_date,
-          i.description,
-          i.drawing_number,
+          COALESCE(roi.description, i.description) as description,
+          COALESCE(roi.drawing_number, i.drawing_number) as drawing_number,
+          roi.process_name,
           COALESCE((
             SELECT SUM(dni.quantity)
             FROM delivery_note_items dni
@@ -145,7 +210,7 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
             FROM grns g
             CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
             WHERE g.trade_id = $1 AND g.company_id = $4
-              AND elem->>'item_code' = i.item_code
+              AND elem->>'item_code' = COALESCE(roi.item_code, i.item_code)
               AND ($3::varchar IS NULL OR (SELECT delivery_note_no FROM delivery_notes WHERE id = g.delivery_note_id) != $3)
           ), 0) as delivered_qty
         FROM release_order_items roi
@@ -346,8 +411,8 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
 
     res.json({
       po_no: po_no || effectivePpoNo,
-      ro_no,
-      trade_type: trade.trade_type,
+      ro_no: effectiveProNo || ro_no,
+      trade_type: trade.trade_type || 'BUY_PROCESS',
       items: mappedItems,
       source_items: sourceItemsForTrade
     });
@@ -440,16 +505,28 @@ router.post('/', async (req, res) => {
       }
     }
 
+    let proDbId = null;
     if (ro_no) {
       const roRes = await client.query('SELECT id FROM release_orders WHERE ro_no = $1 AND company_id = $2', [ro_no, companyId]);
       if (roRes.rows.length > 0) roDbId = roRes.rows[0].id;
+
+      const proRes = await client.query('SELECT id FROM process_ro WHERE ro_no = $1 AND company_id = $2', [ro_no, companyId]);
+      if (proRes.rows.length > 0) proDbId = proRes.rows[0].id;
+    }
+
+    if (!proDbId && tradeDbId) {
+      const proCheck = await client.query('SELECT id, ro_no FROM process_ro WHERE trade_id = $1 AND company_id = $2', [tradeDbId, companyId]);
+      if (proCheck.rows.length > 0) {
+        proDbId = proCheck.rows[0].id;
+        if (!ro_no) ro_no = proCheck.rows[0].ro_no;
+      }
     }
 
     // 3. Insert Delivery Note header
     const dnRes = await client.query(
-      `INSERT INTO delivery_notes (delivery_note_no, po_id, ro_id, delivery_date, dispatch_doc_no, dispatch_through, motor_vehicle_no, trade_id, company_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [delivery_note_no, poDbId, roDbId, delivery_date, dispatch_doc_no || null, dispatch_through, motor_vehicle_no, tradeDbId, companyId]
+      `INSERT INTO delivery_notes (delivery_note_no, po_id, ro_id, process_ro_id, delivery_date, dispatch_doc_no, dispatch_through, motor_vehicle_no, trade_id, company_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [delivery_note_no, poDbId, roDbId, proDbId, delivery_date, dispatch_doc_no || null, dispatch_through, motor_vehicle_no, tradeDbId, companyId]
     );
     const dnDbId = dnRes.rows[0].id;
 
@@ -521,6 +598,13 @@ router.post('/', async (req, res) => {
 
         // Determine sell price
         let sellPrice = parseFloat(item.rate_per_piece) || 0;
+        if (sellPrice <= 0 && proDbId) {
+          const proPriceRes = await client.query(
+            'SELECT price FROM process_ro_target_item WHERE process_ro_id = $1 AND (item_id = $2 OR item_code = $3) AND company_id = $4 LIMIT 1',
+            [proDbId, itemDbId, item.item_code, companyId]
+          );
+          if (proPriceRes.rows.length > 0) sellPrice = parseFloat(proPriceRes.rows[0].price) || 0;
+        }
         if (sellPrice <= 0 && roDbId) {
           const roPriceRes = await client.query(
             'SELECT unit_price FROM release_order_items WHERE ro_id = $1 AND item_id = $2 AND company_id = $3 LIMIT 1',
@@ -713,45 +797,81 @@ router.post('/', async (req, res) => {
              }
           }
 
-          let targetTraceId = item.inv_details.trace_id ? parseInt(item.inv_details.trace_id) : null;
-          
-          if (!targetTraceId) {
-            // Find an existing trace row to merge if it exactly matches
-            const traceCheck = await client.query(
-              `SELECT id, qty, cost_price, history FROM trace 
-               WHERE item_code = $1 AND inventory_id = $2 AND LOWER(status) = LOWER($3) AND company_id = $4`,
-              [itemDbId, targetInvId, targetStatus, companyId]
-            );
-            if (traceCheck.rows.length > 0) {
-              targetTraceId = traceCheck.rows[0].id;
-            }
+          if (proDbId) {
+             let proItemProcessName = null;
+             let proNo = null;
+
+             const proFetchRes = await client.query(
+               'SELECT ro_no, message FROM process_ro WHERE id = $1 AND company_id = $2 LIMIT 1',
+               [proDbId, companyId]
+             );
+             if (proFetchRes.rows.length > 0) {
+               proNo = proFetchRes.rows[0].ro_no;
+             }
+
+             const targetItemsRes = await client.query(
+               'SELECT process_name FROM process_ro_target_item WHERE process_ro_id = $1 AND (item_id = $2 OR item_code = $3) AND company_id = $4 LIMIT 1',
+               [proDbId, itemDbId, item.item_code, companyId]
+             );
+             if (targetItemsRes.rows.length > 0 && targetItemsRes.rows[0].process_name) {
+               proItemProcessName = targetItemsRes.rows[0].process_name;
+             }
+
+             stepObj = {
+               type: 'PROCESS_RO',
+               action: 'Process RO Delivery',
+               'trade id': trade_code,
+               'process price': buyUnitPrice,
+               'delivery note id': dnDbId,
+               ro_no: proNo,
+               trace: item.process_name ? item.process_name : (proItemProcessName ? proItemProcessName : `Process RO ${proNo || ''}`.trim()),
+               date: delivery_date || new Date().toISOString().split('T')[0]
+             };
+             initialHistory = [stepObj];
+
+             // Fetch source items and their trace histories for this Process RO
+             const sourceItemsRes = await client.query(
+               'SELECT trace_item_id, history, item_code, qty FROM process_ro_source_item WHERE process_ro_id = $1 AND company_id = $2',
+               [proDbId, companyId]
+             );
+
+             let sourceHistories = [];
+             for (const src of sourceItemsRes.rows) {
+               let hArray = [];
+               if (Array.isArray(src.history) && src.history.length > 0) {
+                 hArray = src.history;
+               } else if (typeof src.history === 'string' && src.history.trim()) {
+                 try { hArray = JSON.parse(src.history); } catch (e) { hArray = []; }
+               } else if (src.trace_item_id) {
+                 const fallbackTrace = await client.query(
+                   'SELECT history FROM trace WHERE id = $1 AND company_id = $2',
+                   [src.trace_item_id, companyId]
+                 );
+                 if (fallbackTrace.rows.length > 0) {
+                   const trRow = fallbackTrace.rows[0];
+                   if (Array.isArray(trRow.history)) hArray = trRow.history;
+                   else if (typeof trRow.history === 'string') {
+                     try { hArray = JSON.parse(trRow.history); } catch (e) { hArray = []; }
+                   }
+                 }
+               }
+               if (hArray.length > 0) {
+                 sourceHistories.push(hArray);
+               }
+             }
+
+             if (sourceHistories.length > 0) {
+               stepObj.sources = sourceHistories;
+             }
+             initialHistory = [stepObj];
           }
 
-          if (targetTraceId) {
-            const tr = await client.query('SELECT qty, cost_price, history FROM trace WHERE id = $1 AND company_id = $2', [targetTraceId, companyId]);
-            if (tr.rows.length > 0) {
-              const exQty = parseFloat(tr.rows[0].qty) || 0;
-              const exPrice = parseFloat(tr.rows[0].cost_price) || 0;
-              const newQty = exQty + invQty;
-              const newPrice = newQty > 0 ? ((exQty * exPrice) + (invQty * buyUnitPrice)) / newQty : buyUnitPrice;
-              
-              let histArray = Array.isArray(tr.rows[0].history) ? tr.rows[0].history : [];
-              histArray.push(stepObj); // Append just the step, ancestry is likely already present if it was merged before
-
-              await client.query(
-                `UPDATE trace SET qty = $1, cost_price = $2, history = $3::jsonb WHERE id = $4 AND company_id = $5`,
-                [newQty, newPrice, JSON.stringify(histArray), targetTraceId, companyId]
-              );
-              traceIdForNextActivity = targetTraceId;
-            }
-          } else {
-            const trIns = await client.query(
-              `INSERT INTO trace (item_code, qty, cost_price, inventory_id, status, history, company_id) 
-               VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id`,
-              [itemDbId, invQty, buyUnitPrice, targetInvId, targetStatus, JSON.stringify(initialHistory), companyId]
-            );
-            traceIdForNextActivity = trIns.rows[0].id;
-          }
+          const trIns = await client.query(
+            `INSERT INTO trace (item_code, qty, cost_price, inventory_id, status, history, company_id) 
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id`,
+            [itemDbId, invQty, buyUnitPrice, targetInvId, targetStatus, JSON.stringify(initialHistory), companyId]
+          );
+          traceIdForNextActivity = trIns.rows[0].id;
         }
       }
 
@@ -866,19 +986,24 @@ router.put('/:delivery_note_no', async (req, res) => {
     let trade_code = null;
     let ppoDbId = null;
     let ppoMessage = null, ppoNo = null, ppoJobIds = null;
-    let poDbId = null, roDbId = null;
-    const tradeRes = await client.query('SELECT t.id, t.trade_id, t.trade_type, dn.po_id, dn.ro_id FROM delivery_notes dn JOIN trades t ON dn.trade_id = t.id WHERE dn.delivery_note_no = $1 AND dn.company_id = $2', [delivery_note_no, companyId]);
+    let poDbId = null, roDbId = null, proDbId = null;
+    const tradeRes = await client.query('SELECT t.id, t.trade_id, t.trade_type, dn.po_id, dn.ro_id, dn.process_ro_id FROM delivery_notes dn JOIN trades t ON dn.trade_id = t.id WHERE dn.delivery_note_no = $1 AND dn.company_id = $2', [delivery_note_no, companyId]);
     if (tradeRes.rows.length > 0) {
       tradeDbId = tradeRes.rows[0].id;
       trade_code = tradeRes.rows[0].trade_id;
       poDbId = tradeRes.rows[0].po_id;
       roDbId = tradeRes.rows[0].ro_id;
+      proDbId = tradeRes.rows[0].process_ro_id;
       const ppoRes = await client.query('SELECT pp.id, pp.message, pp.po_no, pp.job_ids FROM process_po pp WHERE pp.trade_id = $1 AND pp.company_id = $2', [tradeDbId, companyId]);
       if (ppoRes.rows.length > 0) {
         ppoDbId = ppoRes.rows[0].id;
         ppoMessage = ppoRes.rows[0].message;
         ppoNo = ppoRes.rows[0].po_no;
         ppoJobIds = ppoRes.rows[0].job_ids;
+      }
+      if (!proDbId) {
+        const proCheck = await client.query('SELECT id FROM process_ro WHERE trade_id = $1 AND company_id = $2', [tradeDbId, companyId]);
+        if (proCheck.rows.length > 0) proDbId = proCheck.rows[0].id;
       }
     }
     const rawTradeType = (tradeRes.rows[0]?.trade_type || 'sell').toLowerCase().replace(/\s+/g, '');
@@ -951,6 +1076,13 @@ router.put('/:delivery_note_no', async (req, res) => {
 
         // Determine sell price
         let sellPrice = parseFloat(item.rate_per_piece) || 0;
+        if (sellPrice <= 0 && proDbId) {
+          const proPriceRes = await client.query(
+            'SELECT price FROM process_ro_target_item WHERE process_ro_id = $1 AND (item_id = $2 OR item_code = $3) AND company_id = $4 LIMIT 1',
+            [proDbId, itemDbId, item.item_code, companyId]
+          );
+          if (proPriceRes.rows.length > 0) sellPrice = parseFloat(proPriceRes.rows[0].price) || 0;
+        }
         if (sellPrice <= 0 && roDbId) {
           const roPriceRes = await client.query(
             'SELECT unit_price FROM release_order_items WHERE ro_id = $1 AND item_id = $2 AND company_id = $3 LIMIT 1',
@@ -1135,44 +1267,81 @@ router.put('/:delivery_note_no', async (req, res) => {
              }
           }
 
-          let targetTraceId = item.inv_details.trace_id ? parseInt(item.inv_details.trace_id) : null;
-          
-          if (!targetTraceId) {
-            const traceCheck = await client.query(
-              `SELECT id, qty, cost_price, history FROM trace 
-               WHERE item_code = $1 AND inventory_id = $2 AND LOWER(status) = LOWER($3) AND company_id = $4`,
-              [itemDbId, targetInvId, targetStatus, companyId]
-            );
-            if (traceCheck.rows.length > 0) targetTraceId = traceCheck.rows[0].id;
+          if (proDbId) {
+             let proItemProcessName = null;
+             let proNo = null;
+
+             const proFetchRes = await client.query(
+               'SELECT ro_no, message FROM process_ro WHERE id = $1 AND company_id = $2 LIMIT 1',
+               [proDbId, companyId]
+             );
+             if (proFetchRes.rows.length > 0) {
+               proNo = proFetchRes.rows[0].ro_no;
+             }
+
+             const targetItemsRes = await client.query(
+               'SELECT process_name FROM process_ro_target_item WHERE process_ro_id = $1 AND (item_id = $2 OR item_code = $3) AND company_id = $4 LIMIT 1',
+               [proDbId, itemDbId, item.item_code, companyId]
+             );
+             if (targetItemsRes.rows.length > 0 && targetItemsRes.rows[0].process_name) {
+               proItemProcessName = targetItemsRes.rows[0].process_name;
+             }
+
+             stepObj = {
+               type: 'PROCESS_RO',
+               action: 'Process RO Delivery',
+               'trade id': trade_code,
+               'process price': buyUnitPrice,
+               'delivery note id': dnDbId,
+               ro_no: proNo,
+               trace: item.process_name ? item.process_name : (proItemProcessName ? proItemProcessName : `Process RO ${proNo || ''}`.trim()),
+               date: delivery_date || new Date().toISOString().split('T')[0]
+             };
+             initialHistory = [stepObj];
+
+             // Fetch source items and their trace histories for this Process RO
+             const sourceItemsRes = await client.query(
+               'SELECT trace_item_id, history, item_code, qty FROM process_ro_source_item WHERE process_ro_id = $1 AND company_id = $2',
+               [proDbId, companyId]
+             );
+
+             let sourceHistories = [];
+             for (const src of sourceItemsRes.rows) {
+               let hArray = [];
+               if (Array.isArray(src.history) && src.history.length > 0) {
+                 hArray = src.history;
+               } else if (typeof src.history === 'string' && src.history.trim()) {
+                 try { hArray = JSON.parse(src.history); } catch (e) { hArray = []; }
+               } else if (src.trace_item_id) {
+                 const fallbackTrace = await client.query(
+                   'SELECT history FROM trace WHERE id = $1 AND company_id = $2',
+                   [src.trace_item_id, companyId]
+                 );
+                 if (fallbackTrace.rows.length > 0) {
+                   const trRow = fallbackTrace.rows[0];
+                   if (Array.isArray(trRow.history)) hArray = trRow.history;
+                   else if (typeof trRow.history === 'string') {
+                     try { hArray = JSON.parse(trRow.history); } catch (e) { hArray = []; }
+                   }
+                 }
+               }
+               if (hArray.length > 0) {
+                 sourceHistories.push(hArray);
+               }
+             }
+
+             if (sourceHistories.length > 0) {
+               stepObj.sources = sourceHistories;
+             }
+             initialHistory = [stepObj];
           }
 
-          if (targetTraceId) {
-            const tr = await client.query('SELECT qty, cost_price, history FROM trace WHERE id = $1 AND company_id = $2', [targetTraceId, companyId]);
-            if (tr.rows.length > 0) {
-              const exQty = parseFloat(tr.rows[0].qty) || 0;
-              const exPrice = parseFloat(tr.rows[0].cost_price) || 0;
-              const newQty = exQty + invQty;
-              const newPrice = newQty > 0 ? ((exQty * exPrice) + (invQty * buyUnitPrice)) / newQty : buyUnitPrice;
-              
-              let histArray = Array.isArray(tr.rows[0].history) ? tr.rows[0].history : [];
-              if (!histArray.some(h => h.DeliveryNoteID === dnDbId && h.id === trade_code)) {
-                histArray.push(stepObj); // Ancestry history is already in there from original merge, just push the new step
-              }
-
-              await client.query(
-                `UPDATE trace SET qty = $1, cost_price = $2, history = $3::jsonb WHERE id = $4 AND company_id = $5`,
-                [newQty, newPrice, JSON.stringify(histArray), targetTraceId, companyId]
-              );
-              traceIdForNextActivity = targetTraceId;
-            }
-          } else {
-            const trIns = await client.query(
-              `INSERT INTO trace (item_code, qty, cost_price, inventory_id, status, history, company_id) 
-               VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id`,
-              [itemDbId, invQty, buyUnitPrice, targetInvId, targetStatus, JSON.stringify(initialHistory), companyId]
-            );
-            traceIdForNextActivity = trIns.rows[0].id;
-          }
+          const trIns = await client.query(
+            `INSERT INTO trace (item_code, qty, cost_price, inventory_id, status, history, company_id) 
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id`,
+            [itemDbId, invQty, buyUnitPrice, targetInvId, targetStatus, JSON.stringify(initialHistory), companyId]
+          );
+          traceIdForNextActivity = trIns.rows[0].id;
         }
       }
 

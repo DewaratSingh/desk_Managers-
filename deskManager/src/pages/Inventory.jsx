@@ -311,7 +311,7 @@ export default function InventoryView() {
       toast.warn('Please enter a valid quantity');
       return;
     }
-    if (!editingId && !selectedPositionId && (!formData.location || !formData.location.trim())) {
+    if (!editingId && (!formData.location || !formData.location.trim())) {
       toast.warn('Selecting an existing warehouse location or entering a new location is required.');
       return;
     }
@@ -335,8 +335,7 @@ export default function InventoryView() {
             actionType: linkMetadata.actionType,
             status: targetStatus,
             inventoryDetails: {
-              inventory_id: selectedPositionId || null,
-              trace_id: selectedPos?.id || null,
+              inventory_id: selectedPos?.inventory_id || null,
               cost_price: parseFloat(formData.cost_price) || 0.00,
               location: formData.location,
               message: formData.message || null,
@@ -353,8 +352,7 @@ export default function InventoryView() {
       const method = editingId ? 'PUT' : 'POST';
 
       const payload = {
-        ...formData,
-        selected_inventory_id: selectedPositionId
+        ...formData
       };
 
       const res = await fetch(url, {
@@ -780,7 +778,7 @@ export default function InventoryView() {
                         Existing Locations with Item Code "{formData.item_code}" ({existingPositions.length})
                       </span>
                       <span className="text-[10px] font-semibold text-slate-500">
-                        Select to merge quantity & average unit price, or select new location.
+                        Select an existing location to add a new trace, or enter a new location below.
                       </span>
                     </div>
 
@@ -814,7 +812,7 @@ export default function InventoryView() {
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-500 font-semibold mt-1.5 pl-6">
-                          Create a separate stock entry at a new location.
+                          Enter a custom warehouse location below.
                         </p>
                       </div>
 
@@ -932,61 +930,6 @@ export default function InventoryView() {
                     ) : null;
                   })()}
                 </div>
-
-                {/* Weighted Average Unit Price Preview Card */}
-                {(() => {
-                  if (!selectedPositionId) return null;
-                  const selectedPos = existingPositions.find(p => p.id === selectedPositionId);
-                  if (!selectedPos) return null;
-
-                  const existingQty = parseFloat(selectedPos.qty) || 0;
-                  const existingPrice = parseFloat(selectedPos.cost_price) || 0;
-                  const addedQty = parseFloat(formData.qty) || 0;
-                  const addedPrice = parseFloat(formData.cost_price) || 0;
-
-                  const finalQty = existingQty + addedQty;
-                  const avgPrice = finalQty > 0
-                    ? ((existingQty * existingPrice + addedQty * addedPrice) / finalQty)
-                    : addedPrice;
-
-                  return (
-                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2.5 animate-fade-in shadow-2xs">
-                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                        <span className="font-bold text-slate-900 flex items-center gap-1.5 uppercase text-[11px]">
-                          <CheckCircle2 size={14} style={{ color: 'var(--theme-color)' }} />
-                          Selected Location Merger & Weighted Average Price Preview
-                        </span>
-                        <span
-                          className="text-[10px] font-mono font-bold  bg-[white] border px-2 py-0.5 rounded shadow-2xs"
-                          style={{ color: 'var(--theme-color)', borderColor: 'var(--theme-color)' }}
-                        >
-                          Merging into TR-{selectedPos.id}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
-                        <div className=" bg-[white] p-2 rounded-lg border border-slate-200 shadow-2xs">
-                          <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Existing Stock</div>
-                          <div className="font-black text-slate-900">{fmtQty(existingQty)} pcs</div>
-                          <div className="text-[10px] text-slate-600">@ ₹{existingPrice.toFixed(2)}</div>
-                        </div>
-                        <div className=" bg-[white] p-2 rounded-lg border border-slate-200 shadow-2xs">
-                          <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Added Stock</div>
-                          <div className="font-black" style={{ color: 'var(--theme-color)' }}>+{fmtQty(addedQty)} pcs</div>
-                          <div className="text-[10px] text-slate-600">@ ₹{addedPrice.toFixed(2)}</div>
-                        </div>
-                        <div className=" bg-[white] p-2 rounded-lg border border-slate-200 shadow-2xs">
-                          <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Updated Total Qty</div>
-                          <div className="font-black text-emerald-700">{fmtQty(finalQty)} pcs</div>
-                        </div>
-                        <div className=" bg-[white] p-2 rounded-lg border border-slate-200 shadow-2xs">
-                          <div className="text-[9px] text-slate-500 font-sans uppercase font-bold">Weighted Avg Price</div>
-                          <div className="font-black text-slate-900">₹{avgPrice.toFixed(2)} / pc</div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
 
               {/* Trace Item Status Update Input */}
