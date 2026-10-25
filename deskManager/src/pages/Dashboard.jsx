@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, RefreshCw, X } from 'lucide-react';
+import { Search, RefreshCw, X, TrendingUp, ShoppingCart, Workflow } from 'lucide-react';
 import { hasPermission } from '../utils/permissions';
 
 const statusStyle = (s) => {
@@ -39,6 +39,11 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   const [posLoading, setPosLoading]         = useState(false);
   const [releaseOrders, setReleaseOrders]   = useState([]);
   const [rosLoading, setRosLoading]         = useState(false);
+  const [processPOs, setProcessPOs]         = useState([]);
+  const [pposLoading, setPposLoading]       = useState(false);
+  const [processROs, setProcessROs]         = useState([]);
+  const [prosLoading, setProsLoading]       = useState(false);
+  const [orderTypeTab, setOrderTypeTab]     = useState('sell'); // 'sell' (default) | 'buy' | 'buy_process'
   const [orderFilter, setOrderFilter]       = useState('ALL'); // 'ALL', 'PO', 'RO', 'PO_BUY'
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
 
@@ -54,6 +59,8 @@ export default function Dashboard({ activeTab: propActiveTab }) {
     if (activeTab === 'purchase-order') {
       fetchPurchaseOrders();
       fetchReleaseOrders();
+      fetchProcessPOs();
+      fetchProcessROs();
     }
   }, [activeTab]);
 
@@ -143,6 +150,31 @@ export default function Dashboard({ activeTab: propActiveTab }) {
       if (res.ok) setReleaseOrders(await res.json());
     } catch (err) { console.error('Failed to fetch ROs:', err); }
     finally { setRosLoading(false); }
+  };
+
+  const fetchProcessPOs = async () => {
+    setPposLoading(true);
+    try {
+      const res = await fetch('/api/process-po');
+      if (res.ok) setProcessPOs(await res.json());
+    } catch (err) { console.error('Failed to fetch PPOs:', err); }
+    finally { setPposLoading(false); }
+  };
+
+  const fetchProcessROs = async () => {
+    setProsLoading(true);
+    try {
+      const res = await fetch('/api/process-ro');
+      if (res.ok) setProcessROs(await res.json());
+    } catch (err) { console.error('Failed to fetch PROs:', err); }
+    finally { setProsLoading(false); }
+  };
+
+  const refreshAllOrders = () => {
+    fetchPurchaseOrders();
+    fetchReleaseOrders();
+    fetchProcessPOs();
+    fetchProcessROs();
   };
 
   const renderContent = () => {
@@ -355,45 +387,227 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         const fmtAmt = (v) => (parseFloat(v)||0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
         const fmtQty = (v) => (parseFloat(v)||0).toLocaleString('en-IN');
 
-        let allOrders = [];
+        // Categorize all orders into: Sell, Buy, Buy Process
+        const sellOrders = [];
+        const buyOrders = [];
+        const buyProcessOrders = [];
+        const seenProcessKeys = new Set();
 
+        // 1. Process POs from /api/process-po -> Buy Process
+        processPOs.forEach(ppo => {
+          if (!ppo.po_no || seenProcessKeys.has(ppo.po_no)) return;
+          seenProcessKeys.add(ppo.po_no);
+
+          let items = [];
+          if (Array.isArray(ppo.target_items) && ppo.target_items.length > 0) {
+            items = ppo.target_items.map(t => ({
+              item_code: t.item_code || '—',
+              description: t.description || '—',
+              quantity: parseFloat(t.qty || t.quantity || 0),
+              delivered_qty: parseFloat(t.delivered_qty || 0),
+              delivery_date: t.delivery_date || ppo.delivery_date || ppo.date_of_end,
+              vendor: t.vendor || ppo.seller || ppo.party || '—',
+              status: t.status || ppo.status || 'ordered',
+              unit_price: parseFloat(t.price || t.rate || 0),
+            }));
+          } else if (Array.isArray(ppo.items) && ppo.items.length > 0) {
+            items = ppo.items.map(it => ({
+              item_code: it.target_item_code || it.source_item_code || '—',
+              description: it.target_item_description || it.source_item_description || '—',
+              quantity: parseFloat(it.target_qty || it.target_item_quantity || it.source_qty || 0),
+              delivered_qty: parseFloat(it.delivered_qty || 0),
+              delivery_date: ppo.delivery_date || ppo.date_of_end,
+              vendor: ppo.seller || ppo.party || '—',
+              status: ppo.status || 'ordered',
+              unit_price: parseFloat(it.price || 0),
+            }));
+          } else {
+            items = [{
+              item_code: '—',
+              description: ppo.message || 'Process PO',
+              quantity: 1,
+              delivered_qty: parseFloat(ppo.delivery_percentage || 0) >= 100 ? 1 : 0,
+              delivery_date: ppo.delivery_date || ppo.date_of_end,
+              vendor: ppo.seller || ppo.party || '—',
+              status: ppo.status || 'ordered',
+              unit_price: parseFloat(ppo.basic_value || 0),
+            }];
+          }
+
+          buyProcessOrders.push({
+            groupKey: ppo.po_no,
+            type: 'PPO',
+            number: ppo.po_no,
+            date: ppo.date_of_start || ppo.created_at,
+            partyId: ppo.party || ppo.seller || '—',
+            items,
+            tradeId: ppo.trade_id,
+            navigatePath: ppo.trade_id ? `/trade/${ppo.trade_id}` : `/order/${encodeURIComponent(ppo.po_no)}`,
+          });
+        });
+
+        // 2. Process ROs from /api/process-ro -> Buy Process
+        processROs.forEach(pro => {
+          if (!pro.ro_no || seenProcessKeys.has(pro.ro_no)) return;
+          seenProcessKeys.add(pro.ro_no);
+
+          let items = [];
+          if (Array.isArray(pro.target_items) && pro.target_items.length > 0) {
+            items = pro.target_items.map(t => ({
+              item_code: t.item_code || '—',
+              description: t.description || '—',
+              quantity: parseFloat(t.qty || t.quantity || 0),
+              delivered_qty: parseFloat(t.delivered_qty || 0),
+              delivery_date: t.delivery_date || pro.delivery_date || pro.date_of_end,
+              vendor: t.vendor || pro.seller || pro.party || '—',
+              status: t.status || pro.status || 'RO',
+              unit_price: parseFloat(t.price || t.rate || 0),
+            }));
+          } else if (Array.isArray(pro.source_items) && pro.source_items.length > 0) {
+            items = pro.source_items.map(s => ({
+              item_code: s.item_code || '—',
+              description: s.description || '—',
+              quantity: parseFloat(s.qty || 0),
+              delivered_qty: 0,
+              delivery_date: pro.delivery_date,
+              vendor: pro.seller || pro.party || '—',
+              status: pro.status || 'RO',
+              unit_price: 0,
+            }));
+          } else {
+            items = [{
+              item_code: '—',
+              description: pro.message || 'Process RO',
+              quantity: 1,
+              delivered_qty: 0,
+              delivery_date: pro.delivery_date,
+              vendor: pro.seller || pro.party || '—',
+              status: pro.status || 'RO',
+              unit_price: parseFloat(pro.basic_value || 0),
+            }];
+          }
+
+          buyProcessOrders.push({
+            groupKey: pro.ro_no,
+            type: 'PRO',
+            number: pro.ro_no,
+            date: pro.date_of_start || pro.created_at,
+            partyId: pro.party || pro.seller || '—',
+            items,
+            tradeId: pro.trade_id,
+            navigatePath: pro.trade_id ? `/trade/${pro.trade_id}` : `/release-order/${encodeURIComponent(pro.ro_no)}`,
+          });
+        });
+
+        // 3. Purchase Orders from /api/purchase-orders
         purchaseOrders.forEach(po => {
-          if (po.trade_status && (po.trade_status.trim().toLowerCase() === 'completed' || po.trade_status.trim().toLowerCase() === 'complete')) return;
-          const totalQty     = (po.items||[]).reduce((s,i) => s+(parseFloat(i.quantity)||0), 0);
-          const deliveredQty = (po.items||[]).reduce((s,i) => s+(parseFloat(i.delivered_qty)||0), 0);
-          if (totalQty > 0 && (deliveredQty/totalQty)*100 >= 99.9) return;
-          allOrders.push({
-            groupKey:      po.po_no,
-            type:          po.trade_type === 'buy' ? 'BUY' : 'PO',
-            number:        po.po_no,
-            date:          po.po_date,
-            partyId:       po.party_id || '—',
-            items:         po.items || [],
-            navigatePath:  `/order/${encodeURIComponent(po.po_no)}`,
-          });
+          if (!po.po_no) return;
+          const tType = (po.trade_type || '').toLowerCase();
+          const isProcess = tType.includes('process') || po.po_no.startsWith('PPO-');
+          const isBuy = tType.includes('buy') || Boolean(po.received_quotation_id);
+
+          if (isProcess) {
+            if (!seenProcessKeys.has(po.po_no)) {
+              seenProcessKeys.add(po.po_no);
+              buyProcessOrders.push({
+                groupKey: po.po_no,
+                type: 'PPO',
+                number: po.po_no,
+                date: po.po_date,
+                partyId: po.party_id || '—',
+                items: po.items || [],
+                tradeId: po.trade_id,
+                navigatePath: po.trade_id ? `/trade/${po.trade_id}` : `/order/${encodeURIComponent(po.po_no)}`,
+              });
+            }
+          } else if (isBuy) {
+            buyOrders.push({
+              groupKey: po.po_no,
+              type: 'BUY PO',
+              number: po.po_no,
+              date: po.po_date,
+              partyId: po.party_id || '—',
+              items: po.items || [],
+              tradeId: po.trade_id,
+              navigatePath: `/order/${encodeURIComponent(po.po_no)}`,
+            });
+          } else {
+            sellOrders.push({
+              groupKey: po.po_no,
+              type: 'PO',
+              number: po.po_no,
+              date: po.po_date,
+              partyId: po.party_id || '—',
+              items: po.items || [],
+              tradeId: po.trade_id,
+              navigatePath: `/order/${encodeURIComponent(po.po_no)}`,
+            });
+          }
         });
 
+        // 4. Release Orders from /api/release-orders
         releaseOrders.forEach(ro => {
-          if (ro.trade_status && (ro.trade_status.trim().toLowerCase() === 'completed' || ro.trade_status.trim().toLowerCase() === 'complete')) return;
-          const totalQty     = (ro.items||[]).reduce((s,i) => s+(parseFloat(i.quantity)||0), 0);
-          const deliveredQty = (ro.items||[]).reduce((s,i) => s+(parseFloat(i.delivered_qty)||0), 0);
-          if (totalQty > 0 && (deliveredQty/totalQty)*100 >= 99.9) return;
-          allOrders.push({
-            groupKey:     ro.ro_no,
-            type:         'RO',
-            number:       ro.ro_no,
-            date:         ro.ro_date,
-            partyId:      ro.party_id || '—',
-            items:        ro.items || [],
-            navigatePath: `/release-order/${encodeURIComponent(ro.ro_no)}`,
-          });
+          if (!ro.ro_no) return;
+          const tType = (ro.trade_type || '').toLowerCase();
+          const rType = (ro.ro_type || '').toLowerCase();
+          const isProcess = tType.includes('process') || ro.ro_no.startsWith('PRO-');
+          const isBuy = tType.includes('buy') || rType === 'buy';
+
+          if (isProcess) {
+            if (!seenProcessKeys.has(ro.ro_no)) {
+              seenProcessKeys.add(ro.ro_no);
+              buyProcessOrders.push({
+                groupKey: ro.ro_no,
+                type: 'PRO',
+                number: ro.ro_no,
+                date: ro.ro_date,
+                partyId: ro.party_id || ro.customer_code || '—',
+                items: ro.items || [],
+                tradeId: ro.trade_id,
+                navigatePath: ro.trade_id ? `/trade/${ro.trade_id}` : `/release-order/${encodeURIComponent(ro.ro_no)}`,
+              });
+            }
+          } else if (isBuy) {
+            buyOrders.push({
+              groupKey: ro.ro_no,
+              type: 'CONTRACT',
+              number: ro.ro_no,
+              date: ro.ro_date,
+              partyId: ro.party_id || ro.customer_code || '—',
+              items: ro.items || [],
+              tradeId: ro.trade_id,
+              navigatePath: `/release-order/${encodeURIComponent(ro.ro_no)}`,
+            });
+          } else {
+            sellOrders.push({
+              groupKey: ro.ro_no,
+              type: 'RO',
+              number: ro.ro_no,
+              date: ro.ro_date,
+              partyId: ro.party_id || ro.customer_code || '—',
+              items: ro.items || [],
+              tradeId: ro.trade_id,
+              navigatePath: `/release-order/${encodeURIComponent(ro.ro_no)}`,
+            });
+          }
         });
 
-        allOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+        // Select active list based on the active tab (sell by default)
+        let activeOrders = [];
+        if (orderTypeTab === 'sell') {
+          activeOrders = sellOrders;
+        } else if (orderTypeTab === 'buy') {
+          activeOrders = buyOrders;
+        } else if (orderTypeTab === 'buy_process') {
+          activeOrders = buyProcessOrders;
+        }
 
+        activeOrders.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+        let displayedOrders = activeOrders;
         if (orderSearchQuery.trim()) {
           const q = orderSearchQuery.toLowerCase();
-          allOrders = allOrders.filter(ord =>
+          displayedOrders = activeOrders.filter(ord =>
             ord.number.toLowerCase().includes(q) ||
             ord.partyId.toLowerCase().includes(q) ||
             (ord.items||[]).some(i =>
@@ -405,7 +619,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
         let sn = 0;
         const flatRows = [];
-        allOrders.forEach(ord => {
+        displayedOrders.forEach(ord => {
           (ord.items||[]).forEach((item, idx) => {
             sn++;
             flatRows.push({
@@ -423,7 +637,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
           });
         });
 
-        const isLoadingAll = posLoading || rosLoading;
+        const isLoadingAll = posLoading || rosLoading || pposLoading || prosLoading;
 
         const TH = ({ children, align = 'left', style = {} }) => (
           <th
@@ -469,43 +683,121 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
         return (
           <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--bg-app)' }}>
+            {/* Top Bar with 3 Category Buttons: Sell, Buy, Buy Process (Sell is default) */}
             <div
-              className="px-4 py-2.5 border-b flex items-center gap-3 shrink-0"
+              className="px-4 py-2.5 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0"
               style={{ backgroundColor: 'var(--bg-form,white)', borderColor: 'var(--border-color)' }}
             >
-              <div className="flex-1 flex items-center gap-2 border rounded-lg px-3 py-1.5 transition-colors"
-                style={{ borderColor: 'var(--border-color)', backgroundColor: 'white' }}
-                onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--theme-secondary)'}
-                onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
-              >
-                <Search size={13} style={{ color: 'var(--theme-secondary)', flexShrink: 0 }} />
-                <input
-                  type="text"
-                  placeholder="Search by PO/RO number, party, item code, description…"
-                  value={orderSearchQuery}
-                  onChange={(e) => setOrderSearchQuery(e.target.value)}
-                  className="w-full bg-transparent focus:outline-none text-[11px] font-semibold placeholder:font-normal"
-                  style={{ color: 'var(--text-primary)' }}
-                />
-                {orderSearchQuery && (
-                  <button onClick={() => setOrderSearchQuery('')} className="shrink-0 cursor-pointer" style={{ color: 'var(--theme-secondary)' }}>
-                    <X size={12} />
-                  </button>
-                )}
+              {/* 3 Buttons on top */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setOrderTypeTab('sell')}
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    orderTypeTab === 'sell'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <TrendingUp size={14} />
+                  <span>Sell</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                      orderTypeTab === 'sell' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {sellOrders.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOrderTypeTab('buy')}
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    orderTypeTab === 'buy'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <ShoppingCart size={14} />
+                  <span>Buy</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                      orderTypeTab === 'buy' ? 'bg-blue-700 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {buyOrders.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOrderTypeTab('buy_process')}
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    orderTypeTab === 'buy_process'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <Workflow size={14} />
+                  <span>Buy Process</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                      orderTypeTab === 'buy_process' ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {buyProcessOrders.length}
+                  </span>
+                </button>
               </div>
 
-              <span className="text-[10px] font-bold shrink-0" style={{ color: 'var(--text-primary)', opacity: 0.45 }}>
-                {isLoadingAll ? 'Loading…' : `${flatRows.length} item${flatRows.length !== 1 ? 's' : ''} · ${allOrders.length} order${allOrders.length !== 1 ? 's' : ''}`}
-              </span>
+              {/* Search Bar & Order Counter */}
+              <div className="flex items-center gap-2.5 flex-1 sm:max-w-md ml-auto w-full">
+                <div
+                  className="flex-1 flex items-center gap-2 border rounded-lg px-3 py-1.5 transition-colors"
+                  style={{ borderColor: 'var(--border-color)', backgroundColor: 'white' }}
+                  onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--theme-secondary)'}
+                  onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
+                >
+                  <Search size={13} style={{ color: 'var(--theme-secondary)', flexShrink: 0 }} />
+                  <input
+                    type="text"
+                    placeholder={`Search ${orderTypeTab === 'sell' ? 'Sell' : orderTypeTab === 'buy' ? 'Buy' : 'Buy Process'} orders…`}
+                    value={orderSearchQuery}
+                    onChange={(e) => setOrderSearchQuery(e.target.value)}
+                    className="w-full bg-transparent focus:outline-none text-[11px] font-semibold placeholder:font-normal"
+                    style={{ color: 'var(--text-primary)' }}
+                  />
+                  {orderSearchQuery && (
+                    <button onClick={() => setOrderSearchQuery('')} className="shrink-0 cursor-pointer" style={{ color: 'var(--theme-secondary)' }}>
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
 
-              {isLoadingAll && <RefreshCw size={13} className="animate-spin shrink-0" style={{ color: 'var(--theme-secondary)' }} />}
+                <span className="text-[10px] font-bold shrink-0 whitespace-nowrap" style={{ color: 'var(--text-primary)', opacity: 0.65 }}>
+                  {isLoadingAll ? 'Loading…' : `${flatRows.length} item${flatRows.length !== 1 ? 's' : ''} · ${displayedOrders.length} order${displayedOrders.length !== 1 ? 's' : ''}`}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={refreshAllOrders}
+                  title="Refresh orders"
+                  disabled={isLoadingAll}
+                  className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors shrink-0 cursor-pointer"
+                >
+                  <RefreshCw size={13} className={isLoadingAll ? 'animate-spin' : ''} style={{ color: 'var(--theme-secondary)' }} />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-auto">
               {flatRows.length === 0 && !isLoadingAll ? (
                 <div className="flex items-center justify-center h-40">
                   <p className="text-[11px] font-bold" style={{ color: 'var(--text-primary)', opacity: 0.35 }}>
-                    {orderSearchQuery ? 'No results match your search.' : 'No active orders found.'}
+                    {orderSearchQuery
+                      ? 'No results match your search.'
+                      : `No ${orderTypeTab === 'sell' ? 'Sell' : orderTypeTab === 'buy' ? 'Buy' : 'Buy Process'} orders found.`}
                   </p>
                 </div>
               ) : (
@@ -637,12 +929,20 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                         {row._number}
                       </span>
                       <span
-                        className="text-[8px] font-black uppercase px-1 py-0.5 rounded"
+                        className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide"
                         style={
                           row._type === 'RO'
-                            ? { color: '#6d28d9', background: '#f5f3ff', border: '1px solid #c4b5fd' }
-                            : row._type === 'BUY'
-                            ? { color: '#0369a1', background: '#f0f9ff', border: '1px solid #7dd3fc' }
+                            ? { color: '#0d9488', background: '#f0fdfa', border: '1px solid #99f6e4' }
+                            : row._type === 'PO'
+                            ? { color: '#059669', background: '#ecfdf5', border: '1px solid #a7f3d0' }
+                            : row._type === 'BUY PO' || row._type === 'BUY'
+                            ? { color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe' }
+                            : row._type === 'CONTRACT' || row._type === 'BUY RO'
+                            ? { color: '#4f46e5', background: '#eef2ff', border: '1px solid #c7d2fe' }
+                            : row._type === 'PPO'
+                            ? { color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a' }
+                            : row._type === 'PRO'
+                            ? { color: '#ea580c', background: '#fff7ed', border: '1px solid #ffedd5' }
                             : { color: 'var(--theme-secondary)', background: 'rgba(217,53,45,0.08)', border: '1px solid var(--theme-secondary)' }
                         }
                       >

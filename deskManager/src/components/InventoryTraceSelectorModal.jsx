@@ -6,7 +6,9 @@ export default function InventoryTraceSelectorModal({
   isOpen,
   onClose,
   onApply,
+  onSelect,
   initialSelections = {},
+  alreadySelectedTraceIds = [],
   sourceItemCode = '',
   allowedItemCodes = null,
   rqId = null,
@@ -23,12 +25,19 @@ export default function InventoryTraceSelectorModal({
       const selMap = {};
       if (Array.isArray(initialSelections)) {
         initialSelections.forEach(s => {
-          const tid = s.trace_id || s.traceid;
+          const tid = s.trace_id || s.traceid || s.trace_item_id;
           if (tid) selMap[tid] = { ...s };
         });
       } else if (typeof initialSelections === 'object' && initialSelections !== null) {
         Object.keys(initialSelections).forEach(tid => {
           selMap[tid] = { ...initialSelections[tid] };
+        });
+      }
+      if (Array.isArray(alreadySelectedTraceIds)) {
+        alreadySelectedTraceIds.forEach(tid => {
+          if (tid && !selMap[tid]) {
+            selMap[tid] = { trace_id: tid, Qty: 1 };
+          }
         });
       }
       setSelectedSelections(selMap);
@@ -117,18 +126,27 @@ export default function InventoryTraceSelectorModal({
   const handleConfirm = () => {
     const selectionsArray = Object.values(selectedSelections).map(s => ({
       trace_id: s.trace_id,
+      id: s.trace_id,
       Qty: parseFloat(s.Qty) || 0,
+      qty: parseFloat(s.Qty) || 0,
       inventory_id: s.inventory_id,
       item_code: s.item_code,
+      itemcode: s.item_code,
       description: s.description,
       available_qty: s.available_qty,
       price: s.price,
+      cost_price: s.price,
       location: s.location,
       rack: s.rack,
       shelf_number: s.shelf_number
     }));
 
-    onApply(selectionsArray);
+    if (typeof onApply === 'function') {
+      onApply(selectionsArray);
+    }
+    if (typeof onSelect === 'function') {
+      onSelect(selectionsArray);
+    }
     onClose();
   };
 

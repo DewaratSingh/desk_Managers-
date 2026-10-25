@@ -93,6 +93,38 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
 
   // ── Process PO View ──────────────────────────────────────────────────────────
   if (purchaseOrder._is_process_po) {
+    const processTargetItems = (purchaseOrder.target_items && purchaseOrder.target_items.length > 0)
+      ? purchaseOrder.target_items
+      : (purchaseOrder.items || []);
+
+    const processBasicTotal = processTargetItems.reduce(
+      (s, i) => s + (parseFloat(i.price || i.unit_price) || 0) * (parseFloat(i.qty || i.target_item_quantity || i.target_qty || i.quantity) || 0), 0
+    );
+
+    const perItemGstSum = processTargetItems.reduce((s, i) => {
+      const itemQty = parseFloat(i.qty || i.target_item_quantity || i.target_qty || i.quantity) || 0;
+      const itemPrice = parseFloat(i.price || i.unit_price) || 0;
+      const itemBasic = itemQty * itemPrice;
+      const itemRate = parseFloat(i.gst_rate);
+      return s + (!isNaN(itemRate) && itemRate > 0 ? (itemBasic * itemRate) / 100 : 0);
+    }, 0);
+
+    const headerGstRate = parseFloat(purchaseOrder.gst_rate);
+    let processGstTotal = parseFloat(purchaseOrder.gst) || 0;
+    if (!processGstTotal) {
+      if (perItemGstSum > 0) {
+        processGstTotal = perItemGstSum;
+      } else if (!isNaN(headerGstRate) && headerGstRate > 0) {
+        processGstTotal = (baseItemsValue * headerGstRate) / 100;
+      }
+    }
+
+    const baseItemsValue = processBasicTotal > 0 ? processBasicTotal : (parseFloat(purchaseOrder.basic_value) || 0);
+    const processTransport = parseFloat(purchaseOrder.transport) || 0;
+    const processPacking = parseFloat(purchaseOrder.packing_forward) || 0;
+    const processOther = parseFloat(purchaseOrder.other) || 0;
+    const processGrandTotal = baseItemsValue + processGstTotal + processTransport + processPacking + processOther;
+
     return (
       <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
@@ -112,6 +144,13 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
               </span>
             )}
             <Link
+              to={`/addDeliveryNote?trade_id=${encodeURIComponent(tradeId || '')}`}
+              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-white rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+              style={{ backgroundColor: 'var(--theme-color)' }}
+            >
+              <Truck size={11} /> Create Delivery Note
+            </Link>
+            <Link
               to={`/updateProcessPurchaseOrder/${encodeURIComponent(purchaseOrder.po_no || purchaseOrder.id)}?trade_id=${encodeURIComponent(tradeId || '')}`}
               className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
             >
@@ -123,13 +162,14 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
         <div className="p-6 space-y-6">
           
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-slate-100">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 pb-4 border-b border-slate-100">
             {[
-              { label: 'PO Date',     value: fmtDate(purchaseOrder.date) },
-              { label: 'Delivery Date', value: fmtDate(purchaseOrder.delivery_date) },
-              { label: 'Seller',      value: purchaseOrder.seller || '—' },
-              { label: 'Party',       value: purchaseOrder.party || '—' },
+              { label: 'PO Date',       value: fmtDate(purchaseOrder.date || purchaseOrder.date_of_start) },
+              { label: 'Delivery Date', value: fmtDate(purchaseOrder.delivery_date || purchaseOrder.date_of_end) },
+              { label: 'Seller',        value: purchaseOrder.seller || '—' },
+              { label: 'Party',         value: purchaseOrder.party || '—' },
               ...(purchaseOrder.contract_ref ? [{ label: 'Contract Ref (ARC)', value: purchaseOrder.contract_ref }] : []),
+              { label: 'Grand Total',   value: `₹${fmt(processGrandTotal)}` },
             ].map(({ label, value }) => (
               <div key={label}>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
@@ -247,6 +287,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                                   <th className="px-3 py-2 text-right">Total Qty</th>
                                   <th className="px-3 py-2 text-right">Pending Qty</th>
                                   <th className="px-3 py-2 text-right">Unit Price</th>
+                                  <th className="px-3 py-2 text-right">GST</th>
                                   <th className="px-3 py-2 text-right">Delivered Price</th>
                                   <th className="px-3 py-2 text-right">Remaining Price</th>
                                   <th className="px-3 py-2 text-right">Line Total</th>
@@ -287,6 +328,15 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                                       <td className="px-3 py-2 text-right font-bold text-slate-800">{targetQty}</td>
                                       <td className="px-3 py-2 text-right font-black" style={{ color: 'var(--theme-color)' }}>{pendingQty}</td>
                                       <td className="px-3 py-2 text-right font-mono font-bold text-slate-800">₹{fmt(price)}</td>
+                                      <td className="px-3 py-2 text-right">
+                                        {tgt.gst_rate ? (
+                                          <span className="text-slate-600 font-semibold">{tgt.gst_rate}%</span>
+                                        ) : (poTgtItem.gst_rate ? (
+                                          <span className="text-slate-600 font-semibold">{poTgtItem.gst_rate}%</span>
+                                        ) : (purchaseOrder.gst_rate ? (
+                                          <span className="text-slate-600 font-semibold">{purchaseOrder.gst_rate}%</span>
+                                        ) : <span className="text-slate-300">—</span>))}
+                                      </td>
                                       <td className="px-3 py-2 text-right font-mono font-bold text-green-700">₹{fmt(poTgtItem.delivered_price || (deliveredQty * (price || 0)))}</td>
                                       <td className="px-3 py-2 text-right font-mono font-bold text-orange-600">₹{fmt(poTgtItem.remaining_price || (pendingQty * (price || 0)))}</td>
                                       <td className="px-3 py-2 text-right font-mono font-black text-slate-900">₹{fmt(lineTotal)}</td>
@@ -308,7 +358,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                                           </div>
                                         ) : (
                                           <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColor(purchaseOrder.status)}`}>
-                                            {purchaseOrder.status || 'under process'}
+                                            {isFullyDelivered ? 'delivered' : (deliveredQty > 0 || (purchaseOrder.status || '').toLowerCase() === 'partially delivered' ? 'partially delivered' : (purchaseOrder.status || 'ordered'))}
                                           </span>
                                         )}
                                       </td>
@@ -397,6 +447,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                         <th className="px-4 py-2.5 text-right w-20">Total Qty</th>
                         <th className="px-4 py-2.5 text-right w-24">Pending Qty</th>
                         <th className="px-4 py-2.5 text-right w-24">Unit Price</th>
+                        <th className="px-4 py-2.5 text-right w-20">GST</th>
                         <th className="px-4 py-2.5 text-right w-24">Delivered Price</th>
                         <th className="px-4 py-2.5 text-right w-24">Remaining Price</th>
                         <th className="px-4 py-2.5 text-right w-24">Line Total</th>
@@ -434,6 +485,13 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                             <td className="px-4 py-3 text-right font-bold text-slate-800">{itemQty}</td>
                             <td className="px-4 py-3 text-right font-black" style={{ color: 'var(--theme-color)' }}>{pendingQty}</td>
                             <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(itemPrice)}</td>
+                            <td className="px-4 py-3 text-right">
+                              {item.gst_rate ? (
+                                <span className="text-slate-600 font-semibold">{item.gst_rate}%</span>
+                              ) : (purchaseOrder.gst_rate ? (
+                                <span className="text-slate-600 font-semibold">{purchaseOrder.gst_rate}%</span>
+                              ) : <span className="text-slate-300">—</span>)}
+                            </td>
                             <td className="px-4 py-3 text-right font-mono font-bold text-green-700">₹{fmt(item.delivered_price || (deliveredQty * itemPrice))}</td>
                             <td className="px-4 py-3 text-right font-mono font-bold text-orange-600">₹{fmt(item.remaining_price || (pendingQty * itemPrice))}</td>
                             <td className="px-4 py-3 text-right font-mono font-black text-slate-900">₹{fmt(lineTotal)}</td>
@@ -455,7 +513,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                                 </div>
                               ) : (
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColor(purchaseOrder.status)}`}>
-                                  {purchaseOrder.status || 'under process'}
+                                  {isFullyDelivered ? 'delivered' : (deliveredQty > 0 || (purchaseOrder.status || '').toLowerCase() === 'partially delivered' ? 'partially delivered' : (purchaseOrder.status || 'ordered'))}
                                 </span>
                               )}
                             </td>
@@ -464,7 +522,7 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
                       })}
                       {(purchaseOrder.target_items || purchaseOrder.items || []).length === 0 && (
                         <tr>
-                          <td colSpan="10" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No target items.</td>
+                          <td colSpan="11" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">No target items.</td>
                         </tr>
                       )}
                     </tbody>
@@ -474,12 +532,39 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
             </>
           )}
           
-          {/* Summary / Total section for Process PO */}
+          {/* Additional Charges & Tax for Process PO */}
+          {(processGstTotal > 0 || processTransport > 0 || processPacking > 0 || processOther > 0) && (
+            <div className="border-t border-slate-100 pt-5 mt-6">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Additional Charges & Tax</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[
+                  {
+                    label: purchaseOrder.gst_type
+                      ? `GST / Tax (${purchaseOrder.gst_type}${purchaseOrder.gst_rate ? ` ${purchaseOrder.gst_rate}%` : ''})`
+                      : (purchaseOrder.gst_rate ? `GST (${purchaseOrder.gst_rate}%)` : 'GST / Tax'),
+                    value: processGstTotal,
+                    show: processGstTotal > 0
+                  },
+                  { label: 'Transport', value: processTransport, show: processTransport > 0 },
+                  { label: 'Packing & Fwd', value: processPacking, show: processPacking > 0 },
+                  { label: 'Other Charges', value: processOther, show: processOther > 0 },
+                ].filter(c => c.show).map(({ label, value }) => (
+                  <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+                    <p className="text-sm font-bold text-slate-800 mt-0.5">₹{fmt(value)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Grand Total Row */}
           <div className="flex justify-between items-center pt-4 border-t border-slate-200 mt-6">
-            <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Estimated Total Value (Target Items)</span>
-            <span className="text-xl font-black text-slate-900">
-              ₹{fmt((purchaseOrder.items || []).reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.target_item_quantity) || 0), 0))}
-            </span>
+            <div>
+              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block">Grand Total PO Value</span>
+              <span className="text-[10px] text-slate-400 font-medium">Base Items Value (₹{fmt(baseItemsValue)}) + Charges & Tax</span>
+            </div>
+            <span className="text-xl font-black text-slate-900">₹{fmt(processGrandTotal)}</span>
           </div>
 
         </div>
@@ -491,12 +576,24 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
   const itemsBasic = (purchaseOrder.items || []).reduce(
     (s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0), 0
   );
-  const gstTotal   = parseFloat(purchaseOrder.gst)             || 0;
+  const itemsGst = (purchaseOrder.items || []).reduce((s, i) => {
+    const lineBasic = (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0);
+    const lineGst = lineBasic * ((parseFloat(i.gst_rate) || 0) / 100);
+    return s + lineGst;
+  }, 0);
+  let gstTotal = parseFloat(purchaseOrder.gst) || 0;
+  if (!gstTotal) {
+    if (itemsGst > 0) {
+      gstTotal = itemsGst;
+    } else if (purchaseOrder.gst_rate && parseFloat(purchaseOrder.gst_rate) > 0) {
+      gstTotal = (itemsBasic * parseFloat(purchaseOrder.gst_rate)) / 100;
+    }
+  }
+  const baseValue  = itemsBasic > 0 ? itemsBasic : (parseFloat(purchaseOrder.basic_value) || 0);
   const transport  = parseFloat(purchaseOrder.transport)       || 0;
   const packing    = parseFloat(purchaseOrder.packing_forward) || 0;
   const other      = parseFloat(purchaseOrder.other)           || 0;
-  const basicVal   = parseFloat(purchaseOrder.basic_value)     || 0;
-  const grandTotal = itemsBasic + gstTotal + transport + packing + other + basicVal;
+  const grandTotal = baseValue + gstTotal + transport + packing + other;
 
   return (
     <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -607,16 +704,22 @@ export default function PoPanel({ purchaseOrder, quotation, processRq, processRe
         </div>
 
         {/* Charges summary */}
-        {(gstTotal > 0 || transport > 0 || packing > 0 || other > 0 || basicVal > 0) && (
+        {(gstTotal > 0 || transport > 0 || packing > 0 || other > 0) && (
           <div className="border-t border-slate-100 pt-5">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Additional Charges</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                { label: 'GST / Tax',          value: gstTotal,   show: gstTotal > 0 },
+                {
+    label: purchaseOrder.gst_type
+      ? `GST / Tax (${purchaseOrder.gst_type}${purchaseOrder.gst_rate ? ` ${purchaseOrder.gst_rate}%` : ''})`
+      : (purchaseOrder.gst_rate ? `GST (${purchaseOrder.gst_rate}%)` : 'GST / Tax'),
+    value: gstTotal,
+    show: gstTotal > 0
+  },
                 { label: 'Transport',          value: transport,  show: transport > 0 },
                 { label: 'Packing & Fwd',      value: packing,    show: packing > 0 },
                 { label: 'Other',              value: other,      show: other > 0 },
-                { label: 'Add. Basic Value',   value: basicVal,   show: basicVal > 0 },
+                
               ].filter(c => c.show).map(({ label, value }) => (
                 <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>

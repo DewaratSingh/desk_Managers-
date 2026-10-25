@@ -18,8 +18,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
-import InventoryTraceSelectorModal from '../../components/InventoryTraceSelectorModal';
-import TargetItemSelectorModal from '../../components/TargetItemSelectorModal';
+import InventoryTraceSelectorModal from '../../../components/InventoryTraceSelectorModal';
+import TargetItemSelectorModal from '../../../components/TargetItemSelectorModal';
 
 export default function UpdateProcessPurchaseOrderForm() {
   const { id } = useParams();
@@ -59,7 +59,6 @@ export default function UpdateProcessPurchaseOrderForm() {
   // Source & Target Items
   const [sourceItems, setSourceItems] = useState([]);
   const [targetItems, setTargetItems] = useState([]);
-  const [rqSourceItemCodes, setRqSourceItemCodes] = useState([]);
 
   // Financial Summary State & Search-based GST
   const [gstType, setGstType] = useState('');
@@ -135,9 +134,6 @@ export default function UpdateProcessPurchaseOrderForm() {
             available_qty: src.available_qty || ''
           }))
         );
-
-        const srcCodes = srcList.map((s) => s.item_code).filter(Boolean);
-        setRqSourceItemCodes(srcCodes);
 
         // Target Items
         const tgtList = Array.isArray(data.target_items) ? data.target_items : [];
@@ -1107,8 +1103,6 @@ export default function UpdateProcessPurchaseOrderForm() {
         onClose={() => setIsSourceModalOpen(false)}
         onApply={handleApplySourceSelections}
         initialSelections={sourceItems}
-        allowedItemCodes={rqSourceItemCodes.length > 0 ? rqSourceItemCodes : null}
-        rqId={receivedQId || id}
         apiEndpoint="/api/process-po/trace-items"
       />
 

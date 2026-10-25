@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -20,6 +20,8 @@ import {
   ChevronDown,
   ChevronUp,
   Settings,
+  Activity,
+  CloudUpload,
   Briefcase,
   ShoppingCart,
   TrendingUp,
@@ -178,8 +180,55 @@ export default function Sidebar({ user, onLogout }) {
   // Whether the whole Operations accordion is open
   const [opsOpen, setOpsOpen] = useState(false);
 
+  // Backup overdue alert state for sidebar indicator
+  const [backupOverdue, setBackupOverdue] = useState(false);
+  const [backupInfo, setBackupInfo] = useState(null);
+
   const navigate = useNavigate();
   const location = useLocation();
+
+  const evaluateBackupOverdue = (keys) => {
+    if (!keys) return false;
+    const { last_backup_date, alert_interval_seconds, alert_interval_days } = keys;
+    const rawThreshold =
+      alert_interval_seconds !== undefined && alert_interval_seconds !== null
+        ? alert_interval_seconds
+        : (alert_interval_days ? alert_interval_days * 86400 : 259200);
+
+    const thresholdSec = (rawThreshold > 0 && rawThreshold < 86400) ? 259200 : rawThreshold;
+
+    if (thresholdSec === 0) return false;
+    if (!last_backup_date) return true;
+
+    const elapsedSec = (Date.now() - new Date(last_backup_date).getTime()) / 1000;
+    return elapsedSec >= thresholdSec;
+  };
+
+  const checkBackupStatus = useCallback(() => {
+    fetch('/api/backup/keys')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.keys) {
+          setBackupInfo(data.keys);
+          setBackupOverdue(evaluateBackupOverdue(data.keys));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    // Fetches when app started
+    checkBackupStatus();
+    // Fetches every 3 hours instead of every 10 seconds
+    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+    const interval = setInterval(checkBackupStatus, THREE_HOURS_MS);
+    const onStatusChange = () => checkBackupStatus();
+    window.addEventListener('backup_status_changed', onStatusChange);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('backup_status_changed', onStatusChange);
+    };
+  }, [checkBackupStatus]);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -219,6 +268,8 @@ export default function Sidebar({ user, onLogout }) {
     FileSignature,
     Percent,
     Building2,
+    CloudUpload,
+    Activity,
     Settings,
   };
 
@@ -233,6 +284,8 @@ export default function Sidebar({ user, onLogout }) {
     { id: "arc", label: "ARC", icon: FileSignature, path: "/arc", permission: "manage_arc" },
     { id: "gst-category", label: "GST Categories", icon: Percent, path: "/gst-category", permission: "manage_gst" },
     { id: "users", label: "Users", icon: Users, path: "/users", permission: "manage_users" },
+    { id: "backup", label: "Backup", icon: CloudUpload, path: "/backup" },
+    { id: "monitor", label: "Monitor", icon: Activity, path: "/monitor" },
     { id: "settings", label: "Settings", icon: Settings, path: "/settings" },
   ];
 
@@ -242,6 +295,8 @@ export default function Sidebar({ user, onLogout }) {
           ...item,
           icon: typeof item.icon === 'string' ? (iconMap[item.icon] || LayoutDashboard) : item.icon,
         })),
+        { id: "backup", label: "Backup", icon: CloudUpload, path: "/backup" },
+        { id: "monitor", label: "Monitor", icon: Activity, path: "/monitor" },
         { id: "settings", label: "Settings", icon: Settings, path: "/settings" },
       ]
     : defaultMenuItems;
@@ -256,7 +311,7 @@ export default function Sidebar({ user, onLogout }) {
   );
 
   // ─── NavItem (standard) ─────────────────────────────────────────────────
-  const NavItem = ({ item }) => {
+  const renderNavItem = (item) => {
     const isActive =
       item.id === "dashboard"
         ? location.pathname === "/dashboard" ||
@@ -295,20 +350,35 @@ export default function Sidebar({ user, onLogout }) {
         style={isActive ? { backgroundColor: "var(--theme-secondary)" } : undefined}
         title={isShrunk ? item.label : undefined}
       >
-        <div className={`p-1.5 rounded-md transition-all duration-200 flex items-center justify-center shrink-0 ${
+        <div className={`relative p-1.5 rounded-md transition-all duration-200 flex items-center justify-center shrink-0 ${
           isActive
             ? " bg-[white]/20 text-[var(--text-sidebar)] shadow-sm"
             : "bg-slate-800/80 text-[var(--text-sidebar)] opacity-70 group-hover:opacity-100 group-hover:bg-slate-700/60"
         }`}>
           <Icon size={16} strokeWidth={isActive ? 2.25 : 1.75} className="transition-transform duration-200 group-hover:scale-110" />
+          {item.id === "backup" && backupOverdue && (
+            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-80"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+            </span>
+          )}
         </div>
-        {!isShrunk && <span className="truncate">{item.label}</span>}
+        {!isShrunk && (
+          <div className="flex items-center justify-between flex-1 min-w-0">
+            <span className="truncate">{item.label}</span>
+            {item.id === "backup" && backupOverdue && (
+              <span className="ml-2 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-red-500/25 text-red-300 border border-red-500/50 animate-pulse shrink-0">
+                Overdue
+              </span>
+            )}
+          </div>
+        )}
       </button>
     );
   };
 
   // ─── Operations Section ──────────────────────────────────────────────────
-  const OperationsSection = () => {
+  const renderOperationsSection = () => {
     // In shrunk mode, show only a single icon button that navigates to /arc
     if (isShrunk) {
       return (
@@ -446,7 +516,7 @@ export default function Sidebar({ user, onLogout }) {
     );
   };
 
-  const NavContent = () => {
+  const renderNavContent = () => {
     // Split visibleMenuItems: dashboard first, then insert Operations, then rest
     const dashboardItem = visibleMenuItems.find((i) => i.id === "dashboard");
     const restItems = visibleMenuItems.filter((i) => i.id !== "dashboard");
@@ -491,7 +561,7 @@ export default function Sidebar({ user, onLogout }) {
           ) : (
             <>
               {/* Dashboard */}
-              {dashboardItem && <NavItem item={dashboardItem} />}
+              {dashboardItem && renderNavItem(dashboardItem)}
 
               {/* ── Operations section ── */}
               {/* {!isShrunk && (
@@ -499,7 +569,7 @@ export default function Sidebar({ user, onLogout }) {
                   <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 mb-1.5">Operations</p>
                 </div>
               )} */}
-              <OperationsSection />
+              {renderOperationsSection()}
 
               {/* Divider */}
               {!isShrunk && (
@@ -507,9 +577,7 @@ export default function Sidebar({ user, onLogout }) {
               )}
 
               {/* Rest of menu */}
-              {restItems.map((item) => (
-                <NavItem key={item.id} item={item} />
-              ))}
+              {restItems.map((item) => renderNavItem(item))}
             </>
           )}
         </nav>
@@ -570,7 +638,7 @@ export default function Sidebar({ user, onLogout }) {
 
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col ${isShrunk ? 'w-20' : 'w-64'} h-screen border-r border-slate-800 shrink-0 sticky top-0 transition-all duration-300`} style={{ backgroundColor: "var(--theme-primary)" }}>
-        <NavContent />
+        {renderNavContent()}
       </aside>
 
       {/* Mobile Drawer */}
@@ -578,7 +646,7 @@ export default function Sidebar({ user, onLogout }) {
         className={`lg:hidden fixed inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-slate-800 transform transition-transform duration-200 ease-in-out ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
         style={{ backgroundColor: "var(--theme-primary)" }}
       >
-        <NavContent />
+        {renderNavContent()}
       </aside>
     </>
   );

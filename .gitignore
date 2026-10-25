@@ -1,4 +1,29 @@
+# Dependencies
 node_modules/
-dist/
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Logs
 *.log
+
+# Python cache & build files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artifacts & executables
+dist/
+build/
+**/dist/
+**/build/
+*.exe
+
+# Backend built frontend assets
+backend/public/
+
+# Installer
+DeskmanagerInstaller/

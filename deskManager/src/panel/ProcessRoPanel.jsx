@@ -24,13 +24,13 @@ export default function ProcessRoPanel({ releaseOrder, tradeId }) {
     return (
       <div className="bg-[white] border border-slate-200 rounded-xl p-8 text-center shadow-sm space-y-4">
         <div className="max-w-sm mx-auto space-y-1">
-          <h3 className="text-sm font-bold text-slate-800">No Process Release Order Raised</h3>
+          <h3 className="text-sm font-bold text-slate-800">No Process Contract Order Raised</h3>
           <p className="text-xs text-slate-500 font-semibold">
-            A Buy Process Contract Trade has been registered. The next step is to raise a Process Release Order.
+            A Buy Process Contract Trade has been registered. The next step is to raise a Process Contract Order (RO).
           </p>
         </div>
         <Link
-          to={`/process-contract-order?trade_id=${encodeURIComponent(tradeId || '')}`}
+          to={`/addProcessContractOrder?trade_id=${encodeURIComponent(tradeId || '')}`}
           className="inline-flex items-center gap-1.5 px-5 py-2.5 text-white font-bold text-xs rounded-lg cursor-pointer shadow-sm"
           style={{ backgroundColor: 'var(--theme-color)' }}
           onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(0.9)'}
@@ -47,14 +47,26 @@ export default function ProcessRoPanel({ releaseOrder, tradeId }) {
 
   // Totals computation
   const targetBasic = targetItems.reduce(
-    (s, i) => s + (parseFloat(i.price || i.unit_price) || 0) * (parseFloat(i.qty || i.quantity) || 0), 0
+    (s, i) => s + (parseFloat(i.price || i.unit_price) || 0) * (parseFloat(i.qty || i.quantity || i.target_item_quantity) || 0), 0
   );
-  const gstTotal   = parseFloat(releaseOrder.gst)             || 0;
+  const itemsGst = targetItems.reduce((s, i) => {
+    const b = (parseFloat(i.price || i.unit_price) || 0) * (parseFloat(i.qty || i.quantity || i.target_item_quantity) || 0);
+    const r = parseFloat(i.gst_rate);
+    return s + (!isNaN(r) && r > 0 ? (b * r) / 100 : 0);
+  }, 0);
+  let gstTotal = parseFloat(releaseOrder.gst) || 0;
+  if (!gstTotal) {
+    if (itemsGst > 0) {
+      gstTotal = itemsGst;
+    } else if (releaseOrder.gst_rate && parseFloat(releaseOrder.gst_rate) > 0) {
+      gstTotal = (targetBasic * parseFloat(releaseOrder.gst_rate)) / 100;
+    }
+  }
+  const baseValue  = targetBasic > 0 ? targetBasic : (parseFloat(releaseOrder.basic_value) || 0);
   const transport  = parseFloat(releaseOrder.transport)       || 0;
   const packing    = parseFloat(releaseOrder.packing_forward) || 0;
   const other      = parseFloat(releaseOrder.other)           || 0;
-  const basicVal   = parseFloat(releaseOrder.basic_value)     || 0;
-  const grandTotal = targetBasic + gstTotal + transport + packing + other + basicVal;
+  const grandTotal = baseValue + gstTotal + transport + packing + other;
 
   return (
     <div className="bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -95,7 +107,7 @@ export default function ProcessRoPanel({ releaseOrder, tradeId }) {
 
           {/* Edit shortcut */}
           <Link
-            to={`/process-contract-order?ro_no=${encodeURIComponent(releaseOrder.ro_no)}&trade_id=${encodeURIComponent(tradeId || '')}`}
+            to={`/updateProcessContractOrder/${encodeURIComponent(releaseOrder.id || releaseOrder.ro_no)}?trade_id=${encodeURIComponent(tradeId || '')}`}
             className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-600 bg-[white] border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <Edit2 size={10} /> Edit
@@ -105,13 +117,14 @@ export default function ProcessRoPanel({ releaseOrder, tradeId }) {
 
       <div className="p-6 space-y-6">
         {/* Meta row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-slate-100">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 pb-4 border-b border-slate-100">
           {[
             { label: 'RO Date', value: fmtDate(releaseOrder.date_of_start || releaseOrder.ro_date) },
             { label: 'Delivery Date', value: fmtDate(releaseOrder.date_of_end || releaseOrder.delivery_date) },
             { label: 'Seller / Processor', value: releaseOrder.seller || '—' },
             { label: 'Party / Client', value: releaseOrder.party || '—' },
             ...(releaseOrder.contract_ref ? [{ label: 'Contract Ref (ARC)', value: releaseOrder.contract_ref }] : []),
+            { label: 'Grand Total', value: `₹${fmt(grandTotal)}` },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
@@ -270,12 +283,19 @@ export default function ProcessRoPanel({ releaseOrder, tradeId }) {
                       <td className="px-4 py-3 text-right font-bold text-slate-800">{itemQty}</td>
                       <td className="px-4 py-3 text-right font-black" style={{ color: 'var(--theme-color)' }}>{pendingQty}</td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">₹{fmt(itemPrice)}</td>
+                      <td className="px-4 py-3 text-right">
+                        {item.gst_rate ? (
+                          <span className="text-slate-600 font-semibold">{item.gst_rate}%</span>
+                        ) : (releaseOrder.gst_rate ? (
+                          <span className="text-slate-600 font-semibold">{releaseOrder.gst_rate}%</span>
+                        ) : <span className="text-slate-300">—</span>)}
+                      </td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-green-700">₹{fmt(deliveredQty * itemPrice)}</td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-orange-600">₹{fmt(pendingQty * itemPrice)}</td>
                       <td className="px-4 py-3 text-right font-mono font-black text-slate-900">₹{fmt(lineTotal)}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusColor(releaseOrder.status)}`}>
-                          {isFullyDelivered ? 'delivered' : (deliveredQty > 0 ? 'partial' : (releaseOrder.status || 'ordered'))}
+                          {isFullyDelivered ? 'delivered' : (deliveredQty > 0 || (releaseOrder.status || '').toLowerCase() === 'partially delivered' ? 'partially delivered' : (releaseOrder.status || 'ordered'))}
                         </span>
                       </td>
                     </tr>
@@ -283,7 +303,7 @@ export default function ProcessRoPanel({ releaseOrder, tradeId }) {
                 })}
                 {targetItems.length === 0 && (
                   <tr>
-                    <td colSpan="10" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">
+                    <td colSpan="11" className="px-4 py-6 text-center text-slate-400 text-xs font-medium">
                       No target items found.
                     </td>
                   </tr>
@@ -294,16 +314,22 @@ export default function ProcessRoPanel({ releaseOrder, tradeId }) {
         </div>
 
         {/* Additional Charges Summary */}
-        {(gstTotal > 0 || transport > 0 || packing > 0 || other > 0 || basicVal > 0) && (
+        {(gstTotal > 0 || transport > 0 || packing > 0 || other > 0) && (
           <div className="border-t border-slate-100 pt-5">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Additional Charges</p>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
-                { label: 'GST / Tax',        value: gstTotal,  show: gstTotal > 0 },
+                {
+    label: releaseOrder.gst_type
+      ? `GST / Tax (${releaseOrder.gst_type}${releaseOrder.gst_rate ? ` ${releaseOrder.gst_rate}%` : ''})`
+      : (releaseOrder.gst_rate ? `GST (${releaseOrder.gst_rate}%)` : 'GST / Tax'),
+    value: gstTotal,
+    show: gstTotal > 0
+  },
                 { label: 'Transport',        value: transport, show: transport > 0 },
                 { label: 'Packing & Fwd',    value: packing,   show: packing > 0 },
                 { label: 'Other',            value: other,     show: other > 0 },
-                { label: 'Add. Basic Value', value: basicVal,  show: basicVal > 0 },
+                
               ].filter(c => c.show).map(({ label, value }) => (
                 <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>

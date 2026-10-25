@@ -3,10 +3,10 @@ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { FileText, ArrowLeft, Layers, Package, RefreshCw, Trash2, Building2, User, Truck, Box, DollarSign, Search, CheckCircle2, X, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 
-import InventoryTraceSelectorModal from '../components/InventoryTraceSelectorModal';
-import TargetItemSelectorModal from '../components/TargetItemSelectorModal';
+import InventoryTraceSelectorModal from '../../../components/InventoryTraceSelectorModal';
+import TargetItemSelectorModal from '../../../components/TargetItemSelectorModal';
 
-export default function ProcessPoForm({ isContractOrder }) {
+export default function CreateProcessContractOrderForm({ isContractOrder = true }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -1928,8 +1928,6 @@ export default function ProcessPoForm({ isContractOrder }) {
         onClose={() => setIsSourceModalOpen(false)}
         onApply={handleApplySourceSelections}
         initialSelections={sourceItems}
-        allowedItemCodes={rqSourceItemCodes.length > 0 ? rqSourceItemCodes : null}
-        rqId={receivedQId || queryRqId}
         apiEndpoint="/api/process-po/trace-items"
       />
 

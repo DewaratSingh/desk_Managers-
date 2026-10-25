@@ -15,9 +15,9 @@ router.get('/next-no', async (req, res) => {
   }
 });
 
-// GET trace items from inventory for specific source item codes or linked RQ process
+// GET trace items from inventory for Process PO / Subcontracting (lists available raw material inventory traces)
 router.get('/trace-items', async (req, res) => {
-  const { item_code, allowed_item_codes, rq_id, rq_process_no } = req.query || {};
+  const { item_code, allowed_item_codes } = req.query || {};
 
   try {
     let allowedCodes = [];
@@ -29,34 +29,6 @@ router.get('/trace-items', async (req, res) => {
         allowedCodes = allowed_item_codes.map(c => String(c).trim()).filter(Boolean);
       } else if (typeof allowed_item_codes === 'string') {
         allowedCodes = allowed_item_codes.split(',').map(c => c.trim()).filter(Boolean);
-      }
-    } else if (rq_id || rq_process_no) {
-      const rqIdentifier = String(rq_id || rq_process_no).trim();
-      const rqRes = await pool.query(
-        `SELECT rp.id, '[]'::json AS source_codes, NULL AS legacy_source_code
-         FROM rq_process rp
-         WHERE (rp.number = $1 OR rp.id::text = $1) AND rp.company_id = $2`,
-        [rqIdentifier, req.user.company_id]
-      );
-      if (rqRes.rows.length > 0) {
-        const row = rqRes.rows[0];
-        const srcCodes = Array.isArray(row.source_codes) ? row.source_codes : [];
-        if (srcCodes.length > 0) {
-          allowedCodes = srcCodes;
-        } else if (row.legacy_source_code) {
-          allowedCodes = [row.legacy_source_code];
-        }
-      } else {
-        const prqRes = await pool.query(
-          `SELECT pri.item_code
-           FROM "processReceivedQuotation_item" pri
-           JOIN "processReceivedQuotation" prq ON pri.process_received_quotation_id = prq.id
-           WHERE (prq.quotation_number = $1 OR prq.id::text = $1) AND prq.company_id = $2`,
-          [rqIdentifier, req.user.company_id]
-        );
-        if (prqRes.rows.length > 0) {
-          allowedCodes = prqRes.rows.map(r => r.item_code).filter(Boolean);
-        }
       }
     }
 
@@ -118,6 +90,8 @@ router.get('/', async (req, res) => {
          ppo.shipping_address,
          ppo.message, 
          ppo.created_at,
+         COALESCE(t.status, 'ordered') AS status,
+         COALESCE(t.delivery_percentage, 0.0) AS delivery_percentage,
          COALESCE(
            (SELECT json_agg(json_build_object(
               'id', psi.id,
@@ -186,6 +160,7 @@ router.get('/', async (req, res) => {
            ), '[]'::json
          ) AS items
        FROM process_po ppo
+       LEFT JOIN trades t ON ppo.trade_id = t.id
        WHERE ppo.company_id = $1
        ORDER BY ppo.created_at DESC`,
       [req.user.company_id]
@@ -234,6 +209,8 @@ router.get('/:id', async (req, res) => {
          ppo.shipping_address,
          ppo.message, 
          ppo.created_at,
+         COALESCE(t.status, 'ordered') AS status,
+         COALESCE(t.delivery_percentage, 0.0) AS delivery_percentage,
          COALESCE(
            (SELECT json_agg(json_build_object(
               'id', psi.id,
@@ -302,6 +279,7 @@ router.get('/:id', async (req, res) => {
            ), '[]'::json
          ) AS items
        FROM process_po ppo
+       LEFT JOIN trades t ON ppo.trade_id = t.id
        WHERE ${whereClause}`,
       params
     );
@@ -314,13 +292,24 @@ router.get('/:id', async (req, res) => {
 
     // Fetch associated jobs
     if (ppo.job_ids && ppo.job_ids.length > 0) {
-      const jobsResult = await pool.query(`
+      let jobsResult = await pool.query(`
         SELECT j.*, 
-               (SELECT json_agg(si.*) FROM source_item si WHERE si.job_id = j.id) as source_items,
-               (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items
-        FROM job j
-        WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int)
-      `, [JSON.stringify(ppo.job_ids)]);
+               (SELECT json_agg(si.*) FROM "processSource_item" si WHERE si.job_id = j.id) as source_items,
+               (SELECT json_agg(ti.*) FROM "ProcessTarget_item" ti WHERE ti.job_id = j.id) as target_items
+        FROM "processJob" j
+        WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int) AND j.company_id = $2
+      `, [JSON.stringify(ppo.job_ids), req.user.company_id]);
+
+      // Fallback to legacy job table if no records found in processJob
+      if (jobsResult.rows.length === 0) {
+        jobsResult = await pool.query(`
+          SELECT j.*, 
+                 (SELECT json_agg(si.*) FROM source_item si WHERE si.job_id = j.id) as source_items,
+                 (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items
+          FROM job j
+          WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int) AND j.company_id = $2
+        `, [JSON.stringify(ppo.job_ids), req.user.company_id]);
+      }
       
       ppo.jobs = jobsResult.rows.map(j => {
         let flattenedSourceItems = [];
@@ -382,14 +371,9 @@ router.post('/', async (req, res) => {
     items
   } = req.body || {};
 
-  // Validate compulsory fields
-  if (!seller || !seller.trim()) {
-    return res.status(400).json({ error: 'Seller / Processor Vendor is required' });
-  }
-
-  if (!party || !party.trim()) {
-    return res.status(400).json({ error: 'Party / Client Customer is required' });
-  }
+  // Validate compulsory fields / fallbacks
+  const resolvedSeller = (seller && seller.trim()) || 'Self / Company';
+  const resolvedParty = (party && party.trim()) || 'Self / Company';
 
   const hasMultiTables = Array.isArray(source_items) && source_items.length > 0 && Array.isArray(target_items) && target_items.length > 0;
   const hasLegacyItems = Array.isArray(items) && items.length > 0;
@@ -487,21 +471,21 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Auto-create Job and manufacture record if job_ids is empty or not passed
+    // Auto-create Process Job if job_ids is empty or not passed
     let finalJobIds = Array.isArray(job_ids) ? job_ids.filter(Boolean) : (job_ids ? [job_ids] : []);
     if (finalJobIds.length === 0 && (normalizedSourceItems.length > 0 || normalizedTargetItems.length > 0)) {
       const jobProcessName = (normalizedTargetItems[0] && normalizedTargetItems[0].process_name)
         || (normalizedSourceItems[0] && normalizedSourceItems[0].process_name)
-        || 'Manufacturing Process';
+        || 'Subcontracting Process';
 
       const jobRes = await client.query(
-        `INSERT INTO job (process_name, date_of_start, date_of_end, message, company_id)
+        `INSERT INTO "processJob" (process_name, date_of_start, date_of_end, message, company_id)
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [
           jobProcessName,
           date_of_start || new Date().toISOString().split('T')[0],
           date_of_end || delivery_date || null,
-          message || `Job auto-created for Process PO ${po_no.trim()}`,
+          message || `Process Job auto-created for Process PO ${po_no.trim()}`,
           companyId
         ]
       );
@@ -509,23 +493,17 @@ router.post('/', async (req, res) => {
 
       if (normalizedSourceItems.length > 0) {
         await client.query(
-          `INSERT INTO source_item (job_id, items, company_id) VALUES ($1, $2::jsonb, $3)`,
+          `INSERT INTO "processSource_item" (job_id, items, company_id) VALUES ($1, $2::jsonb, $3)`,
           [createdJobId, JSON.stringify(normalizedSourceItems), companyId]
         );
       }
 
       if (normalizedTargetItems.length > 0) {
         await client.query(
-          `INSERT INTO target_item (job_id, items, company_id) VALUES ($1, $2::jsonb, $3)`,
+          `INSERT INTO "ProcessTarget_item" (job_id, items, company_id) VALUES ($1, $2::jsonb, $3)`,
           [createdJobId, JSON.stringify(normalizedTargetItems), companyId]
         );
       }
-
-      await client.query(
-        `INSERT INTO manufacture (status, job_id, loss_qty, company_id)
-         VALUES ('in_progress', $1, '[]'::jsonb, $2)`,
-        [createdJobId, companyId]
-      );
 
       finalJobIds = [createdJobId];
     }
@@ -537,7 +515,7 @@ router.post('/', async (req, res) => {
          seller, party, gst_type, gst_rate, gst, transport,
          packing_forward, other, basic_value, delivery_date,
          shipping_address, message, job_ids, company_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::jsonb, $21)
        RETURNING id, created_at`,
       [
         po_no.trim(),
@@ -547,8 +525,8 @@ router.post('/', async (req, res) => {
         tradeDbId,
         contract_id ? parseInt(contract_id) : null,
         contract_ref ? String(contract_ref).trim() : null,
-        seller.trim(),
-        party.trim(),
+        resolvedSeller,
+        resolvedParty,
         gst_type || null,
         gst_rate ? parseFloat(gst_rate) : 0,
         gst ? parseFloat(gst) : 0,

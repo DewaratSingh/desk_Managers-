@@ -8,27 +8,35 @@ import Dashboard from './pages/Dashboard'
 import AddUserView from './pages/AddUser'
 import TradeView from './pages/Trade'
 import './App.css'
-import CreatePurchaseOrderForm from './form/Sell/PurchaseOrder/CreatePurchaseOrderForm'
-import UpdatePurchaseOrderForm from './form/Sell/PurchaseOrder/UpdatePurchaseOrderForm'
-import CreateReleaseOrderForm from './form/Sell/ReleaseOrder/CreateReleaseOrderForm'
-import UpdateReleaseOrderForm from './form/Sell/ReleaseOrder/UpdateReleaseOrderForm'
-import CreateRfqForm from './form/Sell/RFQ/CreateRfqForm'
+import CreatePurchaseOrderForm from './form/Sell/RecivedPO/CreatePurchaseOrderForm'
+import UpdatePurchaseOrderForm from './form/Sell/RecivedPO/UpdatePurchaseOrderForm'
+import CreateReleaseOrderForm from './form/Sell/RecivedRO/CreateReleaseOrderForm'
+import UpdateReleaseOrderForm from './form/Sell/RecivedRO/UpdateReleaseOrderForm'
+import CreateRfqForm from './form/Sell/RecivedQ(RFQ)/CreateRfqForm'
 import CreateProcessRfqForm from './form/sell_process/CreateProcessRfqForm'
 import UpdateProcessRfqForm from './form/sell_process/UpdateProcessRfqForm'
-import CreateProcessReceivedQuotationForm from './form/buy_process/CreateProcessReceivedQuotationForm'
-import UpdateProcessReceivedQuotationForm from './form/buy_process/UpdateProcessReceivedQuotationForm'
-import UpdateProcessPurchaseOrderForm from './form/buy_process/UpdateProcessPurchaseOrderForm'
-import UpdateRfqForm from './form/Sell/RFQ/UpdateRfqForm'
-import CreateQuotationForm from './form/Sell/Quotation/CreateQuotationForm'
-import UpdateQuotationForm from './form/Sell/Quotation/UpdateQuotationForm'
+import {
+  CreateProcessReceivedQuotationForm,
+  UpdateProcessReceivedQuotationForm,
+  ProcessRqForm,
+  CreateProcessPurchaseOrderForm,
+  UpdateProcessPurchaseOrderForm,
+  CreateProcessContractOrderForm,
+  UpdateProcessContractOrderForm
+} from './form/buy_process'
+// process forms imported from ./form/buy_process
+// buy_process forms handled above
+import UpdateRfqForm from './form/Sell/RecivedQ(RFQ)/UpdateRfqForm'
+import CreateQuotationForm from './form/Sell/SendQuotation/CreateQuotationForm'
+import UpdateQuotationForm from './form/Sell/SendQuotation/UpdateQuotationForm'
 import CreateReceivedQuotationForm from './form/Buy/ReceivedQuotation/CreateReceivedQuotationForm'
 import UpdateReceivedQuotationForm from './form/Buy/ReceivedQuotation/UpdateReceivedQuotationForm'
-import CreateReceivedPurchaseOrderForm from './form/Buy/ReceivedPurchaseOrder/CreateReceivedPurchaseOrderForm'
-import UpdateReceivedPurchaseOrderForm from './form/Buy/ReceivedPurchaseOrder/UpdateReceivedPurchaseOrderForm'
-import CreateContractOrderForm from './form/Buy/ContractOrder/CreateContractOrderForm'
-import UpdateContractOrderForm from './form/Buy/ContractOrder/UpdateContractOrderForm'
-import ProcessRqForm from './form/ProcessRqForm'
-import ProcessPoForm from './form/ProcessPoForm'
+import CreateReceivedPurchaseOrderForm from './form/Buy/sendPO/CreateReceivedPurchaseOrderForm'
+import UpdateReceivedPurchaseOrderForm from './form/Buy/sendPO/UpdateReceivedPurchaseOrderForm'
+import CreateContractOrderForm from './form/Buy/sendRO/CreateContractOrderForm'
+import UpdateContractOrderForm from './form/Buy/sendRO/UpdateContractOrderForm'
+// ProcessRqForm from buy_process
+// ProcessPoForm replaced by CreateProcessPurchaseOrderForm
 import DeliveryNoteForm from './form/DeliveryNoteForm'
 import SellStockForm from './form/Sell/SellStockForm'
 import InvoiceForm from './form/InvoiceForm'
@@ -46,6 +54,8 @@ import ArcView from './pages/Arc'
 import GstCategoryView from './pages/GstCategory'
 import ManufactureList from './pages/ManufactureList'
 import ProcessPoList from './pages/ProcessPoList'
+import Backup from './pages/Backup'
+import Monitor from './pages/Monitor'
 import Settings from './pages/Settings'
 import UnderConstruction from './pages/UnderConstruction'
 
@@ -93,6 +103,8 @@ function App() {
             <Route path="/arc" element={<ArcView />} />
             <Route path="/gst-category" element={<GstCategoryView />} />
             <Route path="/users" element={<AddUserView />} />
+            <Route path="/backup" element={<Backup />} />
+            <Route path="/monitor" element={<Monitor />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/under-construction" element={<UnderConstruction />} />
           </Route>
@@ -109,9 +121,11 @@ function App() {
           <Route path="/updateReleaseOrder/*" element={<UpdateReleaseOrderForm />} />
           <Route path="/addReceivedQuotation" element={<CreateReceivedQuotationForm />} />
           <Route path="/updateReceivedQuotation/:id" element={<UpdateReceivedQuotationForm />} />
-          <Route path="/addProcessPurchaseOrder" element={<ProcessPoForm />} />
+          <Route path="/addProcessPurchaseOrder" element={<CreateProcessPurchaseOrderForm />} />
           <Route path="/updateProcessPurchaseOrder/:id" element={<UpdateProcessPurchaseOrderForm />} />
-          <Route path="/addProcessContractOrder" element={<ProcessPoForm isContractOrder={true} />} />
+          <Route path="/addProcessContractOrder" element={<CreateProcessContractOrderForm />} />
+          <Route path="/updateProcessContractOrder/:id" element={<UpdateProcessContractOrderForm />} />
+          <Route path="/updateProcessContractOrder/*" element={<UpdateProcessContractOrderForm />} />
           <Route path="/party/form" element={<AddCustomerView />} />
           <Route path="/buyer/form" element={<AddBuyerView />} />
           <Route path="/item/form" element={<AddItemView />} />

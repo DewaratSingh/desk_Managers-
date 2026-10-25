@@ -40,6 +40,7 @@ async function initApp() {
   await loadBackupFiles();
   await loadCloudHistory();
   await loadNetworkInfo();
+  await loadPM2Status();
 }
 
 function switchTab(tabId) {
@@ -55,7 +56,14 @@ function switchTab(tabId) {
   }
 
   if (tabId === 'dashboard') {
+    stopPM2Polling();
     loadNetworkInfo();
+  } else if (tabId === 'autostart') {
+    loadPM2Status();
+    loadPM2Logs();
+    startPM2Polling();
+  } else {
+    stopPM2Polling();
   }
 }
 
@@ -128,6 +136,8 @@ async function loadBackupConfig() {
       const config = await window.pywebview.api.get_backup_config();
       currentBackupPath = config.backup_dir;
       document.getElementById("backupPathInput").value = currentBackupPath;
+      const subEl = document.getElementById("statBackupSub");
+      if (subEl) subEl.textContent = `In ${currentBackupPath}`;
     }
   } catch (err) {
     console.error("Error loading config:", err);
@@ -296,9 +306,9 @@ async function loadBackupFiles() {
       currentLocalFiles = await window.pywebview.api.get_backup_files();
     } else {
       currentLocalFiles = [
-        { filename: "postgres-backup-2026-09-20_06-17-20.dump", size: "194.9 KB", mod_time: "2026-09-20 06:17:20", path: "D:\\deskManager-backups\\postgres-backup-2026-09-20_06-17-20.dump" },
-        { filename: "postgres-backup-2026-09-17_03-48-23.dump", size: "194.8 KB", mod_time: "2026-09-17 03:48:23", path: "D:\\deskManager-backups\\postgres-backup-2026-09-17_03-48-23.dump" },
-        { filename: "postgres-backup-2026-09-16_06-28-43.dump", size: "185.9 KB", mod_time: "2026-09-16 06:28:43", path: "D:\\deskManager-backups\\postgres-backup-2026-09-16_06-28-43.dump" }
+        { filename: "postgres-backup-2026-09-20_06-17-20.dump", size: "194.9 KB", mod_time: "2026-09-20 06:17:20", path: "DeskManager\\backups\\postgres-backup-2026-09-20_06-17-20.dump" },
+        { filename: "postgres-backup-2026-09-17_03-48-23.dump", size: "194.8 KB", mod_time: "2026-09-17 03:48:23", path: "DeskManager\\backups\\postgres-backup-2026-09-17_03-48-23.dump" },
+        { filename: "postgres-backup-2026-09-16_06-28-43.dump", size: "185.9 KB", mod_time: "2026-09-16 06:28:43", path: "DeskManager\\backups\\postgres-backup-2026-09-16_06-28-43.dump" }
       ];
     }
     renderBackupTable(currentLocalFiles);
@@ -460,6 +470,8 @@ async function applyNewBackupLocation() {
       if (res && res.success) {
         currentBackupPath = res.backup_dir;
         document.getElementById("backupPathInput").value = currentBackupPath;
+        const subEl = document.getElementById("statBackupSub");
+        if (subEl) subEl.textContent = `In ${currentBackupPath}`;
         showToast(`Backup location updated: ${currentBackupPath}`, "success");
         await loadBackupFiles();
       }
@@ -634,4 +646,252 @@ function showToast(message, type = "info") {
 
 function escapeJs(str) {
   return str.replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+
+// =================== PM2 & AUTOSTART BACKEND MANAGEMENT ===================
+let currentPM2Status = null;
+let pm2PollInterval = null;
+let isPollingPM2 = false;
+
+function startPM2Polling() {
+  if (pm2PollInterval) return;
+  pm2PollInterval = setInterval(async () => {
+    const panel = document.getElementById("panel-autostart");
+    if (panel && panel.classList.contains("active")) {
+      if (isPollingPM2) return; // prevent overlapping calls
+      isPollingPM2 = true;
+      try {
+        await loadPM2Status();
+      } finally {
+        isPollingPM2 = false;
+      }
+    } else {
+      stopPM2Polling();
+    }
+  }, 3000);
+}
+
+function stopPM2Polling() {
+  if (pm2PollInterval) {
+    clearInterval(pm2PollInterval);
+    pm2PollInterval = null;
+  }
+}
+
+async function loadPM2Status() {
+  try {
+    if (window.pywebview && window.pywebview.api) {
+      currentPM2Status = await window.pywebview.api.get_pm2_status();
+    } else {
+      currentPM2Status = {
+        success: true,
+        pm2_installed: true,
+        pm2_version: "7.0.4",
+        status: "online",
+        service_name: "deskmanager-backend",
+        pid: 1234,
+        memory: "58.2 MB",
+        cpu: "0%",
+        restarts: 0,
+        uptime: "12m 30s",
+        autostart_active: true,
+        startup_bat_path: "C:\\Users\\...\\deskmanager-resurrect.bat"
+      };
+    }
+    renderPM2UI(currentPM2Status);
+  } catch (err) {
+    console.error("Error loading PM2 status:", err);
+  }
+}
+
+function renderPM2UI(statusData) {
+  if (!statusData) return;
+
+  const statusBadge = document.getElementById("pm2StatusBadge");
+  const statStatus = document.getElementById("pm2StatStatus");
+  const statPid = document.getElementById("pm2StatPid");
+  const statMemory = document.getElementById("pm2StatMemory");
+  const statCpu = document.getElementById("pm2StatCpu");
+  const statRestarts = document.getElementById("pm2StatRestarts");
+  const statUptime = document.getElementById("pm2StatUptime");
+  const statAutostart = document.getElementById("pm2StatAutostart");
+  const startupBadge = document.getElementById("startupFileBadge");
+  const startupPathDisplay = document.getElementById("startupBatPathDisplay");
+  const btnSetup = document.getElementById("btnSetupAutostart");
+
+  if (startupPathDisplay && statusData.startup_bat_path) {
+    startupPathDisplay.textContent = statusData.startup_bat_path;
+  }
+
+  // Windows Startup File Badge
+  if (startupBadge) {
+    if (statusData.autostart_active) {
+      startupBadge.className = "badge badge-connected";
+      startupBadge.textContent = "● Active on Windows Boot";
+    } else {
+      startupBadge.className = "badge badge-disconnected";
+      startupBadge.textContent = "● Not Active";
+    }
+  }
+
+  if (statAutostart) {
+    statAutostart.textContent = statusData.autostart_active ? "ENABLED" : "DISABLED";
+    statAutostart.style.color = statusData.autostart_active ? "#22c55e" : "#94a3b8";
+  }
+
+  // Process status
+  const status = (statusData.status || "not_created").toLowerCase();
+  if (status === "online") {
+    if (statusBadge) {
+      statusBadge.className = "badge badge-connected";
+      statusBadge.textContent = `● ONLINE (PID: ${statusData.pid || 'Active'})`;
+    }
+    if (statStatus) {
+      statStatus.textContent = "ONLINE";
+      statStatus.style.color = "#22c55e";
+    }
+    if (btnSetup) {
+      btnSetup.innerHTML = `<span>⚡</span> Re-apply Autostart & PM2`;
+    }
+  } else if (status === "stopped") {
+    if (statusBadge) {
+      statusBadge.className = "badge badge-warning";
+      statusBadge.textContent = "● STOPPED";
+    }
+    if (statStatus) {
+      statStatus.textContent = "STOPPED";
+      statStatus.style.color = "#f59e0b";
+    }
+  } else if (status === "errored") {
+    if (statusBadge) {
+      statusBadge.className = "badge badge-disconnected";
+      statusBadge.textContent = "● ERRORED";
+    }
+    if (statStatus) {
+      statStatus.textContent = "ERRORED";
+      statStatus.style.color = "#ef4444";
+    }
+  } else {
+    // not installed or not created
+    if (statusBadge) {
+      statusBadge.className = "badge badge-disconnected";
+      statusBadge.textContent = statusData.pm2_installed ? "● Service Not Created" : "● PM2 Not Installed";
+    }
+    if (statStatus) {
+      statStatus.textContent = "NOT RUNNING";
+      statStatus.style.color = "#94a3b8";
+    }
+  }
+
+  if (statPid) statPid.textContent = statusData.pid ? `PID: ${statusData.pid}` : "PID: --";
+  if (statMemory) statMemory.textContent = statusData.memory || "0 MB";
+  if (statCpu) statCpu.textContent = `CPU: ${statusData.cpu || '0%'}`;
+  if (statRestarts) statRestarts.textContent = statusData.restarts || "0";
+  if (statUptime) statUptime.textContent = `Uptime: ${statusData.uptime || 'Offline'}`;
+}
+
+async function setupAutostartProcess() {
+  const btn = document.getElementById("btnSetupAutostart");
+  const originalHtml = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span>⏳</span> Setting up PM2 & Autostart...`;
+  }
+  showToast("Installing PM2 & configuring backend daemon autostart...", "info");
+  updateStatus("Configuring PM2 and Windows startup resurrect...", "info");
+
+  try {
+    if (window.pywebview && window.pywebview.api) {
+      const res = await window.pywebview.api.setup_pm2_autostart();
+      if (res && res.success) {
+        showToast(res.message || "PM2 autostart enabled successfully!", "success");
+        updateStatus("PM2 backend daemon is now online and autostart is enabled.", "success");
+        await loadPM2Status();
+        await loadPM2Logs();
+      } else {
+        showToast(res.error || "Failed to setup PM2 autostart", "danger");
+        updateStatus(`PM2 Setup error: ${res.error || 'Unknown error'}`, "danger");
+      }
+    } else {
+      showToast("Demo mode: PM2 setup simulated.", "success");
+    }
+  } catch (err) {
+    showToast(`Setup error: ${err}`, "danger");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function controlPM2Service(action) {
+  showToast(`Executing PM2 ${action}...`, "info");
+  updateStatus(`Running PM2 action: ${action}...`, "info");
+  try {
+    if (window.pywebview && window.pywebview.api) {
+      const res = await window.pywebview.api.control_pm2_service(action);
+      if (res && res.success) {
+        showToast(res.message || `PM2 ${action} executed.`, "success");
+        updateStatus(`PM2 ${action} completed successfully.`, "success");
+        await loadPM2Status();
+        await loadPM2Logs();
+      } else {
+        showToast(res.error || `Failed to execute ${action}`, "danger");
+      }
+    }
+  } catch (err) {
+    showToast(`Error: ${err}`, "danger");
+  }
+}
+
+async function loadPM2Logs() {
+  const logBox = document.getElementById("pm2LogsContent");
+  if (logBox) logBox.textContent = "Fetching latest PM2 logs...";
+
+  try {
+    if (window.pywebview && window.pywebview.api) {
+      const res = await window.pywebview.api.get_pm2_logs();
+      if (res && res.success) {
+        if (logBox) logBox.textContent = res.logs || "No logs available yet.";
+      } else {
+        if (logBox) logBox.textContent = res.error || "Could not retrieve logs.";
+      }
+    } else {
+      if (logBox) logBox.textContent = "[PM2 Demo Logs]\nBackend server running on http://localhost:5000\nDatabase initialized";
+    }
+  } catch (err) {
+    if (logBox) logBox.textContent = `Error reading logs: ${err}`;
+  }
+}
+
+async function openWindowsStartupFolder() {
+  try {
+    if (window.pywebview && window.pywebview.api) {
+      const res = await window.pywebview.api.open_startup_folder();
+      if (res && res.success) {
+        showToast("Opened Windows Startup folder.", "success");
+      } else {
+        showToast(res.error || "Could not open folder", "danger");
+      }
+    }
+  } catch (err) {
+    showToast(`Error: ${err}`, "danger");
+  }
+}
+
+async function openBackendDirectory() {
+  try {
+    if (window.pywebview && window.pywebview.api) {
+      const res = await window.pywebview.api.open_backend_folder();
+      if (res && res.success) {
+        showToast("Opened backend folder.", "success");
+      } else {
+        showToast(res.error || "Could not open folder", "danger");
+      }
+    }
+  } catch (err) {
+    showToast(`Error: ${err}`, "danger");
+  }
 }

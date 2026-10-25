@@ -19,7 +19,7 @@
 | 8 | [Delivery](#8-delivery) | `delivery_notes`, `delivery_note_items`, `delivery_invoices`, `delivery_invoice_items` |
 | 9 | [GRN & Rejections](#9-grn--rejections) | `grns`, `rejections`, `rejection_items` |
 | 10 | [Invoices & Payments](#10-invoices--payments) | `invoices`, `invoice_items`, `payments`, `payment_items` |
-| 11 | [Process / Manufacturing](#11-process--manufacturing) | `job`, `manufacture`, `source_item`, `target_item`, `multiple_item`, `p_item` |
+| 11 | [Process / Manufacturing](#11-process--manufacturing) | `job`, `manufacture`, `source_item`, `target_item`, `processJob`, `processSource_item`, `ProcessTarget_item`, `multiple_item`, `p_item` |
 | 12 | [Process PO (Internal)](#12-process-po-internal) | `process_po`, `process_po_item`, `process_po_items`, `process_pos`, `process_po_source_item`, `process_po_target_item`, `po_process`, `po_process_item`, `po_process_items` |
 | 13 | [Process RFQ (Internal)](#13-process-rfq-internal) | `rq_process`, `process_received_rfqs`, `process_rfq_items` |
 | 14 | [Vendor Orders](#14-vendor-orders) | `vendor_purchase_orders`, `vendor_purchase_order_items` |
@@ -653,6 +653,41 @@ CREATE TABLE target_item (
   items      JSONB     DEFAULT '[]',  -- [{item_code, qty, trace_id}]
   company_id INTEGER   REFERENCES companies(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### `processJob`
+```sql
+CREATE TABLE "processJob" (
+  id            SERIAL        PRIMARY KEY,
+  process_name  VARCHAR(255),
+  date_of_start DATE,
+  date_of_end   DATE,
+  message       TEXT,
+  company_id    INTEGER       REFERENCES companies(id) ON DELETE CASCADE,
+  created_at    TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### `processSource_item`
+```sql
+CREATE TABLE "processSource_item" (
+  id         SERIAL        PRIMARY KEY,
+  job_id     INTEGER       REFERENCES "processJob"(id) ON DELETE CASCADE,
+  items      JSONB         DEFAULT '[]'::jsonb,
+  company_id INTEGER       REFERENCES companies(id) ON DELETE CASCADE,
+  created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### `ProcessTarget_item`
+```sql
+CREATE TABLE "ProcessTarget_item" (
+  id         SERIAL        PRIMARY KEY,
+  job_id     INTEGER       REFERENCES "processJob"(id) ON DELETE CASCADE,
+  items      JSONB         DEFAULT '[]'::jsonb,
+  company_id INTEGER       REFERENCES companies(id) ON DELETE CASCADE,
+  created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );
 ```
 

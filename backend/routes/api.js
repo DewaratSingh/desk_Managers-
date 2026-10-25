@@ -24,6 +24,7 @@ const grnRouter = require('./grn');
 const paymentRouter = require('./payment');
 const pItemRouter = require('./p-item');
 const manufactureRouter = require('./manufacture');
+const processJobRouter = require('./process-job');
 
 const rqProcessRouter = require('./rq-process');
 const processPORouter = require('./process-po');
@@ -31,6 +32,8 @@ const processRoRouter = require('./process-ro');
 const processRfqRouter = require('./process-rfq');
 const processReceivedQuotationRouter = require('./process-received-quotation');
 const historyRouter = require('./history');
+const monitorRouter = require('./monitor');
+const backupRouter = require('./backup');
 
 // Simple health check for API
 router.get('/health', (req, res) => {
@@ -39,6 +42,11 @@ router.get('/health', (req, res) => {
 
 // Authentication endpoints
 router.use('/auth', authRouter);
+
+// Public OAuth callback for Google Drive redirect
+router.get('/backup/auth/callback', (req, res, next) => {
+  backupRouter.handle(req, res, next);
+});
 
 // Apply JWT authentication middleware to all routes registered below
 router.use(authMiddleware);
@@ -65,6 +73,8 @@ router.use('/payments', paymentRouter);
 router.use('/p-items', pItemRouter);
 router.use('/trace-items', pItemRouter);
 router.use('/manufacture', manufactureRouter);
+router.use('/process-jobs', processJobRouter);
+router.use('/process-job', processJobRouter);
 
 router.use('/rq-process', rqProcessRouter);
 router.use('/process-po', processPORouter);
@@ -74,5 +84,7 @@ router.use('/process-rfq', processRfqRouter);
 router.use('/process-received-quotations', processReceivedQuotationRouter);
 router.use('/process-received-quotation', processReceivedQuotationRouter);
 router.use('/history', historyRouter);
+router.use('/monitor', monitorRouter);
+router.use('/backup', backupRouter);
 
 module.exports = router;

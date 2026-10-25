@@ -7,12 +7,12 @@ const inputCls = "w-full px-2 py-1  bg-[white] border border-slate-300 rounded t
 
 const isSellSideTrade = (t) => {
   const norm = (t || '').toLowerCase().replace(/[\s_]+/g, '');
-  return norm === 'sell' || norm === 'sellarc';
+  return norm === 'sell' || norm === 'sellarc' || norm.includes('sell');
 };
 
 const isBuySideTrade = (t) => {
   const norm = (t || '').toLowerCase().replace(/[\s_]+/g, '');
-  return norm === 'buy' || norm === 'buyarc' || norm === 'process' || norm === 'buyprocess' || norm === 'arc';
+  return norm.includes('buy') || norm === 'buy' || norm === 'buyarc' || norm === 'process' || norm === 'buyprocess' || norm === 'arc';
 };
 
 const isProcessTrade = (t) => {

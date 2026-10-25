@@ -641,6 +641,48 @@ const initializeDatabase = async () => {
       );
     `);
 
+    // 32b. Process Job Table ("processJob")
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "processJob" (
+        id            SERIAL PRIMARY KEY,
+        process_name  VARCHAR(255),
+        date_of_start DATE,
+        date_of_end   DATE,
+        message       TEXT,
+        company_id    INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 32c. Process Source Item Table ("processSource_item")
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "processSource_item" (
+        id         SERIAL PRIMARY KEY,
+        job_id     INTEGER REFERENCES "processJob"(id) ON DELETE CASCADE,
+        items      JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 32d. Process Target Item Table ("ProcessTarget_item")
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "ProcessTarget_item" (
+        id         SERIAL PRIMARY KEY,
+        job_id     INTEGER REFERENCES "processJob"(id) ON DELETE CASCADE,
+        items      JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Compatibility views for case-insensitive access
+    await client.query(`
+      CREATE OR REPLACE VIEW processjob AS SELECT * FROM "processJob";
+      CREATE OR REPLACE VIEW processsource_item AS SELECT * FROM "processSource_item";
+      CREATE OR REPLACE VIEW processtarget_item AS SELECT * FROM "ProcessTarget_item";
+    `);
+
     // Drop old process tables to apply schema change if they exist
     await client.query(`
       DROP TABLE IF EXISTS process_item CASCADE;
@@ -1003,6 +1045,30 @@ const initializeDatabase = async () => {
 
     await client.query(`
       CREATE OR REPLACE VIEW "History" AS SELECT * FROM history;
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS keys (
+        id SERIAL PRIMARY KEY,
+        service_name VARCHAR(100) NOT NULL DEFAULT 'google_drive',
+        client_id TEXT,
+        client_secret TEXT,
+        access_token TEXT,
+        refresh_token TEXT,
+        folder_id TEXT,
+        cookies TEXT,
+        auth_mode VARCHAR(50) DEFAULT 'oauth',
+        account_email VARCHAR(255),
+        last_backup_date TIMESTAMP WITH TIME ZONE,
+        alert_interval_days INTEGER DEFAULT 3,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS last_backup_date TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS alert_interval_days INTEGER DEFAULT 3;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS alert_interval_seconds INTEGER DEFAULT 259200;
     `);
 
     console.log('Database initialized successfully.');

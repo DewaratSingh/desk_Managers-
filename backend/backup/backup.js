@@ -3,20 +3,54 @@ const path = require('path');
 const fs = require('fs');
 
 /**
+ * Resolves the default backup directory in %PROGRAMDATA%/DeskManager/backups.
+ * @returns {string} The path to the default backup directory.
+ */
+function getDefaultBackupDir() {
+  const programData = process.env.PROGRAMDATA || process.env.ALLUSERSPROFILE || 'C:\\ProgramData';
+  return path.join(programData, 'DeskManager', 'backups');
+}
+
+/**
+ * Gets and validates the backup directory path.
+ * Checks drive accessibility and falls back to default ProgramData directory if drive does not exist.
+ * @returns {string}
+ */
+function getBackupDirectory() {
+  let target = process.env.BACKUP_DIR || process.env.BACKUP_PATH || process.env.BACKUP_PATH_D;
+  if (!target) {
+    return getDefaultBackupDir();
+  }
+
+  // Expand %ENV_VAR% if present
+  if (target.includes('%')) {
+    target = target.replace(/%([^%]+)%/g, (_, n) => process.env[n] || '');
+  }
+
+  const root = path.parse(target).root;
+  if (root && !fs.existsSync(root)) {
+    console.warn(`[Backup Warning] Drive "${root}" does not exist on this machine. Falling back to default ProgramData backup directory.`);
+    return getDefaultBackupDir();
+  }
+
+  return path.resolve(target);
+}
+
+/**
  * Checks if a backup file for today already exists.
- * @param {string} backupDirD - The path to the backup directory.
+ * @param {string} backupDir - The path to the backup directory.
  * @param {string} dbName - The name of the database.
  * @returns {boolean} True if a backup for today exists, false otherwise.
  */
-function hasTodayBackup(backupDirD, dbName) {
-  if (!fs.existsSync(backupDirD)) {
+function hasTodayBackup(backupDir, dbName) {
+  if (!fs.existsSync(backupDir)) {
     return false;
   }
   try {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
     const prefix = `${dbName}-backup-${todayStr}`;
-    const files = fs.readdirSync(backupDirD);
+    const files = fs.readdirSync(backupDir);
     return files.some(file => file.startsWith(prefix) && file.endsWith('.dump'));
   } catch (err) {
     console.error(`[Backup Warning] Error checking existing backups: ${err.message}`);
@@ -25,16 +59,16 @@ function hasTodayBackup(backupDirD, dbName) {
 }
 
 /**
- * Rotates database backup files on the D drive, deleting those older than 4 days based on the filename timestamp.
- * @param {string} backupDirD - The path to the backup directory.
+ * Rotates database backup files, deleting those older than 4 days based on the filename timestamp.
+ * @param {string} backupDir - The path to the backup directory.
  * @param {string} dbName - The name of the database.
  */
-function rotateBackups(backupDirD, dbName) {
+function rotateBackups(backupDir, dbName) {
   try {
-    if (!fs.existsSync(backupDirD)) {
+    if (!fs.existsSync(backupDir)) {
       return;
     }
-    const files = fs.readdirSync(backupDirD);
+    const files = fs.readdirSync(backupDir);
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -55,7 +89,7 @@ function rotateBackups(backupDirD, dbName) {
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
         if (diffDays > 4) {
-          const filePath = path.join(backupDirD, file);
+          const filePath = path.join(backupDir, file);
           console.log(`[Backup Retention] Deleting backup older than 4 days (${diffDays} days old): ${file}`);
           fs.unlinkSync(filePath);
         }
@@ -68,33 +102,33 @@ function rotateBackups(backupDirD, dbName) {
 
 /**
  * Executes a PostgreSQL database backup using pg_dump.
- * Saves the backup to the D drive if a backup for today doesn't exist, and cleans up backups older than 4 days.
+ * Saves the backup to the configured backup directory if a backup for today doesn't exist, and cleans up backups older than 4 days.
  */
-async function runBackup() {
+async function runBackup({ force = false } = {}) {
   console.log('--- Starting Database Backup ---');
 
   const dbName = process.env.DB_DATABASE || 'postgres';
-  const backupDirD = process.env.BACKUP_PATH_D || 'D:\\deskManager-backups';
+  const backupDir = getBackupDirectory();
 
   // Check if today's backup is already available
-  if (hasTodayBackup(backupDirD, dbName)) {
+  if (!force && hasTodayBackup(backupDir, dbName)) {
     const todayStr = new Date().toISOString().split('T')[0];
     console.log(`[Backup Info] Backup for today (${todayStr}) already exists. Skipping database dump.`);
     // Run rotation anyway to clean up any old files
-    rotateBackups(backupDirD, dbName);
+    rotateBackups(backupDir, dbName);
     return;
   }
 
   const now = new Date();
-  const timestamp = now.toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/:/g, '-');
+  const timestamp = now.toISOString().replace(/T/, '_').replace(/\\..+/, '').replace(/:/g, '-');
   const fileName = `${dbName}-backup-${timestamp}.dump`;
-  const localFilePath = path.join(backupDirD, fileName);
+  const localFilePath = path.join(backupDir, fileName);
 
   try {
-    console.log(`Ensuring backup directory exists: ${backupDirD}`);
-    fs.mkdirSync(backupDirD, { recursive: true });
+    console.log(`Ensuring backup directory exists: ${backupDir}`);
+    fs.mkdirSync(backupDir, { recursive: true });
   } catch (err) {
-    console.error(`[Backup Error] Failed to create backup directory on D drive: ${err.message}`);
+    console.error(`[Backup Error] Failed to create backup directory: ${err.message}`);
     throw err;
   }
 
@@ -140,10 +174,10 @@ async function runBackup() {
 
     pgDumpProcess.on('close', (code) => {
       if (code === 0) {
-        console.log(`[Backup Success] Saved database backup to D drive: ${localFilePath}`);
+        console.log(`[Backup Success] Saved database backup: ${localFilePath}`);
         
         // Rotate backups - delete those older than 4 days
-        rotateBackups(backupDirD, dbName);
+        rotateBackups(backupDir, dbName);
         
         resolve(localFilePath);
       } else {
@@ -170,4 +204,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { runBackup };
+module.exports = { runBackup, getBackupDirectory, getDefaultBackupDir };

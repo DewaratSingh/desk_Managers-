@@ -52,12 +52,24 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
   const itemsBasic = (releaseOrder.items || []).reduce(
     (s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0), 0
   );
-  const gstTotal   = parseFloat(releaseOrder.gst)             || 0;
+  const itemsGst = (releaseOrder.items || []).reduce((s, i) => {
+    const lineBasic = (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0);
+    const lineGst = lineBasic * ((parseFloat(i.gst_rate) || 0) / 100);
+    return s + lineGst;
+  }, 0);
+  let gstTotal = parseFloat(releaseOrder.gst) || 0;
+  if (!gstTotal) {
+    if (itemsGst > 0) {
+      gstTotal = itemsGst;
+    } else if (releaseOrder.gst_rate && parseFloat(releaseOrder.gst_rate) > 0) {
+      gstTotal = (itemsBasic * parseFloat(releaseOrder.gst_rate)) / 100;
+    }
+  }
+  const baseValue  = itemsBasic > 0 ? itemsBasic : (parseFloat(releaseOrder.basic_value) || 0);
   const transport  = parseFloat(releaseOrder.transport)       || 0;
   const packing    = parseFloat(releaseOrder.packing_forward) || 0;
   const other      = parseFloat(releaseOrder.other)           || 0;
-  const basicVal   = parseFloat(releaseOrder.basic_value)     || 0;
-  const grandTotal = itemsBasic + gstTotal + transport + packing + other + basicVal;
+  const grandTotal = baseValue + gstTotal + transport + packing + other;
 
   return (
     <div className=" bg-[white] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -223,16 +235,22 @@ export default function RoPanel({ releaseOrder, purchaseOrder, tradeId }) {
         </div>
 
         {/* Charges summary */}
-        {(gstTotal > 0 || transport > 0 || packing > 0 || other > 0 || basicVal > 0) && (
+        {(gstTotal > 0 || transport > 0 || packing > 0 || other > 0) && (
           <div className="border-t border-slate-100 pt-5">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Additional Charges</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                { label: 'GST / Tax',          value: gstTotal,   show: gstTotal > 0 },
+                {
+    label: releaseOrder.gst_type
+      ? `GST / Tax (${releaseOrder.gst_type}${releaseOrder.gst_rate ? ` ${releaseOrder.gst_rate}%` : ''})`
+      : (releaseOrder.gst_rate ? `GST (${releaseOrder.gst_rate}%)` : 'GST / Tax'),
+    value: gstTotal,
+    show: gstTotal > 0
+  },
                 { label: 'Transport',          value: transport,  show: transport > 0 },
                 { label: 'Packing & Fwd',      value: packing,    show: packing > 0 },
                 { label: 'Other',              value: other,      show: other > 0 },
-                { label: 'Add. Basic Value',   value: basicVal,   show: basicVal > 0 },
+                
               ].filter(c => c.show).map(({ label, value }) => (
                 <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>

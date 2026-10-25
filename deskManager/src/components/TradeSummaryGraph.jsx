@@ -78,16 +78,32 @@ export default function TradeSummaryGraph({
   // ── Financial Calculations ──────────────────────────────────────────────────
   const calculateTotalPoVal = (po) => {
     if (!po) return 0;
-    const itemsBasic = (po.items || []).reduce(
-      (s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0),
+    const items = (po.target_items && po.target_items.length > 0) ? po.target_items : (po.items || []);
+    const itemsBasic = items.reduce(
+      (s, i) => s + (parseFloat(i.price || i.unit_price) || 0) * (parseFloat(i.qty || i.target_item_quantity || i.target_qty || i.quantity) || 0),
       0
     );
-    const gstTotal = parseFloat(po.gst) || 0;
+    const baseValue = itemsBasic > 0 ? itemsBasic : (parseFloat(po.basic_value) || 0);
+
+    const itemsGst = items.reduce((s, i) => {
+      const b = (parseFloat(i.price || i.unit_price) || 0) * (parseFloat(i.qty || i.target_item_quantity || i.target_qty || i.quantity) || 0);
+      const r = parseFloat(i.gst_rate);
+      return s + (!isNaN(r) && r > 0 ? (b * r) / 100 : 0);
+    }, 0);
+
+    let gstTotal = parseFloat(po.gst) || 0;
+    if (!gstTotal) {
+      if (itemsGst > 0) {
+        gstTotal = itemsGst;
+      } else if (po.gst_rate && parseFloat(po.gst_rate) > 0) {
+        gstTotal = (baseValue * parseFloat(po.gst_rate)) / 100;
+      }
+    }
+
     const transport = parseFloat(po.transport) || 0;
     const packing = parseFloat(po.packing_forward) || 0;
     const other = parseFloat(po.other) || 0;
-    const basicVal = parseFloat(po.basic_value) || 0;
-    return itemsBasic + gstTotal + transport + packing + other + basicVal;
+    return baseValue + gstTotal + transport + packing + other;
   };
 
   const calculateTotalQuotationVal = (q) => {
@@ -117,8 +133,11 @@ export default function TradeSummaryGraph({
   }, 0);
 
   // ── Quantity & Delivery Calculations ────────────────────────────────────────
-  const totalOrderedQty = (mainOrderDoc?.items || []).reduce(
-    (sum, item) => sum + (parseFloat(item.quantity) || 0),
+  const mainItemsList = (mainOrderDoc?.target_items && mainOrderDoc.target_items.length > 0)
+    ? mainOrderDoc.target_items
+    : (mainOrderDoc?.items || []);
+  const totalOrderedQty = mainItemsList.reduce(
+    (sum, item) => sum + (parseFloat(item.qty || item.quantity || item.target_item_quantity) || 0),
     0
   );
 
@@ -129,7 +148,7 @@ export default function TradeSummaryGraph({
 
   const deliveryProgressPct = totalOrderedQty > 0
     ? Math.min(100, Math.round((totalDeliveredQty / totalOrderedQty) * 100))
-    : (deliveryNotes.length > 0 ? 100 : 0);
+    : (trade?.delivery_percentage != null ? Math.round(parseFloat(trade.delivery_percentage)) : (deliveryNotes.length > 0 ? 100 : 0));
 
   const paymentProgressPct = totalOrderValue > 0
     ? Math.min(100, Math.round((totalPaidValue / totalOrderValue) * 100))
@@ -144,105 +163,220 @@ export default function TradeSummaryGraph({
 
   const graphNodes = [];
 
-  // Stage 1: RFQ / Process RQ
-  if (!isRoDirectTrade && (rfq || processRq || docs.some(d => d.type === 'RFQ' || d.type === 'PR' || d.type === 'RQ_PROCESS' || d.type === 'PROCESS_RFQ'))) {
-    graphNodes.push({
-      key: 'rfq',
-      stage: String(graphNodes.length + 1).padStart(2, '0'),
-      title: isProcessTrade ? 'Process Request' : 'Request (RFQ)',
-      icon: FileText,
-      panelKey: isProcessTrade ? 'process_rq' : 'rfq',
-      status: (rfq || processRq) ? 'completed' : 'pending',
-      docId: rfq?.rfq_no || processRq?.number || (docs.find(d => d.type === 'RFQ' || d.type === 'PR')?.id),
-      details: rfq?.buyer_name || processRq?.party || 'Request specs logged',
-      meta: rfq?.items ? `${rfq.items.length} items requested` : null,
-      date: rfq?.created_at || processRq?.created_at
-    });
-  }
-
-  // Stage 2: Quotation
-  if (!isRoDirectTrade && (quotation || receivedQuotation || docs.some(d => d.type === 'QUOTATION' || d.type === 'RECEIVED_QUOTATION' || d.type === 'PROCESS_RECEIVED_QUOTATION') || rfq)) {
-    const qDoc = quotation || receivedQuotation;
-    const qNo = qDoc?.quotation_no || qDoc?.received_quotation_no || docs.find(d => d.type === 'QUOTATION' || d.type === 'RECEIVED_QUOTATION')?.id;
-    graphNodes.push({
-      key: quotation ? 'quotation' : 'received_quotation',
-      stage: String(graphNodes.length + 1).padStart(2, '0'),
-      title: receivedQuotation ? 'Received Quotation' : 'Sales Quotation',
-      icon: ShoppingCart,
-      panelKey: quotation ? 'quotation' : 'received_quotation',
-      status: qDoc ? 'completed' : (graphNodes.length > 0 && graphNodes[0].status === 'completed' ? 'in_progress' : 'pending'),
-      docId: qNo,
-      details: qDoc?.supplier_name || qDoc?.customer_name || (totalOrderValue > 0 ? `₹${totalOrderValue.toLocaleString('en-IN')}` : 'Pricing proposal'),
-      meta: qDoc?.valid_until ? `Valid: ${new Date(qDoc.valid_until).toLocaleDateString()}` : null,
-      date: qDoc?.created_at
-    });
-  }
-
-  // Stage: PO / RO
   const poDoc = purchaseOrder || releaseOrder;
   const poNo = poDoc?.po_no || poDoc?.ro_no || poDoc?.process_po_no || docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER' || d.type === 'RO')?.id;
   const isRo = isArcTrade || hasRoDoc || (releaseOrder != null);
   const isProcRo = isRo && (isProcessTrade || releaseOrder?._is_process_ro || (poNo && String(poNo).startsWith('PRO-')));
 
-  graphNodes.push({
-    key: isRo ? 'ro' : 'po',
-    stage: String(graphNodes.length + 1).padStart(2, '0'),
-    title: isProcRo ? 'Process Release Order (RO)' : (isRo ? 'Release Order (RO)' : (isProcessTrade ? 'Process Purchase Order (PO)' : 'Purchase Order (PO)')),
-    icon: isRo ? FileText : ShoppingCart,
-    panelKey: isRo ? 'ro' : 'po',
-    status: poDoc ? 'completed' : (graphNodes.some(n => n.status === 'completed') ? 'in_progress' : 'pending'),
-    docId: poNo,
-    details: poDoc?.vendor_name || poDoc?.customer_name || poDoc?.seller || poDoc?.party || (totalOrderValue > 0 ? `₹${totalOrderValue.toLocaleString('en-IN')}` : 'Order committed'),
-    meta: totalOrderedQty > 0 ? `${totalOrderedQty} total qty` : null,
-    date: poDoc?.date || poDoc?.ro_date || poDoc?.date_of_start || poDoc?.created_at
-  });
+  const hasAnyRqDoc = Boolean(
+    receivedQuotation ||
+    processRq ||
+    docs.some(d => ['PROCESS_RECEIVED_QUOTATION', 'PR', 'RQ_PROCESS', 'RECEIVED_QUOTATION'].includes(d.type?.toUpperCase()))
+  );
 
-  // Stage: Delivery & GRN
-  const hasDN = deliveryNotes.length > 0;
-  const dnCount = deliveryNotes.length;
-  graphNodes.push({
-    key: 'delivery',
-    stage: String(graphNodes.length + 1).padStart(2, '0'),
-    title: 'Goods Delivery & GRN',
-    icon: Truck,
-    panelKey: 'delivery',
-    status: deliveryProgressPct === 100 ? 'completed' : (hasDN ? 'in_progress' : (poDoc ? 'in_progress' : 'pending')),
-    docId: hasDN ? `${dnCount} Note${dnCount > 1 ? 's' : ''}` : 'Pending Dispatch',
-    details: `${totalDeliveredQty} / ${totalOrderedQty || '—'} units delivered`,
-    meta: `Fulfillment: ${deliveryProgressPct}%`,
-    date: deliveryNotes[0]?.delivery_date || deliveryNotes[0]?.created_at
-  });
+  const isContractProcessTrade = isProcessTrade && (
+    (!hasAnyRqDoc && (isArcTrade || docs.some(d => ['RO', 'CO', 'PROCESS_RO'].includes(d.type?.toUpperCase())) || releaseOrder != null || (rawTradeType === 'BUY_PROCESS' && !purchaseOrder)))
+  );
 
-  // Stage: Invoice
-  const hasInvoices = invoices.length > 0;
-  const invCount = invoices.length;
-  graphNodes.push({
-    key: 'invoices',
-    stage: String(graphNodes.length + 1).padStart(2, '0'),
-    title: 'Invoicing & Billing',
-    icon: Receipt,
-    panelKey: 'delivery',
-    status: hasInvoices ? 'completed' : (hasDN ? 'in_progress' : 'pending'),
-    docId: hasInvoices ? `${invCount} Invoice${invCount > 1 ? 's' : ''}` : 'Pending Billing',
-    details: totalInvoicedValue > 0 ? `₹${totalInvoicedValue.toLocaleString('en-IN')} billed` : 'Invoice generation',
-    meta: hasInvoices ? `Invoiced 100%` : null,
-    date: invoices[0]?.invoice_date || invoices[0]?.created_at
-  });
+  if (isProcessTrade) {
+    if (isContractProcessTrade) {
+      // Contract Basic Process Trade: RO = DN
+      graphNodes.push({
+        key: 'ro',
+        stage: '01',
+        title: 'Process Contract Order (RO)',
+        icon: FileText,
+        panelKey: 'ro',
+        status: releaseOrder ? 'completed' : 'in_progress',
+        docId: releaseOrder?.ro_no || docs.find(d => d.type === 'RO' || d.type === 'PROCESS_RO')?.id,
+        details: releaseOrder?.seller || releaseOrder?.party || 'Contract Order',
+        meta: totalOrderedQty > 0 ? `${totalOrderedQty} total qty` : null,
+        date: releaseOrder?.date_of_start || releaseOrder?.created_at
+      });
 
-  // Stage: Payment
-  const hasPayments = payments.length > 0;
-  graphNodes.push({
-    key: 'payments',
-    stage: String(graphNodes.length + 1).padStart(2, '0'),
-    title: 'Payment Settlement',
-    icon: CreditCard,
-    panelKey: 'payments',
-    status: paymentProgressPct === 100 ? 'completed' : (hasPayments ? 'in_progress' : 'pending'),
-    docId: hasPayments ? `${payments.length} Payment${payments.length > 1 ? 's' : ''}` : 'Pending Settlement',
-    details: totalPaidValue > 0 ? `₹${totalPaidValue.toLocaleString('en-IN')} settled` : 'Financial clearance',
-    meta: `Settled: ${paymentProgressPct}%`,
-    date: payments[0]?.payment_date || payments[0]?.created_at
-  });
+      const hasDN = deliveryNotes.length > 0;
+      graphNodes.push({
+        key: 'delivery',
+        stage: '02',
+        title: 'Goods Delivery (DN)',
+        icon: Truck,
+        panelKey: 'delivery',
+        status: deliveryProgressPct === 100 ? 'completed' : (hasDN ? 'in_progress' : (releaseOrder ? 'in_progress' : 'pending')),
+        docId: hasDN ? `${deliveryNotes.length} Note${deliveryNotes.length > 1 ? 's' : ''}` : 'Pending Dispatch',
+        details: `${totalDeliveredQty} / ${totalOrderedQty || '—'} units delivered`,
+        meta: `Fulfillment: ${deliveryProgressPct}%`,
+        date: deliveryNotes[0]?.delivery_date || deliveryNotes[0]?.created_at
+      });
+    } else {
+      // Standard Process Trade: RQ = PO = DN
+      const rqDoc = receivedQuotation || processRq || docs.find(d => d.type === 'PROCESS_RECEIVED_QUOTATION' || d.type === 'PR' || d.type === 'RQ_PROCESS' || d.type === 'RECEIVED_QUOTATION');
+      const rqCompleted = Boolean(receivedQuotation || processRq);
+      graphNodes.push({
+        key: 'received_quotation',
+        stage: '01',
+        title: 'Received Quotation (RQ)',
+        icon: ShoppingCart,
+        panelKey: receivedQuotation ? 'process-received-quotation' : 'process_rq',
+        status: rqCompleted ? 'completed' : 'in_progress',
+        docId: receivedQuotation?.quotation_number || processRq?.number || rqDoc?.id,
+        details: receivedQuotation?.buyer_name || processRq?.party || 'Quotation received',
+        meta: totalOrderValue > 0 ? `₹${totalOrderValue.toLocaleString('en-IN')}` : null,
+        date: receivedQuotation?.quotation_date || processRq?.dateOfStart || processRq?.created_at
+      });
+
+      const poCompleted = Boolean(purchaseOrder);
+      graphNodes.push({
+        key: 'po',
+        stage: '02',
+        title: 'Process Purchase Order (PO)',
+        icon: FileText,
+        panelKey: 'po',
+        status: poCompleted ? 'completed' : (rqCompleted ? 'in_progress' : 'pending'),
+        docId: purchaseOrder?.po_no || docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER')?.id,
+        details: purchaseOrder?.seller || purchaseOrder?.vendor_name || 'Process PO issued',
+        meta: totalOrderedQty > 0 ? `${totalOrderedQty} total qty` : null,
+        date: purchaseOrder?.date_of_start || purchaseOrder?.created_at
+      });
+
+      const hasDN = deliveryNotes.length > 0;
+      graphNodes.push({
+        key: 'delivery',
+        stage: '03',
+        title: 'Goods Delivery (DN)',
+        icon: Truck,
+        panelKey: 'delivery',
+        status: deliveryProgressPct === 100 ? 'completed' : (hasDN ? 'in_progress' : (poCompleted ? 'in_progress' : 'pending')),
+        docId: hasDN ? `${deliveryNotes.length} Note${deliveryNotes.length > 1 ? 's' : ''}` : 'Pending Dispatch',
+        details: `${totalDeliveredQty} / ${totalOrderedQty || '—'} units delivered`,
+        meta: `Fulfillment: ${deliveryProgressPct}%`,
+        date: deliveryNotes[0]?.delivery_date || deliveryNotes[0]?.created_at
+      });
+    }
+
+    const hasInvoices = invoices.length > 0;
+    graphNodes.push({
+      key: 'invoices',
+      stage: String(graphNodes.length + 1).padStart(2, '0'),
+      title: 'Invoicing & Billing',
+      icon: Receipt,
+      panelKey: 'delivery',
+      status: hasInvoices ? 'completed' : (deliveryNotes.length > 0 ? 'in_progress' : 'pending'),
+      docId: hasInvoices ? `${invoices.length} Invoice${invoices.length > 1 ? 's' : ''}` : 'Pending Billing',
+      details: totalInvoicedValue > 0 ? `₹${totalInvoicedValue.toLocaleString('en-IN')} billed` : 'Invoice generation',
+      meta: hasInvoices ? 'Invoiced 100%' : null,
+      date: invoices[0]?.invoice_date || invoices[0]?.created_at
+    });
+
+    const hasPayments = payments.length > 0;
+    graphNodes.push({
+      key: 'payments',
+      stage: String(graphNodes.length + 1).padStart(2, '0'),
+      title: 'Payment Settlement',
+      icon: CreditCard,
+      panelKey: 'payments',
+      status: paymentProgressPct === 100 ? 'completed' : (hasPayments ? 'in_progress' : 'pending'),
+      docId: hasPayments ? `${payments.length} Payment${payments.length > 1 ? 's' : ''}` : 'Pending Settlement',
+      details: totalPaidValue > 0 ? `₹${totalPaidValue.toLocaleString('en-IN')} settled` : 'Financial clearance',
+      meta: `Settled: ${paymentProgressPct}%`,
+      date: payments[0]?.payment_date || payments[0]?.created_at
+    });
+  } else {
+    // Non-process (Sell / Standard Buy / ARC)
+    // Stage 1: RFQ
+    if (!isRoDirectTrade && (rfq || processRq || docs.some(d => d.type === 'RFQ' || d.type === 'PR' || d.type === 'RQ_PROCESS' || d.type === 'PROCESS_RFQ'))) {
+      graphNodes.push({
+        key: 'rfq',
+        stage: String(graphNodes.length + 1).padStart(2, '0'),
+        title: 'Request (RFQ)',
+        icon: FileText,
+        panelKey: 'rfq',
+        status: (rfq || processRq) ? 'completed' : 'pending',
+        docId: rfq?.rfq_no || processRq?.number || (docs.find(d => d.type === 'RFQ' || d.type === 'PR')?.id),
+        details: rfq?.buyer_name || processRq?.party || 'Request specs logged',
+        meta: rfq?.items ? `${rfq.items.length} items requested` : null,
+        date: rfq?.created_at || processRq?.created_at
+      });
+    }
+
+    // Stage 2: Quotation
+    if (!isRoDirectTrade && (quotation || receivedQuotation || docs.some(d => d.type === 'QUOTATION' || d.type === 'RECEIVED_QUOTATION' || d.type === 'PROCESS_RECEIVED_QUOTATION') || rfq)) {
+      const qDoc = quotation || receivedQuotation;
+      const qNo = qDoc?.quotation_no || qDoc?.received_quotation_no || docs.find(d => d.type === 'QUOTATION' || d.type === 'RECEIVED_QUOTATION')?.id;
+      graphNodes.push({
+        key: quotation ? 'quotation' : 'received_quotation',
+        stage: String(graphNodes.length + 1).padStart(2, '0'),
+        title: receivedQuotation ? 'Received Quotation' : 'Sales Quotation',
+        icon: ShoppingCart,
+        panelKey: quotation ? 'quotation' : 'received_quotation',
+        status: qDoc ? 'completed' : (graphNodes.length > 0 && graphNodes[0].status === 'completed' ? 'in_progress' : 'pending'),
+        docId: qNo,
+        details: qDoc?.supplier_name || qDoc?.customer_name || (totalOrderValue > 0 ? `₹${totalOrderValue.toLocaleString('en-IN')}` : 'Pricing proposal'),
+        meta: qDoc?.valid_until ? `Valid: ${new Date(qDoc.valid_until).toLocaleDateString()}` : null,
+        date: qDoc?.created_at
+      });
+    }
+
+    // Stage: PO / RO
+    graphNodes.push({
+      key: isRo ? 'ro' : 'po',
+      stage: String(graphNodes.length + 1).padStart(2, '0'),
+      title: isProcRo ? 'Process Release Order (RO)' : (isRo ? 'Release Order (RO)' : 'Purchase Order (PO)'),
+      icon: isRo ? FileText : ShoppingCart,
+      panelKey: isRo ? 'ro' : 'po',
+      status: poDoc ? 'completed' : (graphNodes.some(n => n.status === 'completed') ? 'in_progress' : 'pending'),
+      docId: poNo,
+      details: poDoc?.vendor_name || poDoc?.customer_name || poDoc?.seller || poDoc?.party || (totalOrderValue > 0 ? `₹${totalOrderValue.toLocaleString('en-IN')}` : 'Order committed'),
+      meta: totalOrderedQty > 0 ? `${totalOrderedQty} total qty` : null,
+      date: poDoc?.date || poDoc?.ro_date || poDoc?.date_of_start || poDoc?.created_at
+    });
+
+    // Stage: Delivery & GRN
+    const hasDN = deliveryNotes.length > 0;
+    const dnCount = deliveryNotes.length;
+    graphNodes.push({
+      key: 'delivery',
+      stage: String(graphNodes.length + 1).padStart(2, '0'),
+      title: 'Goods Delivery & GRN',
+      icon: Truck,
+      panelKey: 'delivery',
+      status: deliveryProgressPct === 100 ? 'completed' : (hasDN ? 'in_progress' : (poDoc ? 'in_progress' : 'pending')),
+      docId: hasDN ? `${dnCount} Note${dnCount > 1 ? 's' : ''}` : 'Pending Dispatch',
+      details: `${totalDeliveredQty} / ${totalOrderedQty || '—'} units delivered`,
+      meta: `Fulfillment: ${deliveryProgressPct}%`,
+      date: deliveryNotes[0]?.delivery_date || deliveryNotes[0]?.created_at
+    });
+
+    // Stage: Invoice
+    const hasInvoices = invoices.length > 0;
+    const invCount = invoices.length;
+    graphNodes.push({
+      key: 'invoices',
+      stage: String(graphNodes.length + 1).padStart(2, '0'),
+      title: 'Invoicing & Billing',
+      icon: Receipt,
+      panelKey: 'delivery',
+      status: hasInvoices ? 'completed' : (hasDN ? 'in_progress' : 'pending'),
+      docId: hasInvoices ? `${invCount} Invoice${invCount > 1 ? 's' : ''}` : 'Pending Billing',
+      details: totalInvoicedValue > 0 ? `₹${totalInvoicedValue.toLocaleString('en-IN')} billed` : 'Invoice generation',
+      meta: hasInvoices ? `Invoiced 100%` : null,
+      date: invoices[0]?.invoice_date || invoices[0]?.created_at
+    });
+
+    // Stage: Payment
+    const hasPayments = payments.length > 0;
+    graphNodes.push({
+      key: 'payments',
+      stage: String(graphNodes.length + 1).padStart(2, '0'),
+      title: 'Payment Settlement',
+      icon: CreditCard,
+      panelKey: 'payments',
+      status: paymentProgressPct === 100 ? 'completed' : (hasPayments ? 'in_progress' : 'pending'),
+      docId: hasPayments ? `${payments.length} Payment${payments.length > 1 ? 's' : ''}` : 'Pending Settlement',
+      details: totalPaidValue > 0 ? `₹${totalPaidValue.toLocaleString('en-IN')} settled` : 'Financial clearance',
+      meta: `Settled: ${paymentProgressPct}%`,
+      date: payments[0]?.payment_date || payments[0]?.created_at
+    });
+  }
 
   return (
     <div className=" bg-[white] border border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all duration-300">

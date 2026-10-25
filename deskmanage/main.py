@@ -11,19 +11,125 @@ import urllib.parse
 import urllib.error
 import http.server
 import socketserver
+import shutil
 import tkinter as tk
 from tkinter import filedialog
 import webview
 
-def get_config_file_path():
+def get_backend_paths():
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
     else:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, "config.json")
+    
+    candidates = [
+        os.path.abspath(os.path.join(base_dir, "..", "server")),
+        os.path.abspath(os.path.join(base_dir, "server")),
+        os.path.abspath(os.path.join(base_dir, "..", "backend")),
+        os.path.abspath(os.path.join(base_dir, "..", "..", "backend")),
+        os.path.abspath(os.path.join(base_dir, "backend")),
+        r"D:\freelancing\deskManager\backend"
+    ]
+    backend_dir = candidates[0]
+    for c in candidates:
+        if os.path.isdir(c):
+            backend_dir = c
+            break
+
+    node_exe = os.path.join(backend_dir, "node.exe")
+    index_js = os.path.join(backend_dir, "index.js")
+    
+    appdata = os.environ.get("APPDATA", "")
+    startup_folder = os.path.join(appdata, "Microsoft", "Windows", "Start Menu", "Programs", "Startup") if appdata else ""
+    startup_bat = os.path.join(startup_folder, "deskmanager-resurrect.bat") if startup_folder else ""
+    backend_bat = os.path.join(backend_dir, "pm2-resurrect.bat")
+
+    return {
+        "backend_dir": backend_dir,
+        "node_exe": node_exe,
+        "index_js": index_js,
+        "startup_folder": startup_folder,
+        "startup_bat": startup_bat,
+        "backend_bat": backend_bat
+    }
+
+def find_pm2_cmd():
+    # 1. System PATH
+    found = shutil.which("pm2.cmd") or shutil.which("pm2")
+    if found:
+        return found
+    
+    # 2. User AppData npm
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        p = os.path.join(appdata, "npm", "pm2.cmd")
+        if os.path.exists(p):
+            return p
+
+    # 3. Backend local node_modules
+    paths = get_backend_paths()
+    p_local = os.path.join(paths["backend_dir"], "node_modules", ".bin", "pm2.cmd")
+    if os.path.exists(p_local):
+        return p_local
+
+    # 4. Program Files
+    prog_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    p_prog = os.path.join(prog_files, "nodejs", "pm2.cmd")
+    if os.path.exists(p_prog):
+        return p_prog
+
+    return None
+
+def find_npm_cmd():
+    found = shutil.which("npm.cmd") or shutil.which("npm")
+    if found:
+        return found
+    prog_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    p_prog = os.path.join(prog_files, "nodejs", "npm.cmd")
+    if os.path.exists(p_prog):
+        return p_prog
+    return None
+
+def get_config_file_path():
+    # If in development mode (not frozen), use local config.json in script folder
+    if not getattr(sys, 'frozen', False):
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+    # In production (frozen exe), store config in %PROGRAMDATA%\DeskManager to avoid Program Files permission errors
+    prog_data = (
+        os.environ.get("PROGRAMDATA")
+        or os.environ.get("ALLUSERSPROFILE")
+        or os.path.expandvars("%PROGRAMDATA%")
+    )
+    if not prog_data or "%PROGRAMDATA%" in prog_data:
+        system_drive = os.environ.get("SystemDrive", "C:")
+        prog_data = os.path.join(system_drive + os.sep, "ProgramData")
+    
+    target_dir = os.path.abspath(os.path.join(prog_data, "DeskManager"))
+    return os.path.join(target_dir, "config.json")
 
 CONFIG_FILE = get_config_file_path()
-DEFAULT_BACKUP_DIR = r"D:\deskManager-backups"
+def get_default_backup_dir():
+    prog_data = (
+        os.environ.get("PROGRAMDATA")
+        or os.environ.get("ALLUSERSPROFILE")
+        or os.path.expandvars("%PROGRAMDATA%")
+    )
+    if not prog_data or "%PROGRAMDATA%" in prog_data:
+        system_drive = os.environ.get("SystemDrive", "C:")
+        prog_data = os.path.join(system_drive + os.sep, "ProgramData")
+    return os.path.abspath(os.path.join(prog_data, "DeskManager", "backups"))
+
+def sanitize_backup_dir(path):
+    if not path or not isinstance(path, str):
+        return get_default_backup_dir()
+    expanded = os.path.expandvars(path).strip()
+    drive = os.path.splitdrive(expanded)[0]
+    if drive and not os.path.exists(drive + os.sep):
+        return get_default_backup_dir()
+    return os.path.abspath(expanded)
+
+DEFAULT_BACKUP_DIR = get_default_backup_dir()
 
 def get_resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
@@ -32,19 +138,34 @@ def get_resource_path(relative_path):
 
 def load_config():
     config_path = get_config_file_path()
+
+    # If ProgramData config does not exist yet in frozen mode, check if a template config was shipped with the exe
+    if not os.path.exists(config_path) and getattr(sys, 'frozen', False):
+        try:
+            base_dir = os.path.dirname(sys.executable)
+            fallback_template = os.path.join(base_dir, "config.json")
+            if os.path.exists(fallback_template):
+                with open(fallback_template, "r", encoding="utf-8") as f:
+                    template_data = json.load(f)
+                save_config(template_data)
+        except Exception as e:
+            print(f"Notice: Could not seed initial config template: {e}")
+
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                backup_path = data.get("backup_dir") or data.get("selected_location", {}).get("backup_dir", DEFAULT_BACKUP_DIR)
+                raw_path = data.get("backup_dir") or data.get("selected_location", {}).get("backup_dir", DEFAULT_BACKUP_DIR)
+                backup_path = sanitize_backup_dir(raw_path)
                 data["backup_dir"] = backup_path
                 if "selected_location" not in data or not isinstance(data["selected_location"], dict):
                     data["selected_location"] = {}
                 data["selected_location"]["backup_dir"] = backup_path
                 return data
         except Exception as e:
-            print(f"Error loading config: {e}")
-    return {
+            print(f"Error loading config from {config_path}: {e}")
+
+    default_cfg = {
         "app_info": {
             "name": "DeskManage",
             "version": "2.3.0",
@@ -77,20 +198,31 @@ def load_config():
         "backup_dir": DEFAULT_BACKUP_DIR,
         "cloud_backups": []
     }
+    save_config(default_cfg)
+    return default_cfg
 
 def save_config(config):
     config_path = get_config_file_path()
     try:
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=4)
     except Exception as e:
-        print(f"Error saving config: {e}")
+        print(f"Error saving config to {config_path}: {e}")
 
 class Api:
     def __init__(self):
         self.config = load_config()
-        self.backup_dir = self.config.get("backup_dir", DEFAULT_BACKUP_DIR)
-        os.makedirs(self.backup_dir, exist_ok=True)
+        self.backup_dir = sanitize_backup_dir(self.config.get("backup_dir", get_default_backup_dir()))
+        try:
+            os.makedirs(self.backup_dir, exist_ok=True)
+        except Exception as e:
+            print(f"Warning: Could not create backup directory '{self.backup_dir}': {e}. Using default.")
+            self.backup_dir = get_default_backup_dir()
+            os.makedirs(self.backup_dir, exist_ok=True)
+            self.config["backup_dir"] = self.backup_dir
+            if "selected_location" in self.config and isinstance(self.config["selected_location"], dict):
+                self.config["selected_location"]["backup_dir"] = self.backup_dir
 
     def get_network_info(self):
         ip = "127.0.0.1"
@@ -444,22 +576,28 @@ class Api:
         dest_path = os.path.join(self.backup_dir, backup_filename)
 
         try:
-            backend_script = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend", "backup", "backup.js"))
+            paths = get_backend_paths()
+            backend_script = os.path.join(paths["backend_dir"], "backup", "backup.js")
+            node_binary = paths["node_exe"] if os.path.exists(paths["node_exe"]) else "node"
             created = False
             
             if os.path.exists(backend_script):
                 try:
+                    env_copy = os.environ.copy()
+                    env_copy["BACKUP_DIR"] = self.backup_dir
+                    env_copy["BACKUP_PATH_D"] = self.backup_dir
                     res = subprocess.run(
-                        ["node", backend_script],
-                        cwd=os.path.dirname(backend_script),
+                        [node_binary, backend_script],
+                        cwd=paths["backend_dir"],
                         capture_output=True,
                         text=True,
-                        timeout=15
+                        env=env_copy,
+                        timeout=25
                     )
                     if res.returncode == 0:
                         created = True
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Error running backend backup: {e}")
 
             if not created:
                 sample_data = {
@@ -510,6 +648,258 @@ class Api:
             return {"success": False, "error": "File not found."}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    # ------------------ PM2 & AUTOSTART BACKEND MANAGEMENT ------------------
+    def get_pm2_status(self):
+        paths = get_backend_paths()
+        pm2_cmd = find_pm2_cmd()
+        startup_bat_exists = bool(paths["startup_bat"] and os.path.exists(paths["startup_bat"]))
+        backend_bat_exists = bool(paths["backend_bat"] and os.path.exists(paths["backend_bat"]))
+
+        if not pm2_cmd:
+            return {
+                "success": True,
+                "pm2_installed": False,
+                "pm2_version": "",
+                "pm2_cmd": "",
+                "status": "not_installed",
+                "service_name": "deskmanager-backend",
+                "pid": None,
+                "memory": "0 MB",
+                "cpu": "0%",
+                "restarts": 0,
+                "uptime": "Offline",
+                "autostart_active": startup_bat_exists,
+                "startup_bat_path": paths["startup_bat"],
+                "node_exe_exists": os.path.exists(paths["node_exe"]),
+                "node_exe_path": paths["node_exe"],
+                "index_js_path": paths["index_js"],
+                "backend_dir": paths["backend_dir"]
+            }
+
+        if not hasattr(self, "_pm2_version") or not self._pm2_version:
+            self._pm2_version = ""
+            try:
+                ver_res = subprocess.run([pm2_cmd, "-v"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=5, shell=True)
+                for line in ver_res.stdout.splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("[PM2]"):
+                        self._pm2_version = line
+                        break
+            except Exception:
+                pass
+        pm2_version = getattr(self, "_pm2_version", "")
+
+        status = "not_created"
+        pid = None
+        memory_str = "0 MB"
+        cpu_str = "0%"
+        restarts = 0
+        uptime_str = "Offline"
+
+        try:
+            j_res = subprocess.run([pm2_cmd, "jlist"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10, shell=True)
+            out = j_res.stdout.strip()
+            s_idx = out.find('[')
+            e_idx = out.rfind(']')
+            if s_idx != -1 and e_idx != -1:
+                proc_list = json.loads(out[s_idx:e_idx+1])
+                for p in proc_list:
+                    if p.get("name") == "deskmanager-backend":
+                        pm2_env = p.get("pm2_env", {})
+                        status = pm2_env.get("status", "stopped")
+                        pid = p.get("pid")
+                        mem_bytes = p.get("monit", {}).get("memory", 0)
+                        memory_str = f"{mem_bytes / (1024 * 1024):.1f} MB" if mem_bytes else "0 MB"
+                        cpu_str = f"{p.get('monit', {}).get('cpu', 0)}%"
+                        restarts = pm2_env.get("restart_time", 0)
+                        
+                        uptime_ms = pm2_env.get("pm_uptime")
+                        if uptime_ms and status == "online":
+                            seconds_up = int(time.time() - (uptime_ms / 1000))
+                            if seconds_up < 60:
+                                uptime_str = f"{seconds_up}s"
+                            elif seconds_up < 3600:
+                                uptime_str = f"{seconds_up // 60}m {seconds_up % 60}s"
+                            else:
+                                uptime_str = f"{seconds_up // 3600}h {(seconds_up % 3600) // 60}m"
+                        break
+        except Exception as e:
+            print("Error parsing PM2 jlist:", e)
+
+        return {
+            "success": True,
+            "pm2_installed": True,
+            "pm2_version": pm2_version,
+            "pm2_cmd": pm2_cmd,
+            "status": status,
+            "service_name": "deskmanager-backend",
+            "pid": pid,
+            "memory": memory_str,
+            "cpu": cpu_str,
+            "restarts": restarts,
+            "uptime": uptime_str,
+            "autostart_active": startup_bat_exists,
+            "startup_bat_path": paths["startup_bat"],
+            "node_exe_exists": os.path.exists(paths["node_exe"]),
+            "node_exe_path": paths["node_exe"],
+            "index_js_path": paths["index_js"],
+            "backend_dir": paths["backend_dir"]
+        }
+
+    def setup_pm2_autostart(self):
+        paths = get_backend_paths()
+        pm2_cmd = find_pm2_cmd()
+
+        # Step 1: Install PM2 if not installed
+        if not pm2_cmd:
+            npm_cmd = find_npm_cmd()
+            if not npm_cmd:
+                return {"success": False, "error": "Could not find 'npm' to install PM2. Please ensure Node/npm is installed."}
+            
+            try:
+                inst_res = subprocess.run([npm_cmd, "install", "-g", "pm2"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=180, shell=True)
+                if inst_res.returncode != 0:
+                    return {"success": False, "error": f"Failed to install PM2: {inst_res.stderr or inst_res.stdout}"}
+            except Exception as e:
+                return {"success": False, "error": f"Exception while installing PM2: {str(e)}"}
+            
+            pm2_cmd = find_pm2_cmd()
+            if not pm2_cmd:
+                return {"success": False, "error": "PM2 was installed but could not be located in PATH or AppData."}
+
+        # Step 2: Ensure backend index.js exists
+        if not os.path.exists(paths["index_js"]):
+            return {"success": False, "error": f"Backend index.js not found at: {paths['index_js']}"}
+
+        # Step 3: Delete existing process if configured to ensure a clean start
+        try:
+            subprocess.run([pm2_cmd, "delete", "deskmanager-backend"], cwd=paths["backend_dir"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10, shell=True)
+        except Exception:
+            pass
+
+        # Step 4: Start deskmanager-backend with backend/node.exe if present
+        start_cmd = [pm2_cmd, "start", paths["index_js"], "--name", "deskmanager-backend"]
+        if os.path.exists(paths["node_exe"]):
+            start_cmd.extend(["--interpreter", paths["node_exe"]])
+        
+        try:
+            res = subprocess.run(start_cmd, cwd=paths["backend_dir"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=25, shell=True)
+            if res.returncode != 0:
+                return {"success": False, "error": f"PM2 start failed: {res.stderr or res.stdout}"}
+        except Exception as e:
+            return {"success": False, "error": f"Failed to start PM2 process: {str(e)}"}
+
+        # Step 5: Save PM2 process list
+        try:
+            subprocess.run([pm2_cmd, "save"], cwd=paths["backend_dir"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15, shell=True)
+        except Exception as e:
+            print("PM2 save error:", e)
+
+        # Step 6: Create Windows Startup file with @echo off & pm2 resurrect
+        bat_content = "@echo off\r\npm2 resurrect\r\n"
+        startup_created = False
+        try:
+            if paths["startup_folder"]:
+                os.makedirs(paths["startup_folder"], exist_ok=True)
+                with open(paths["startup_bat"], "w", encoding="utf-8") as f:
+                    f.write(bat_content)
+                startup_created = True
+        except Exception as e:
+            print("Failed to write to Startup folder:", e)
+
+        try:
+            with open(paths["backend_bat"], "w", encoding="utf-8") as f:
+                f.write(bat_content)
+        except Exception as e:
+            print("Failed to write to backend pm2-resurrect.bat:", e)
+
+        return {
+            "success": True,
+            "message": "PM2 backend service started and autostart enabled successfully!",
+            "startup_created": startup_created,
+            "startup_bat_path": paths["startup_bat"]
+        }
+
+    def control_pm2_service(self, action):
+        paths = get_backend_paths()
+        pm2_cmd = find_pm2_cmd()
+        if not pm2_cmd:
+            return {"success": False, "error": "PM2 is not installed."}
+
+        action = (action or "").lower()
+        if action not in ["start", "stop", "restart", "delete"]:
+            return {"success": False, "error": f"Invalid action: {action}"}
+
+        try:
+            res = subprocess.run([pm2_cmd, action, "deskmanager-backend"], cwd=paths["backend_dir"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15, shell=True)
+            if action == "delete":
+                try:
+                    subprocess.run([pm2_cmd, "save"], cwd=paths["backend_dir"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10, shell=True)
+                except Exception:
+                    pass
+                if paths["startup_bat"] and os.path.exists(paths["startup_bat"]):
+                    try:
+                        os.remove(paths["startup_bat"])
+                    except Exception:
+                        pass
+            return {"success": True, "message": f"Service action '{action}' completed."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_pm2_logs(self):
+        paths = get_backend_paths()
+        user_home = os.environ.get("USERPROFILE", os.path.expanduser("~"))
+        pm2_logs_dir = os.path.join(user_home, ".pm2", "logs")
+        out_log = os.path.join(pm2_logs_dir, "deskmanager-backend-out.log")
+        err_log = os.path.join(pm2_logs_dir, "deskmanager-backend-error.log")
+
+        logs_lines = []
+        if os.path.exists(out_log):
+            try:
+                with open(out_log, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                    logs_lines.extend(lines[-35:])
+            except Exception:
+                pass
+
+        if os.path.exists(err_log):
+            try:
+                with open(err_log, "r", encoding="utf-8", errors="replace") as f:
+                    err_lines = f.readlines()
+                    if err_lines:
+                        logs_lines.append("\n--- Error Log ---\n")
+                        logs_lines.extend(err_lines[-15:])
+            except Exception:
+                pass
+
+        if logs_lines:
+            return {"success": True, "logs": "".join(logs_lines).strip()}
+
+        pm2_cmd = find_pm2_cmd()
+        if not pm2_cmd:
+            return {"success": False, "error": "PM2 is not installed."}
+
+        try:
+            res = subprocess.run([pm2_cmd, "logs", "deskmanager-backend", "--lines", "40", "--nostream"], cwd=paths["backend_dir"], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10, shell=True)
+            logs = res.stdout + ("\n" + res.stderr if res.stderr else "")
+            return {"success": True, "logs": logs.strip()}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def open_startup_folder(self):
+        paths = get_backend_paths()
+        if paths["startup_folder"] and os.path.exists(paths["startup_folder"]):
+            os.startfile(paths["startup_folder"])
+            return {"success": True}
+        return {"success": False, "error": f"Folder not found: {paths['startup_folder']}"}
+
+    def open_backend_folder(self):
+        paths = get_backend_paths()
+        if os.path.exists(paths["backend_dir"]):
+            os.startfile(paths["backend_dir"])
+            return {"success": True}
+        return {"success": False, "error": f"Folder not found: {paths['backend_dir']}"}
 
 if __name__ == "__main__":
     api = Api()

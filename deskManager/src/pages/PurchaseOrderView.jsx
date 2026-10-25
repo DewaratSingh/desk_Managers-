@@ -191,6 +191,43 @@ export default function PurchaseOrderView() {
   const fetchPo = async () => {
     setIsLoading(true); setError(null);
     try {
+      if (po_no && String(po_no).startsWith('PPO-')) {
+        const res = await fetch(`/api/process-po/${encodeURIComponent(po_no)}`);
+        if (res.ok) {
+          const data = await res.json();
+          const poData = Array.isArray(data) ? data[0] : data;
+          const mappedItems = (poData.target_items && poData.target_items.length > 0)
+            ? poData.target_items.map(it => ({
+                item_code: it.item_code,
+                description: it.description,
+                quantity: it.qty,
+                delivered_qty: it.delivered_qty || 0,
+                unit_price: it.price,
+                gst_type: it.gst_type,
+                gst_rate: it.gst_rate,
+                delivery_date: it.delivery_date || poData.delivery_date,
+                status: it.status || poData.status,
+                vendor: poData.seller || poData.party
+              }))
+            : (poData.items || []).map(it => ({
+                item_code: it.target_item_code || it.source_item_code,
+                description: it.target_description || it.source_description,
+                quantity: it.target_item_quantity || it.target_qty || 0,
+                delivered_qty: it.delivered_qty || 0,
+                unit_price: it.price,
+                delivery_date: poData.delivery_date,
+                status: poData.status,
+                vendor: poData.seller || poData.party
+              }));
+          setPo({
+            ...poData,
+            po_date: poData.date_of_start || poData.created_at,
+            party_id: poData.party || poData.seller || '—',
+            items: mappedItems
+          });
+          return;
+        }
+      }
       const res = await fetch(`/api/purchase-orders/${encodeURIComponent(po_no)}`);
       if (!res.ok) throw new Error('Purchase order not found');
       setPo(await res.json());

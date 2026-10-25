@@ -52,7 +52,10 @@ router.get('/:delivery_note_no', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        dn.delivery_note_no, po.po_no, ro.ro_no, dn.delivery_date,
+        dn.delivery_note_no,
+        COALESCE(po.po_no, ppo.po_no) AS po_no,
+        COALESCE(ro.ro_no, pro.ro_no) AS ro_no,
+        dn.delivery_date,
         dn.dispatch_doc_no, dn.dispatch_through, dn.motor_vehicle_no, t.trade_id, t.trade_type,
         (
           SELECT COALESCE(json_agg(json_build_object(
@@ -72,7 +75,9 @@ router.get('/:delivery_note_no', async (req, res) => {
         ) as items
       FROM delivery_notes dn
       LEFT JOIN purchase_orders po ON dn.po_id = po.id
+      LEFT JOIN process_po ppo ON (dn.po_id = ppo.id OR (dn.trade_id IS NOT NULL AND ppo.trade_id = dn.trade_id))
       LEFT JOIN release_orders ro ON dn.ro_id = ro.id
+      LEFT JOIN process_ro pro ON (dn.process_ro_id = pro.id OR (dn.trade_id IS NOT NULL AND pro.trade_id = dn.trade_id))
       LEFT JOIN trades t ON dn.trade_id = t.id
       WHERE dn.delivery_note_no = $1 AND dn.company_id = $2
     `, [delivery_note_no, req.user.company_id]);
@@ -100,11 +105,17 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
     const tradeDbId = trade.id;
     const docs = trade.documents || [];
 
-    const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
-    const roDoc = docs.find(d => d.type === 'RO' || d.type === 'PROCESS_RO');
+    const poDoc = docs.find(d => {
+      const t = (d.type || '').toUpperCase();
+      return t === 'PO' || t === 'PURCHASE_ORDER';
+    });
+    const roDoc = docs.find(d => {
+      const t = (d.type || '').toUpperCase();
+      return t === 'RO' || t === 'CO' || t === 'PROCESS_RO';
+    });
 
     const po_no = poDoc ? poDoc.id : null;
-    const ro_no = roDoc ? roDoc.id : null;
+    let ro_no = roDoc ? roDoc.id : null;
 
     let effectivePpoNo = (po_no && po_no.startsWith('PPO-')) ? po_no : null;
     if (!effectivePpoNo && tradeDbId) {
@@ -119,6 +130,13 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
       const proCheck = await pool.query('SELECT ro_no FROM process_ro WHERE trade_id = $1 AND company_id = $2 LIMIT 1', [tradeDbId, req.user.company_id]);
       if (proCheck.rows.length > 0) {
         effectiveProNo = proCheck.rows[0].ro_no;
+      }
+    }
+
+    if (!ro_no && !effectiveProNo && tradeDbId) {
+      const roCheck = await pool.query('SELECT ro_no FROM release_orders WHERE trade_id = $1 AND company_id = $2 LIMIT 1', [tradeDbId, req.user.company_id]);
+      if (roCheck.rows.length > 0) {
+        ro_no = roCheck.rows[0].ro_no;
       }
     }
 
@@ -236,12 +254,20 @@ router.get('/items-lookup/:trade_id', async (req, res) => {
       
       let processNameMap = {};
       if (jobIdsArray && jobIdsArray.length > 0) {
-         const jobsResult = await pool.query(
-           `SELECT j.process_name, (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items 
-            FROM job j 
+         let jobsResult = await pool.query(
+           `SELECT j.process_name, (SELECT json_agg(ti.*) FROM "ProcessTarget_item" ti WHERE ti.job_id = j.id) as target_items 
+            FROM "processJob" j 
             WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int) AND j.company_id = $2`,
            [JSON.stringify(jobIdsArray), req.user.company_id]
          );
+         if (jobsResult.rows.length === 0) {
+           jobsResult = await pool.query(
+             `SELECT j.process_name, (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items 
+              FROM job j 
+              WHERE j.id IN (SELECT jsonb_array_elements_text($1::jsonb)::int) AND j.company_id = $2`,
+             [JSON.stringify(jobIdsArray), req.user.company_id]
+           );
+         }
          jobsResult.rows.forEach(job => {
              const tgtGroups = job.target_items || [];
              tgtGroups.forEach(ti => {
@@ -461,11 +487,17 @@ router.post('/', async (req, res) => {
     const isBuyTrade = rawTradeType === 'buy' || rawTradeType === 'process' || rawTradeType === 'buyarc' || rawTradeType === 'buy_process' || rawTradeType.includes('process');
 
     const docs = trade.documents || [];
-    const poDoc = docs.find(d => d.type === 'PO' || d.type === 'PURCHASE_ORDER');
-    const roDoc = docs.find(d => d.type === 'RO');
+    const poDoc = docs.find(d => {
+      const t = (d.type || '').toUpperCase();
+      return t === 'PO' || t === 'PURCHASE_ORDER';
+    });
+    const roDoc = docs.find(d => {
+      const t = (d.type || '').toUpperCase();
+      return t === 'RO' || t === 'CO' || t === 'PROCESS_RO';
+    });
 
     const po_no = poDoc ? poDoc.id : null;
-    const ro_no = roDoc ? roDoc.id : null;
+    let ro_no = roDoc ? roDoc.id : null;
 
     let poDbId = null, ppoDbId = null, roDbId = null;
     let ppoMessage = null, ppoNo = null, ppoJobIds = null;
@@ -519,6 +551,14 @@ router.post('/', async (req, res) => {
       if (proCheck.rows.length > 0) {
         proDbId = proCheck.rows[0].id;
         if (!ro_no) ro_no = proCheck.rows[0].ro_no;
+      }
+    }
+
+    if (!roDbId && tradeDbId) {
+      const roCheck = await client.query('SELECT id, ro_no FROM release_orders WHERE trade_id = $1 AND company_id = $2', [tradeDbId, companyId]);
+      if (roCheck.rows.length > 0) {
+        roDbId = roCheck.rows[0].id;
+        if (!ro_no) ro_no = roCheck.rows[0].ro_no;
       }
     }
 
@@ -712,10 +752,10 @@ router.post('/', async (req, res) => {
              let ppoItemId = null;
 
              if (ppoJobIds && ppoJobIds.length > 0) {
-               const jobFetchRes = await client.query(`
+               let jobFetchRes = await client.query(`
                  SELECT j.process_name 
-                 FROM target_item ti
-                 JOIN job j ON ti.job_id = j.id
+                 FROM "ProcessTarget_item" ti
+                 JOIN "processJob" j ON ti.job_id = j.id
                  WHERE ti.job_id = ANY($1::int[]) 
                    AND ti.company_id = $2 
                    AND EXISTS (
@@ -727,6 +767,25 @@ router.post('/', async (req, res) => {
                    )
                  LIMIT 1
                `, [ppoJobIds, companyId, item.item_code, itemDbId]);
+
+               if (jobFetchRes.rows.length === 0) {
+                 jobFetchRes = await client.query(`
+                   SELECT j.process_name 
+                   FROM target_item ti
+                   JOIN job j ON ti.job_id = j.id
+                   WHERE ti.job_id = ANY($1::int[]) 
+                     AND ti.company_id = $2 
+                     AND EXISTS (
+                       SELECT 1 FROM jsonb_array_elements(ti.items) AS elem 
+                       WHERE (elem->>'item_code') = $3 
+                          OR (elem->>'item_code') = $4::text
+                          OR (elem->>'itemcode') = $3
+                          OR (elem->>'item_code_id') = $4::text
+                     )
+                   LIMIT 1
+                 `, [ppoJobIds, companyId, item.item_code, itemDbId]);
+               }
+
                if (jobFetchRes.rows.length > 0 && jobFetchRes.rows[0].process_name) {
                  ppoItemProcessName = jobFetchRes.rows[0].process_name;
                }
@@ -1189,10 +1248,10 @@ router.put('/:delivery_note_no', async (req, res) => {
              let ppoItemProcessName = null;
 
              if (ppoJobIds && ppoJobIds.length > 0) {
-               const jobFetchRes = await client.query(`
+               let jobFetchRes = await client.query(`
                  SELECT j.process_name 
-                 FROM target_item ti
-                 JOIN job j ON ti.job_id = j.id
+                 FROM "ProcessTarget_item" ti
+                 JOIN "processJob" j ON ti.job_id = j.id
                  WHERE ti.job_id = ANY($1::int[]) 
                    AND ti.company_id = $2 
                    AND EXISTS (
@@ -1204,6 +1263,25 @@ router.put('/:delivery_note_no', async (req, res) => {
                    )
                  LIMIT 1
                `, [ppoJobIds, companyId, item.item_code, itemDbId]);
+
+               if (jobFetchRes.rows.length === 0) {
+                 jobFetchRes = await client.query(`
+                   SELECT j.process_name 
+                   FROM target_item ti
+                   JOIN job j ON ti.job_id = j.id
+                   WHERE ti.job_id = ANY($1::int[]) 
+                     AND ti.company_id = $2 
+                     AND EXISTS (
+                       SELECT 1 FROM jsonb_array_elements(ti.items) AS elem 
+                       WHERE (elem->>'item_code') = $3 
+                          OR (elem->>'item_code') = $4::text
+                          OR (elem->>'itemcode') = $3
+                          OR (elem->>'item_code_id') = $4::text
+                     )
+                   LIMIT 1
+                 `, [ppoJobIds, companyId, item.item_code, itemDbId]);
+               }
+
                if (jobFetchRes.rows.length > 0 && jobFetchRes.rows[0].process_name) {
                  ppoItemProcessName = jobFetchRes.rows[0].process_name;
                }
@@ -1419,73 +1497,83 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
 
   const pctRes = await client.query(`
     SELECT 
-      CASE WHEN ordered_val > 0 THEN (delivered_val / ordered_val) * 100 ELSE 0.0 END AS pct
+      ordered_qty,
+      delivered_qty,
+      ordered_val,
+      delivered_val,
+      CASE 
+        WHEN ordered_qty > 0 THEN ROUND((delivered_qty / ordered_qty) * 100, 2)
+        WHEN ordered_val > 0 THEN ROUND((delivered_val / ordered_val) * 100, 2)
+        ELSE 0.0
+      END AS pct
     FROM (
       SELECT
         COALESCE(
+          (SELECT SUM(poi.quantity) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = $1 AND po.company_id = $2),
+          (SELECT SUM(roi.quantity) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = $1 AND ro.company_id = $2),
+          (SELECT SUM(ppti.qty) FROM process_po pp JOIN process_po_target_item ppti ON pp.id = ppti.process_po_id WHERE pp.trade_id = $1 AND pp.company_id = $2),
+          (SELECT SUM(ppi.target_qty) FROM process_po pp JOIN process_po_item ppi ON pp.id = ppi.process_po_id WHERE pp.trade_id = $1 AND pp.company_id = $2),
+          (SELECT SUM(proi.qty) FROM process_ro pro JOIN process_ro_target_item proi ON pro.id = proi.process_ro_id WHERE pro.trade_id = $1 AND pro.company_id = $2),
+          0
+        )::numeric AS ordered_qty,
+        COALESCE(
           (SELECT SUM(poi.quantity * poi.unit_price) FROM purchase_orders po JOIN purchase_order_items poi ON po.id = poi.po_id WHERE po.trade_id = $1 AND po.company_id = $2),
           (SELECT SUM(roi.quantity * roi.unit_price) FROM release_orders ro JOIN release_order_items roi ON ro.id = roi.ro_id WHERE ro.trade_id = $1 AND ro.company_id = $2),
+          (SELECT SUM(ppti.qty * ppti.price) FROM process_po pp JOIN process_po_target_item ppti ON pp.id = ppti.process_po_id WHERE pp.trade_id = $1 AND pp.company_id = $2),
           (SELECT SUM(ppi.target_qty * ppi.price) FROM process_po pp JOIN process_po_item ppi ON pp.id = ppi.process_po_id WHERE pp.trade_id = $1 AND pp.company_id = $2),
+          (SELECT SUM(proi.qty * proi.price) FROM process_ro pro JOIN process_ro_target_item proi ON pro.id = proi.process_ro_id WHERE pro.trade_id = $1 AND pro.company_id = $2),
           0
         )::numeric AS ordered_val,
         COALESCE(
           (
             SELECT SUM(
-              (
-                dni.quantity - COALESCE((
-                  SELECT SUM((elem->>'quantity')::numeric)
-                  FROM grns g
-                  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-                  WHERE g.delivery_note_id = dn.id
-                    AND elem->>'item_code' = i.item_code
-                    AND g.company_id = $2
-                ), 0)
-              ) * poi.unit_price
+              GREATEST(0, dni.quantity - COALESCE((
+                SELECT SUM((elem->>'quantity')::numeric)
+                FROM grns g
+                CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+                WHERE g.delivery_note_id = dn.id
+                  AND elem->>'item_code' = i.item_code
+                  AND g.company_id = $2
+              ), 0))
             )
             FROM delivery_notes dn
             JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
-            JOIN purchase_order_items poi ON dn.po_id = poi.po_id AND dni.item_id = poi.item_id
-            JOIN items i ON dni.item_id = i.id
+            LEFT JOIN items i ON dni.item_id = i.id
             WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
+          0
+        )::numeric AS delivered_qty,
+        COALESCE(
           (
             SELECT SUM(
-              (
-                dni.quantity - COALESCE((
-                  SELECT SUM((elem->>'quantity')::numeric)
-                  FROM grns g
-                  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
-                  WHERE g.delivery_note_id = dn.id
-                    AND elem->>'item_code' = i.item_code
-                    AND g.company_id = $2
-                ), 0)
-              ) * roi.unit_price
+              GREATEST(0, dni.quantity - COALESCE((
+                SELECT SUM((elem->>'quantity')::numeric)
+                FROM grns g
+                CROSS JOIN LATERAL jsonb_array_elements(COALESCE(g.rejection_items, '[]'::jsonb)) AS elem
+                WHERE g.delivery_note_id = dn.id
+                  AND elem->>'item_code' = i.item_code
+                  AND g.company_id = $2
+              ), 0)) * dni.rate_per_piece
             )
             FROM delivery_notes dn
             JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
-            JOIN release_order_items roi ON dn.ro_id = roi.ro_id AND dni.item_id = roi.item_id
-            JOIN items i ON dni.item_id = i.id
-            WHERE dn.trade_id = $1 AND dn.company_id = $2
-          ),
-          (
-            SELECT SUM(dni.quantity * ppi.price)
-            FROM delivery_notes dn
-            JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
-            JOIN process_po pp ON dn.trade_id = pp.trade_id
-            JOIN process_po_item ppi ON pp.id = ppi.process_po_id AND dni.item_id = ppi.target_item_id
+            LEFT JOIN items i ON dni.item_id = i.id
             WHERE dn.trade_id = $1 AND dn.company_id = $2
           ),
           0
         )::numeric AS delivered_val
-    ) val_sub
+    ) sub;
   `, [trade_id, company_id]);
 
-  const pct = pctRes.rows.length > 0 ? parseFloat(pctRes.rows[0].pct) : 0;
+  const row = pctRes.rows[0];
+  const pct = row ? (parseFloat(row.pct) || 0) : 0;
+  const delivQty = row ? (parseFloat(row.delivered_qty) || 0) : 0;
+  const orderedQty = row ? (parseFloat(row.ordered_qty) || 0) : 0;
   
   let statusName = 'ordered';
-  if (pct >= 99.9) {
+  if (pct >= 99.9 || (delivQty > 0 && orderedQty > 0 && delivQty >= orderedQty)) {
     statusName = 'delivered';
-  } else if (pct > 0) {
+  } else if (pct > 0 || delivQty > 0) {
     statusName = 'partially delivered';
   }
 
@@ -1497,6 +1585,46 @@ async function updateTradeDeliveryStatus(client, trade_id, company_id) {
     "UPDATE trades SET status = $1, delivery_percentage = $2 WHERE id = $3 AND company_id = $4",
     [statusName, pct, trade_id, company_id]
   );
+  await client.query(
+    "UPDATE process_ro SET status = $1 WHERE trade_id = $2 AND company_id = $3",
+    [statusName, trade_id, company_id]
+  );
+  await client.query(
+    "UPDATE release_orders SET status = $1 WHERE trade_id = $2 AND company_id = $3",
+    [statusName, trade_id, company_id]
+  );
+  await client.query(
+    "UPDATE purchase_orders SET status = $1 WHERE trade_id = $2 AND company_id = $3",
+    [statusName, trade_id, company_id]
+  );
+
+  // Sync process_po_target_item delivered_qty
+  await client.query(`
+    UPDATE process_po_target_item ppti
+    SET delivered_qty = COALESCE((
+      SELECT SUM(dni.quantity)
+      FROM delivery_notes dn
+      JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+      WHERE dn.trade_id = $1 AND dni.item_id = ppti.item_code AND dn.company_id = $2
+    ), 0),
+    status = CASE 
+      WHEN COALESCE((
+        SELECT SUM(dni.quantity)
+        FROM delivery_notes dn
+        JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+        WHERE dn.trade_id = $1 AND dni.item_id = ppti.item_code AND dn.company_id = $2
+      ), 0) >= ppti.qty THEN 'delivered'
+      WHEN COALESCE((
+        SELECT SUM(dni.quantity)
+        FROM delivery_notes dn
+        JOIN delivery_note_items dni ON dn.id = dni.delivery_note_id
+        WHERE dn.trade_id = $1 AND dni.item_id = ppti.item_code AND dn.company_id = $2
+      ), 0) > 0 THEN 'partially delivered'
+      ELSE 'ordered'
+    END
+    WHERE process_po_id IN (SELECT id FROM process_po WHERE trade_id = $1 AND company_id = $2)
+      AND company_id = $2
+  `, [trade_id, company_id]);
 }
 
 async function processPoDeliveryTraceConversion(client, processPoId, targetItemId, deliveredQty, companyId, deliveryNoteNo) {

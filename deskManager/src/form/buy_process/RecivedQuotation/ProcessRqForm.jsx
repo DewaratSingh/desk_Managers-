@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Cpu, ArrowLeft, RefreshCw, Building2, User, Plus, Trash2, Layers, Package, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 
-import InventoryTraceSelectorModal from '../components/InventoryTraceSelectorModal';
-import TargetItemSelectorModal from '../components/TargetItemSelectorModal';
+import InventoryTraceSelectorModal from '../../../components/InventoryTraceSelectorModal';
+import TargetItemSelectorModal from '../../../components/TargetItemSelectorModal';
 
 export default function ProcessRqForm() {
   const navigate = useNavigate();
@@ -198,7 +198,7 @@ export default function ProcessRqForm() {
         setSaveStatus(`Creating ${localJobs.length} jobs...`);
         for (let i = 0; i < localJobs.length; i++) {
           const job = localJobs[i];
-          const jobRes = await fetch('/api/manufacture/jobs', {
+          const jobRes = await fetch('/api/process-jobs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(job)

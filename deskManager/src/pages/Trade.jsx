@@ -256,7 +256,7 @@ export default function TradeView() {
         poDoc?.id  ? fetchPO(poDoc.id, (tradeData.trade_type || '').toUpperCase() === 'PROCESS') : Promise.resolve(setPurchaseOrder(null)),
         roDoc?.id  
           ? fetchRO(roDoc.id)     
-          : ((tradeData.trade_type || '').toUpperCase() === 'BUY_PROCESS' 
+          : ((((tradeData.trade_type || '').toUpperCase() === 'BUY_PROCESS' || (tradeData.trade_type || '').toUpperCase() === 'BUYARC') && !processRecQtnDoc && !prDoc && !recQtnDoc)
               ? fetchRO(tradeData.trade_id) 
               : Promise.resolve(setReleaseOrder(null))),
         dnDocs.length > 0
@@ -452,9 +452,18 @@ export default function TradeView() {
   const hasRecQtnDoc = docs.some(d => d.type?.toUpperCase() === 'RECEIVED_QUOTATION');
   const hasProcessRecQtnDoc = docs.some(d => d.type?.toUpperCase() === 'PROCESS_RECEIVED_QUOTATION');
   const hasPoDoc = docs.some(d => d.type?.toUpperCase() === 'PURCHASE_ORDER' || d.type?.toUpperCase() === 'PO');
-  const hasRoDoc = docs.some(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO' || d.type?.toUpperCase() === 'PROCESS_RO') || Boolean(releaseOrder);
+  const hasExplicitRoDoc = docs.some(d => d.type?.toUpperCase() === 'RO' || d.type?.toUpperCase() === 'CO' || d.type?.toUpperCase() === 'PROCESS_RO');
+  const hasRoDoc = hasExplicitRoDoc || Boolean(releaseOrder);
   const hasProcessRqDoc = docs.some(d => d.type?.toUpperCase() === 'PR' || d.type?.toUpperCase() === 'RQ_PROCESS');
   const isProcessTrade = (trade.trade_type || '').toUpperCase() === 'PROCESS' || (trade.trade_type || '').toUpperCase() === 'BUY_PROCESS';
+
+  const hasAnyRqDoc = hasProcessRecQtnDoc || hasProcessRqDoc || (hasRecQtnDoc && isProcessTrade) || Boolean(processReceivedQuotation) || Boolean(processRq);
+  const isContractProcessTrade = isProcessTrade && (
+    (hasExplicitRoDoc && !hasAnyRqDoc) ||
+    (Boolean(releaseOrder) && !hasAnyRqDoc) ||
+    (!hasAnyRqDoc && !hasPoDoc && (trade.trade_type || '').toUpperCase() === 'BUY_PROCESS')
+  );
+  const isStandardProcessTrade = isProcessTrade && !isContractProcessTrade;
 
   const panels = [];
 
@@ -466,7 +475,7 @@ export default function TradeView() {
     });
   }
 
-  if (processReceivedQuotation) {
+  if (processReceivedQuotation && !isContractProcessTrade) {
     panels.push({
       key: 'process-received-quotation',
       label: '① Process Received Quotation',
@@ -502,7 +511,7 @@ export default function TradeView() {
     });
   }
 
-  if (hasRecQtnDoc) {
+  if (hasRecQtnDoc && !isContractProcessTrade) {
     panels.push({
       key: 'received_quotation',
       label: rfq ? '② Received Quotation' : '① Received Quotation',
@@ -518,7 +527,7 @@ export default function TradeView() {
     });
   }
 
-  if (processRq) {
+  if (processRq && !isContractProcessTrade) {
     panels.push({
       key: 'process_rq',
       label: '① R Quotation (Process RQ)',
@@ -526,7 +535,11 @@ export default function TradeView() {
     });
   }
 
-  if (hasPoDoc || (!hasRoDoc && (hasQuotationDoc || hasRecQtnDoc || (isProcessTrade && (hasProcessRqDoc || hasProcessRecQtnDoc || processReceivedQuotation))))) {
+  const shouldShowPoPanel = !isContractProcessTrade && (
+    hasPoDoc || (!hasRoDoc && (hasQuotationDoc || hasRecQtnDoc || isStandardProcessTrade))
+  );
+
+  if (shouldShowPoPanel) {
     let poLabel = (rfq && hasQuotationDoc) ? '③ Purchase Order' : '② Purchase Order';
     if (panels.length === 0) {
       poLabel = isProcessTrade ? '① Process Purchase Order' : '① Purchase Order';
@@ -550,12 +563,13 @@ export default function TradeView() {
   }
 
   const isArc = (trade.trade_type || '').toUpperCase() === 'ARC' || (trade.trade_type || '').toUpperCase() === 'BUYARC' || (trade.trade_type || '').toUpperCase() === 'SELLARC';
+  const shouldShowRoPanel = isContractProcessTrade || (!isProcessTrade && (isArc || hasRoDoc));
 
-  if (isArc || hasRoDoc || (trade.trade_type || '').toUpperCase() === 'BUY_PROCESS') {
+  if (shouldShowRoPanel) {
     const isProcRo = isProcessTrade || releaseOrder?._is_process_ro || (releaseOrder?.ro_no && String(releaseOrder.ro_no).startsWith('PRO-'));
     panels.push({
       key: 'ro',
-      label: isProcRo ? '① Process Release Order' : '① Release Order',
+      label: isProcRo ? '① Process Contract Order (RO)' : '① Release Order',
       component: isProcRo ? (
         <ProcessRoPanel releaseOrder={releaseOrder} tradeId={trade.trade_id} />
       ) : (
@@ -568,32 +582,41 @@ export default function TradeView() {
   if (hasPoOrRo) {
     const calcPoTotal = (po) => {
       if (!po) return 0;
-      const itemsBasic = (po.items || []).reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0), 0);
-      const gstTotal = parseFloat(po.gst) || 0;
+      const items = (po.target_items && po.target_items.length > 0) ? po.target_items : (po.items || []);
+      const itemsBasic = items.reduce(
+        (s, i) => s + (parseFloat(i.price || i.unit_price) || 0) * (parseFloat(i.qty || i.target_item_quantity || i.target_qty || i.quantity) || 0),
+        0
+      );
+      const baseValue = itemsBasic > 0 ? itemsBasic : (parseFloat(po.basic_value) || 0);
+
+      const itemsGst = items.reduce((s, i) => {
+        const b = (parseFloat(i.price || i.unit_price) || 0) * (parseFloat(i.qty || i.target_item_quantity || i.target_qty || i.quantity) || 0);
+        const r = parseFloat(i.gst_rate);
+        return s + (!isNaN(r) && r > 0 ? (b * r) / 100 : 0);
+      }, 0);
+
+      let gstTotal = parseFloat(po.gst) || 0;
+      if (!gstTotal) {
+        if (itemsGst > 0) {
+          gstTotal = itemsGst;
+        } else if (po.gst_rate && parseFloat(po.gst_rate) > 0) {
+          gstTotal = (baseValue * parseFloat(po.gst_rate)) / 100;
+        }
+      }
+
       const transport = parseFloat(po.transport) || 0;
       const packing = parseFloat(po.packing_forward) || 0;
       const other = parseFloat(po.other) || 0;
-      const basicVal = parseFloat(po.basic_value) || 0;
-      return itemsBasic + gstTotal + transport + packing + other + basicVal;
+      return baseValue + gstTotal + transport + packing + other;
     };
     const expectedTotal = purchaseOrder ? calcPoTotal(purchaseOrder) : (releaseOrder ? calcPoTotal(releaseOrder) : 0);
 
-    let paymentLabel = '④ Payments';
-    if (isArc || (isProcessTrade && hasRoDoc)) {
-      paymentLabel = '③ Payments';
-    } else if (!rfq) {
-      paymentLabel = '③ Payments';
-    }
+    const circleNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
 
-    const showDelivery = (isArc || hasRoDoc) ? hasRoDoc : hasPoDoc;
+    const showDelivery = hasPoDoc || hasRoDoc || Boolean(releaseOrder) || Boolean(purchaseOrder);
 
     if (showDelivery) {
-      let deliveryLabel = '④ Delivery & Invoicing';
-      if (isArc || (isProcessTrade && hasRoDoc)) {
-        deliveryLabel = '② Delivery & Invoicing';
-      } else if (rfq) {
-        deliveryLabel = '⑤ Delivery & Invoicing';
-      }
+      const deliveryLabel = `${circleNumbers[panels.length] || ''} Delivery & Invoicing`;
       panels.push({
         key: 'delivery',
         label: deliveryLabel,
@@ -612,6 +635,8 @@ export default function TradeView() {
         )
       });
     }
+
+    const paymentLabel = `${circleNumbers[panels.length] || ''} Payments`;
     panels.push({
       key: 'payments',
       label: paymentLabel,

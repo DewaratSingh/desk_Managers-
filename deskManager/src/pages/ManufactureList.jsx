@@ -6,6 +6,74 @@ import { toast } from 'react-toastify';
 import InventoryTraceSelectorModal from '../components/InventoryTraceSelectorModal';
 import TargetItemSelectorModal from '../components/TargetItemSelectorModal';
 
+// Helper: Determine delivery status based on target items delivered qty
+export const getJobDeliveryStatus = (jobObj) => {
+  if (!jobObj) return { status: 'Pending', isDelivered: false, isPartial: false, totalDelivered: 0, totalTarget: 0, pct: 0 };
+
+  const tgtList = Array.isArray(jobObj.target_items) && jobObj.target_items.length > 0
+    ? jobObj.target_items
+    : (jobObj.items || []).map(i => ({
+        item_code: i.target_item_code || i.item_code,
+        qty: i.target_qty !== undefined ? i.target_qty : i.qty,
+        delivered_qty: i.delivered_qty
+      }));
+
+  const isExplicitlyDone = (
+    jobObj.status === 'completed' ||
+    jobObj.status === 'delivered' ||
+    jobObj.manufacture?.status === 'completed'
+  );
+
+  if (!tgtList || tgtList.length === 0) {
+    if (isExplicitlyDone) {
+      return { status: 'Delivered', isDelivered: true, isPartial: false, totalDelivered: 0, totalTarget: 0, pct: 100 };
+    }
+    return { status: 'Pending', isDelivered: false, isPartial: false, totalDelivered: 0, totalTarget: 0, pct: 0 };
+  }
+
+  let totalTarget = 0;
+  let totalDelivered = 0;
+  let allDelivered = true;
+
+  tgtList.forEach(tgt => {
+    const orderQty = parseFloat(tgt.qty) || 0;
+    const deliveredQty = parseFloat(
+      tgt.delivered_qty !== undefined && tgt.delivered_qty !== null
+        ? tgt.delivered_qty
+        : (isExplicitlyDone ? orderQty : 0)
+    ) || 0;
+
+    totalTarget += orderQty;
+    totalDelivered += deliveredQty;
+
+    if (orderQty > 0 && deliveredQty < orderQty && !isExplicitlyDone) {
+      allDelivered = false;
+    }
+  });
+
+  const isDelivered = isExplicitlyDone || (totalTarget > 0 && (allDelivered || totalDelivered >= totalTarget));
+  const isPartial = !isDelivered && totalDelivered > 0;
+  const pct = totalTarget > 0 ? Math.min(100, Math.round((totalDelivered / totalTarget) * 100)) : (isDelivered ? 100 : 0);
+
+  let statusText = 'Pending';
+  if (isDelivered) {
+    statusText = 'Delivered';
+  } else if (isPartial) {
+    statusText = 'In Progress';
+  } else {
+    statusText = 'Pending';
+  }
+
+  return {
+    status: statusText,
+    isDelivered,
+    isPartial,
+    totalDelivered,
+    totalTarget,
+    pct
+  };
+};
+
 export default function ManufactureList() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,11 +123,12 @@ export default function ManufactureList() {
         if (!baseItems || baseItems.length === 0) {
           const rawTgtItems = Array.isArray(foundJob.target_items) && foundJob.target_items.length > 0
             ? foundJob.target_items
-            : (foundJob.items || []).map(i => ({ item_code: i.target_item_code, description: i.target_item_description, qty: i.target_qty, price: i.price, id: i.id }));
+            : (foundJob.items || []).map(i => ({ item_code: i.target_item_code, description: i.target_item_description, qty: i.target_qty, price: i.price, id: i.id, delivered_qty: i.delivered_qty }));
 
+          const jobDeliveryStats = getJobDeliveryStatus(foundJob);
           baseItems = rawTgtItems.map(tgt => {
             const orderQty = parseFloat(tgt.qty) || 0;
-            const deliveredQty = parseFloat(tgt.delivered_qty !== undefined ? tgt.delivered_qty : (foundJob.status === 'completed' ? orderQty : 0)) || 0;
+            const deliveredQty = parseFloat(tgt.delivered_qty !== undefined && tgt.delivered_qty !== null ? tgt.delivered_qty : (jobDeliveryStats.isDelivered ? orderQty : 0)) || 0;
             const remainingQty = Math.max(0, orderQty - deliveredQty);
             return {
               id: tgt.id,
@@ -206,11 +275,12 @@ export default function ManufactureList() {
     // Build completion items table formatted similarly to Delivery Note Form table
     const rawTgtItems = Array.isArray(job.target_items) && job.target_items.length > 0
       ? job.target_items
-      : (job.items || []).map(i => ({ item_code: i.target_item_code, description: i.target_item_description, qty: i.target_qty, price: i.price, id: i.id }));
+      : (job.items || []).map(i => ({ item_code: i.target_item_code, description: i.target_item_description, qty: i.target_qty, price: i.price, id: i.id, delivered_qty: i.delivered_qty }));
 
+    const jobDeliveryStats = getJobDeliveryStatus(job);
     const formattedTgtItems = rawTgtItems.map(tgt => {
       const orderQty = parseFloat(tgt.qty) || 0;
-      const deliveredQty = parseFloat(tgt.delivered_qty !== undefined ? tgt.delivered_qty : (job.status === 'completed' ? orderQty : 0)) || 0;
+      const deliveredQty = parseFloat(tgt.delivered_qty !== undefined && tgt.delivered_qty !== null ? tgt.delivered_qty : (jobDeliveryStats.isDelivered ? orderQty : 0)) || 0;
       const remainingQty = Math.max(0, orderQty - deliveredQty);
       return {
         id: tgt.id,
@@ -441,14 +511,18 @@ export default function ManufactureList() {
     const tgtList = item.target_items || [];
     const hasSrcMatch = srcList.some(s => s.item_code && s.item_code.toLowerCase().includes(q));
     const hasTgtMatch = tgtList.some(t => t.item_code && t.item_code.toLowerCase().includes(q));
+    const statusInfo = getJobDeliveryStatus(item);
     return (
       (item.process_name && item.process_name.toLowerCase().includes(q)) ||
       (item.message && item.message.toLowerCase().includes(q)) ||
       (String(item.id).includes(q)) ||
+      (statusInfo.status && statusInfo.status.toLowerCase().includes(q)) ||
       hasSrcMatch ||
       hasTgtMatch
     );
   });
+
+  const viewingJobStatus = viewingJob ? getJobDeliveryStatus(viewingJob) : null;
 
   return (
     <div className="flex-1 p-6 bg-slate-100 text-slate-900 font-sans min-h-screen">
@@ -551,9 +625,10 @@ export default function ManufactureList() {
 
                     const tgtList = Array.isArray(m.target_items) && m.target_items.length > 0
                       ? m.target_items
-                      : (m.items || []).map(i => ({ item_code: i.target_item_code, qty: i.target_qty, price: i.price }));
+                      : (m.items || []).map(i => ({ item_code: i.target_item_code, qty: i.target_qty, price: i.price, delivered_qty: i.delivered_qty }));
 
-                    const isCompleted = m.status === 'completed';
+                    const statusInfo = getJobDeliveryStatus(m);
+                    const isDelivered = statusInfo.isDelivered;
 
                     return (
                       <tr 
@@ -607,19 +682,24 @@ export default function ManufactureList() {
                         {/* Target Items */}
                         <td className="px-4 py-3.5 align-top min-w-[200px]">
                           <div className="space-y-1.5">
-                            {tgtList.map((tgt, i) => (
-                              <div key={i} className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-2 text-[11px]">
-                                <div className="font-bold text-slate-900">{tgt.item_code || '—'}</div>
-                                <div className="flex items-center justify-between font-mono text-[10px] pt-0.5">
-                                  <span className="font-bold text-emerald-700">
-                                    Delivered: {tgt.delivered_qty || (isCompleted ? (tgt.qty || 0) : 0)} / {tgt.qty || 0}
-                                  </span>
-                                  {tgt.price && parseFloat(tgt.price) > 0 && (
-                                    <span className="font-bold text-slate-700">₹{parseFloat(tgt.price).toFixed(2)}</span>
-                                  )}
+                            {tgtList.map((tgt, i) => {
+                              const tDelivered = tgt.delivered_qty !== undefined && tgt.delivered_qty !== null
+                                ? tgt.delivered_qty
+                                : (isDelivered ? (tgt.qty || 0) : 0);
+                              return (
+                                <div key={i} className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-2 text-[11px]">
+                                  <div className="font-bold text-slate-900">{tgt.item_code || '—'}</div>
+                                  <div className="flex items-center justify-between font-mono text-[10px] pt-0.5">
+                                    <span className="font-bold text-emerald-700">
+                                      Delivered: {tDelivered} / {tgt.qty || 0}
+                                    </span>
+                                    {tgt.price && parseFloat(tgt.price) > 0 && (
+                                      <span className="font-bold text-slate-700">₹{parseFloat(tgt.price).toFixed(2)}</span>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </td>
 
@@ -648,12 +728,14 @@ export default function ManufactureList() {
                         {/* Status */}
                         <td className="px-4 py-3.5 text-center align-top">
                           <span className={`px-2.5 py-1 text-[10px] font-black rounded-lg border uppercase tracking-wider inline-flex items-center gap-1 ${
-                            isCompleted
+                            statusInfo.isDelivered
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              : statusInfo.isPartial
+                              ? 'bg-blue-50 text-blue-800 border-blue-300'
                               : 'bg-amber-50 text-amber-800 border-amber-300'
                           }`}>
-                            {isCompleted ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                            {isCompleted ? 'Completed' : 'In Progress'}
+                            {statusInfo.isDelivered ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                            {statusInfo.status}
                           </span>
                         </td>
 
@@ -697,7 +779,9 @@ export default function ManufactureList() {
                     Manufacture Job #{viewingJob.id} Details & Production Completion
                   </h2>
                   <p className="text-xs text-slate-500 font-medium m-0">
-                    Process Name: <strong>{viewingJob.process_name}</strong> | Status: <span className="uppercase font-bold text-indigo-700">{viewingJob.status || 'in_progress'}</span>
+                    Process Name: <strong>{viewingJob.process_name}</strong> | Status: <span className={`uppercase font-bold ${
+                      viewingJobStatus?.isDelivered ? 'text-emerald-700' : viewingJobStatus?.isPartial ? 'text-blue-700' : 'text-amber-700'
+                    }`}>{viewingJobStatus?.status || viewingJob.status || 'in_progress'}</span>
                   </p>
                 </div>
               </div>

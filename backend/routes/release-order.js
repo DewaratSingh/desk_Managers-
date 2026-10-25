@@ -14,6 +14,8 @@ router.get('/', async (req, res) => {
         c.name as customer_name, c.address as customer_address,
         ct.company_name as contract_company_name,
         t.status AS trade_status,
+        t.trade_type,
+        ro.ro_type,
         (
           SELECT COALESCE(json_agg(json_build_object(
             'item_code', COALESCE(roi.item_code, i.item_code),

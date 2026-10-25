@@ -26,6 +26,9 @@
         <button id="nav-online-backup" class="nav-btn" onclick="switchTab('online-backup')">
           <span class="icon">☁️</span> Online Cloud Backup
         </button>
+        <button id="nav-autostart" class="nav-btn" onclick="switchTab('autostart')">
+          <span class="icon">🚀</span> Autostart
+        </button>
         <button id="nav-dashboard" class="nav-btn" onclick="switchTab('dashboard')">
           <span class="icon">📊</span> Dashboard
         </button>
@@ -236,6 +239,126 @@
         </section>
       </div>
 
+      <!-- TAB: AUTOSTART & PM2 PANEL -->
+      <div id="panel-autostart" class="tab-panel">
+        <header class="content-header">
+          <div>
+            <h2>🚀 Autostart & PM2 Background Process</h2>
+            <p>Automatically run the DeskManager backend daemon in the background using PM2 with auto-restart on crash and Windows startup boot.</p>
+          </div>
+        </header>
+
+        <!-- Service Status Card -->
+        <section class="card api-card">
+          <div class="card-header-split">
+            <div class="card-header">
+              <span class="card-icon">⚡</span>
+              <h3>Daemon Service: <code id="pm2ServiceName">deskmanager-backend</code></h3>
+            </div>
+            <span id="pm2StatusBadge" class="badge badge-disconnected">● Checking Status...</span>
+          </div>
+
+          <p class="service-desc-text">
+            PM2 ensures the backend (<code>backend/index.js</code>) runs continuously using <code>backend/node.exe</code>. If the application crashes or exits unexpectedly, PM2 instantly restarts it.
+          </p>
+
+          <div class="stats-grid pm2-stats-grid">
+            <div class="stat-card">
+              <div class="stat-title">Status</div>
+              <div class="stat-value text-accent" id="pm2StatStatus">-</div>
+              <div class="stat-sub" id="pm2StatPid">PID: --</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-title">Memory Usage</div>
+              <div class="stat-value" id="pm2StatMemory">0 MB</div>
+              <div class="stat-sub" id="pm2StatCpu">CPU: 0%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-title">Restarts</div>
+              <div class="stat-value" id="pm2StatRestarts">0</div>
+              <div class="stat-sub" id="pm2StatUptime">Uptime: Offline</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-title">Windows Autostart</div>
+              <div class="stat-value" id="pm2StatAutostart">-</div>
+              <div class="stat-sub">Windows Boot Script</div>
+            </div>
+          </div>
+
+          <!-- Action Controls Toolbar -->
+          <div class="card-footer-btns" style="margin-top: 15px;">
+            <button id="btnSetupAutostart" class="btn btn-success btn-large" onclick="setupAutostartProcess()">
+              <span>🚀</span> Setup & Enable Autostart Now
+            </button>
+            <button class="btn btn-primary" onclick="controlPM2Service('restart')">
+              <span>🔄</span> Restart Service
+            </button>
+            <button class="btn btn-warning" onclick="controlPM2Service('stop')">
+              <span>⏹️</span> Stop Service
+            </button>
+            <button class="btn btn-info" onclick="controlPM2Service('start')">
+              <span>▶️</span> Start Service
+            </button>
+            <button class="btn btn-danger" onclick="controlPM2Service('delete')">
+              <span>🗑️</span> Remove Service
+            </button>
+            <button class="btn btn-secondary" onclick="loadPM2Status()">
+              <span>🔄</span> Refresh
+            </button>
+          </div>
+        </section>
+
+        <!-- Windows Startup Integration Card -->
+        <section class="card startup-card">
+          <div class="card-header-split">
+            <div class="card-header">
+              <span class="card-icon">🪟</span>
+              <h3>Windows Startup App Integration</h3>
+            </div>
+            <span id="startupFileBadge" class="badge badge-disconnected">● Not Active</span>
+          </div>
+
+          <p class="form-hint" style="margin-bottom: 12px;">
+            When enabled, DeskManage creates a Windows Startup batch file that automatically calls <code>pm2 resurrect</code> when your PC turns on or logs in:
+          </p>
+
+          <div class="code-box">
+            <div class="code-box-header">
+              <span>📄 deskmanager-resurrect.bat</span>
+              <span id="startupBatPathDisplay" class="code-path">Loading path...</span>
+            </div>
+            <pre class="code-content">@echo off
+pm2 resurrect</pre>
+          </div>
+
+          <div class="card-footer-btns" style="margin-top: 15px;">
+            <button class="btn btn-secondary" onclick="openWindowsStartupFolder()">
+              <span>📁</span> Open Windows Startup Folder ↗
+            </button>
+            <button class="btn btn-secondary" onclick="openBackendDirectory()">
+              <span>📂</span> Open Backend Folder ↗
+            </button>
+          </div>
+        </section>
+
+        <!-- Live PM2 Logs Card -->
+        <section class="card logs-card">
+          <div class="card-header-split">
+            <div class="card-header">
+              <span class="card-icon">📜</span>
+              <h3>Backend Process Live Logs (PM2)</h3>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadPM2Logs()">
+              <span>🔄</span> Refresh Logs
+            </button>
+          </div>
+
+          <div class="terminal-box">
+            <pre id="pm2LogsContent" class="terminal-content">Loading PM2 logs...</pre>
+          </div>
+        </section>
+      </div>
+
       <!-- TAB 3: DASHBOARD PANEL -->
       <div id="panel-dashboard" class="tab-panel">
         <header class="content-header">
@@ -249,7 +372,7 @@
           <div class="stat-card">
             <div class="stat-title">Local Backups</div>
             <div class="stat-value" id="statLocalCount">0</div>
-            <div class="stat-sub">In D:\deskManager-backups</div>
+            <div class="stat-sub" id="statBackupSub">In %PROGRAMDATA%\DeskManager\backups</div>
           </div>
           <div class="stat-card">
             <div class="stat-title">Cloud Backups</div>
@@ -322,7 +445,7 @@
           <div class="form-grid" style="margin-top: 15px;">
             <div class="form-group">
               <label for="settingBackupDirInput">Selected Backup Directory Path:</label>
-              <input type="text" id="settingBackupDirInput" class="form-input" placeholder="D:\deskManager-backups">
+              <input type="text" id="settingBackupDirInput" class="form-input" placeholder="%PROGRAMDATA%\DeskManager\backups">
             </div>
 
             <div class="form-group">

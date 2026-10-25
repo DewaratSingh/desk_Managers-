@@ -79,13 +79,24 @@ router.get('/:identifier', async (req, res) => {
     
     // Fetch associated jobs
     if (rq.job_ids && rq.job_ids.length > 0) {
-      const jobsResult = await pool.query(`
+      let jobsResult = await pool.query(`
         SELECT j.*, 
-               (SELECT json_agg(si.*) FROM source_item si WHERE si.job_id = j.id) as source_items,
-               (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items
-        FROM job j
-        WHERE j.id = ANY($1::int[])
-      `, [rq.job_ids]);
+               (SELECT json_agg(si.*) FROM "processSource_item" si WHERE si.job_id = j.id) as source_items,
+               (SELECT json_agg(ti.*) FROM "ProcessTarget_item" ti WHERE ti.job_id = j.id) as target_items
+        FROM "processJob" j
+        WHERE j.id = ANY($1::int[]) AND j.company_id = $2
+      `, [rq.job_ids, req.user.company_id]);
+
+      // If no processJob rows found, fallback to legacy job table
+      if (jobsResult.rows.length === 0) {
+        jobsResult = await pool.query(`
+          SELECT j.*, 
+                 (SELECT json_agg(si.*) FROM source_item si WHERE si.job_id = j.id) as source_items,
+                 (SELECT json_agg(ti.*) FROM target_item ti WHERE ti.job_id = j.id) as target_items
+          FROM job j
+          WHERE j.id = ANY($1::int[]) AND j.company_id = $2
+        `, [rq.job_ids, req.user.company_id]);
+      }
       
       rq.jobs = jobsResult.rows.map(j => {
         let flattenedSourceItems = [];
@@ -194,6 +205,67 @@ router.post('/', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error creating Process RQ:', err.message);
     res.status(500).json({ error: err.message || 'Failed to create Process RQ' });
+  } finally {
+    client.release();
+  }
+});
+
+// UPDATE a Process RQ
+router.put('/:identifier', async (req, res) => {
+  const { identifier } = req.params;
+  const {
+    dateOfStart,
+    dateOfEnd,
+    party_id,
+    customer_id,
+    message,
+    job_ids
+  } = req.body || {};
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const companyId = req.user.company_id;
+
+    const findRes = await client.query(
+      'SELECT id, trade_id FROM rq_process WHERE (number = $1 OR id::text = $1) AND company_id = $2',
+      [identifier, companyId]
+    );
+
+    if (findRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Process RQ not found' });
+    }
+
+    const rqId = findRes.rows[0].id;
+
+    await client.query(
+      `UPDATE rq_process
+       SET "dateOfStart" = COALESCE($1, "dateOfStart"),
+           "dateOfEnd"   = $2,
+           party_id      = COALESCE($3, party_id),
+           customer_id   = COALESCE($4, customer_id),
+           message       = $5,
+           job_ids       = COALESCE($6::jsonb, job_ids)
+       WHERE id = $7 AND company_id = $8`,
+      [
+        dateOfStart || null,
+        dateOfEnd || null,
+        party_id || null,
+        customer_id || null,
+        message || null,
+        Array.isArray(job_ids) ? JSON.stringify(job_ids) : null,
+        rqId,
+        companyId
+      ]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: 'Process RQ updated successfully', id: rqId });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error updating Process RQ:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to update Process RQ' });
   } finally {
     client.release();
   }

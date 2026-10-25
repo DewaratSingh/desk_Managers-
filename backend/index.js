@@ -16,13 +16,18 @@ app.use(cors());
 app.use(express.json());
 
 // Serve the static files from the React app build
-app.use(express.static(path.join(__dirname, '../deskManager/dist')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/api', apiRouter);
 
+// Return 404 for unmatched API requests so they don't fall through to index.html
+app.all(/^\/api(\/.*)?$/, (req, res) => {
+  res.status(404).json({ error: 'API route not found' });
+});
+
 // All other GET requests not handled before will return the React app
 app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../deskManager/dist/index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 }); 
 
 app.listen(port, async () => {

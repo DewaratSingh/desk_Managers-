@@ -1,21 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, CheckSquare, Square, Search, Trash2 } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AlertCircle, ArrowLeft, RefreshCw, X, CheckSquare, Square, Search, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useContractOrder } from '../../../context/ContractOrderContext.jsx';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
 const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
-export default function CreateContractOrderForm() {
+export default function UpdateContractOrderForm() {
+  const params = useParams();
+  const id = params.id || params['*'];
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const queryTradeId = searchParams.get('trade_id');
+  const editingNo    = id;
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError]         = useState(null);
-  const [coNoError, setCoNoError] = useState('');
 
   const {
     activeCoId,
@@ -78,25 +80,13 @@ export default function CreateContractOrderForm() {
   const shipItemRefs = useRef({});
   const shipTimeoutRefs = useRef({});
 
-  const fetchNextNo = async () => {
-    try {
-      const res = await fetch('/api/release-orders/next-no');
-      if (res.ok) {
-        const data = await res.json();
-        setFormData(prev => ({ ...prev, co_no: data.nextNo }));
-      }
-    } catch (err) {
-      console.error('Error fetching next CO no:', err);
-    }
-  };
-
   useEffect(() => {
-    resetCoState(null);
-    fetchNextNo();
-    if (queryTradeId) {
-      fetchTradeRfqItems(queryTradeId);
+    if (activeCoId !== editingNo) {
+      if (editingNo) {
+        fetchCoDetails(editingNo);
+      }
     }
-  }, [queryTradeId]);
+  }, [editingNo, activeCoId]);
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -224,26 +214,39 @@ export default function CreateContractOrderForm() {
   useEffect(() => {
     const trimmed = itemSearchInput.trim();
     if (!trimmed) {
-      setItemSuggestions([]);
-      setShowItemDropdown(false);
+      if (selectedContract && contractItems.length > 0) {
+        setItemSuggestions(contractItems);
+      } else {
+        setItemSuggestions([]);
+        setShowItemDropdown(false);
+      }
       return;
     }
     const delay = setTimeout(async () => {
       try {
-        let items = contractItems;
-        if (items.length === 0 && selectedContract) {
-          items = await fetchContractItems(selectedContract);
-        }
-        if (items.length > 0) {
-          const lower = trimmed.toLowerCase();
-          const filtered = items.filter(i =>
-            (i.item_code || '').toLowerCase().includes(lower) ||
-            (i.description || '').toLowerCase().includes(lower)
-          ).slice(0, 5);
-          setItemSuggestions(filtered);
-          setShowItemDropdown(true);
+        if (selectedContract) {
+          const isProcess = (selectedContract.type || '').toLowerCase().includes('process');
+          const endpoint = isProcess
+            ? `/api/contracts/${selectedContract.id}/process-items?q=${encodeURIComponent(trimmed)}`
+            : `/api/contracts/${selectedContract.id}/items?q=${encodeURIComponent(trimmed)}`;
+          const res = await fetch(endpoint);
+          if (res.ok) {
+            const data = await res.json();
+            setItemSuggestions(Array.isArray(data) ? data : []);
+            setShowItemDropdown(true);
+          } else {
+            const lower = trimmed.toLowerCase();
+            const filtered = (contractItems || []).filter(i =>
+              (i.item_code || '').toLowerCase().includes(lower) ||
+              (i.description || '').toLowerCase().includes(lower) ||
+              (i.drawing_number || '').toLowerCase().includes(lower) ||
+              (i.processname || '').toLowerCase().includes(lower)
+            );
+            setItemSuggestions(filtered);
+            setShowItemDropdown(true);
+          }
         } else {
-          const res = await fetch(`/api/arc-items?q=${encodeURIComponent(trimmed)}&limit=5`);
+          const res = await fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=8`);
           if (res.ok) {
             const data = await res.json();
             setItemSuggestions(Array.isArray(data) ? data : []);
@@ -257,43 +260,81 @@ export default function CreateContractOrderForm() {
     return () => clearTimeout(delay);
   }, [itemSearchInput, contractItems, selectedContract]);
 
-  const fetchTradeRfqItems = async (tradeId) => {
+  const fetchCoDetails = async (coNo) => {
+    setIsLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/trades/${encodeURIComponent(tradeId)}`);
-      if (!res.ok) return;
-      const trade = await res.json();
-      if (trade.rfq_items && trade.rfq_items.length > 0) {
-        const items = trade.rfq_items.map(item => ({
+      const res = await fetch(`/api/release-orders/${encodeURIComponent(coNo)}`);
+      if (!res.ok) throw new Error('Failed to fetch contract order details');
+      const co = await res.json();
+      setActiveCoId(coNo);
+      setFormData({
+        co_no:           co.ro_no,
+        contract_ref:    co.contract_ref || '',
+        co_date:         co.ro_date ? co.ro_date.split('T')[0] : '',
+        delivery_date:   co.delivery_date ? co.delivery_date.split('T')[0] : '',
+        transport:       String(co.transport       || 0),
+        other:           String(co.other           || 0),
+        basic_value:     String(co.basic_value     || 0),
+        packing_forward: String(co.packing_forward || 0),
+        trade_id:        co.trade_id || '',
+      });
+
+      if (co.buyer_id) {
+        setSelectedBuyer({ id: co.buyer_id, name: co.buyer_name, email: co.buyer_email, phone: co.buyer_phone });
+        setBuyerInput(co.buyer_name || '');
+      }
+      if (co.customer_id) {
+        setSelectedCustomer({ id: co.customer_id, name: co.customer_name, address: co.customer_address });
+        setCustomerInput(co.customer_name || '');
+      }
+      if (co.contract_ref && !isNaN(parseInt(co.contract_ref))) {
+        try {
+          const cRes = await fetch(`/api/contracts/${co.contract_ref}`);
+          if (cRes.ok) {
+            const cData = await cRes.json();
+            setSelectedContract(cData);
+            setContractInput(cData.company_name || '');
+            await fetchContractItems(cData);
+          }
+        } catch (e) { console.error('Could not restore contract:', e); }
+      }
+
+      if (Array.isArray(co.items)) {
+        const items = co.items.map(item => ({
           item_code:        item.item_code,
           quantity:         item.quantity,
-          unit_price:       String(item.unit_price || 0),
-          gst_type:         '',
-          gst_rate:         '',
-          shipping_address: '',
-          delivery_date:    formData.delivery_date || '',
-          description:      item.description || '',
+          unit_price:       String(item.unit_price),
+          gst_type:         item.gst_type  || '',
+          gst_rate:         item.gst_rate  != null ? String(item.gst_rate) : '',
+          shipping_address: item.shipping_address || '',
+          delivery_date:    item.delivery_date ? item.delivery_date.split('T')[0] : '',
+          description:      item.description  || '',
           drawing_number:   item.drawing_number || '',
           selected:         true
         }));
         setCoItems(items);
-      }
-      if (trade.buyer_id) {
-        setSelectedBuyer({ id: trade.buyer_id, name: trade.buyer_name, email: trade.buyer_email, phone: trade.buyer_phone });
-        setBuyerInput(trade.buyer_name || '');
-      }
-      if (trade.customer_id) {
-        setSelectedCustomer({ id: trade.customer_id, name: trade.customer_name, address: trade.customer_address });
-        setCustomerInput(trade.customer_name || '');
+
+        const initGstInputs  = {};
+        const initShipInputs = {};
+        items.forEach(i => {
+          if (i.gst_type)         initGstInputs[i.item_code]  = `${i.gst_type} (${i.gst_rate}%)`;
+          if (i.shipping_address) initShipInputs[i.item_code] = i.shipping_address;
+        });
+        setGstSearchInput(initGstInputs);
+        setShipInput(initShipInputs);
       }
     } catch (err) {
-      console.error('Error fetching trade RFQ items:', err);
+      setError(err.message || 'Connection error while fetching CO details.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const fetchContractItems = async (contract) => {
     if (!contract || !contract.id) return [];
     try {
-      const isProcess = contract.type === 'buy process' || contract.type === 'sell process';
+      const isProcess = (contract.type || '').toLowerCase().includes('process');
       const endpoint = isProcess
         ? `/api/contracts/${contract.id}/process-items`
         : `/api/contracts/${contract.id}`;
@@ -319,8 +360,23 @@ export default function CreateContractOrderForm() {
     setContractInput(contract.company_name);
     setShowContractDropdown(false);
     setContractNotFound(false);
-    setFormData(prev => ({ ...prev, contract_ref: String(contract.id) }));
-    await fetchContractItems(contract);
+    setFormData(prev => ({
+      ...prev,
+      contract_ref: contract.company_name || String(contract.id),
+      contract_id: contract.id
+    }));
+    if (contract.buyer_id && (!selectedBuyer || !selectedBuyer.id)) {
+      setSelectedBuyer({ id: contract.buyer_id, name: contract.buyer_name, email: contract.email, phone: contract.phone });
+      setBuyerInput(contract.buyer_name || '');
+    }
+    if (contract.customer_id && (!selectedCustomer || !selectedCustomer.id)) {
+      setSelectedCustomer({ id: contract.customer_id, name: contract.party_name, address: contract.party_address });
+      setCustomerInput(contract.party_name || '');
+    }
+    const items = await fetchContractItems(contract);
+    if (items && items.length > 0) {
+      setItemSuggestions(items);
+    }
   };
 
   const clearContract = () => {
@@ -383,11 +439,20 @@ export default function CreateContractOrderForm() {
   // Item Autocomplete handlers
   const handleItemSearchInput = (value) => {
     setItemSearchInput(value);
-    if (!value.trim()) { setItemSuggestions([]); setShowItemDropdown(false); }
+    if (!value.trim()) {
+      if (selectedContract && contractItems.length > 0) {
+        setItemSuggestions(contractItems);
+        setShowItemDropdown(true);
+      } else {
+        setItemSuggestions([]);
+        setShowItemDropdown(false);
+      }
+    }
   };
 
   const addCoItem = (item) => {
-    if (coItems.some(i => i.item_code === item.item_code)) {
+    const itemProcess = item.processname || item.process_name || '';
+    if (coItems.some(i => i.item_code === item.item_code && (i.process_name || '') === itemProcess)) {
       toast.warn('Item already added.');
       return;
     }
@@ -396,18 +461,18 @@ export default function CreateContractOrderForm() {
       {
         item_code:        item.item_code,
         quantity:         1,
-        unit_price:       String(item.price || 0),
+        unit_price:       String(item.price != null ? item.price : 0),
         gst_type:         '',
         gst_rate:         '',
         shipping_address: '',
         delivery_date:    formData.delivery_date || '',
-        description:      item.description || '',
+        description:      item.description || item.long_description || '',
         drawing_number:   item.drawing_number || '',
+        process_name:     itemProcess,
         selected:         true
       }
     ]);
     setItemSearchInput('');
-    setItemSuggestions([]);
     setShowItemDropdown(false);
   };
 
@@ -527,13 +592,6 @@ export default function CreateContractOrderForm() {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-    setCoNoError('');
-
-    if (!formData.co_no || !formData.co_no.trim()) {
-      setCoNoError('Contract Order No. is required.');
-      setIsLoading(false);
-      return;
-    }
 
     if (!selectedBuyer) {
       setError('Please select a Buyer.');
@@ -562,7 +620,7 @@ export default function CreateContractOrderForm() {
     }
 
     const payload = {
-      ro_no:           formData.co_no.trim(),
+      ro_no:           editingNo,
       contract_ref:    formData.contract_ref || null,
       ro_date:         formData.co_date,
       delivery_date:   formData.delivery_date || null,
@@ -586,17 +644,16 @@ export default function CreateContractOrderForm() {
     };
 
     try {
-      const res = await fetch('/api/release-orders', {
-        method: 'POST',
+      const res = await fetch(`/api/release-orders/${encodeURIComponent(editingNo)}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
       if (res.ok) {
-        const data = await res.json();
         resetCoState(undefined);
-        toast.success('Contract Order created successfully!');
-        const finalTradeId = queryTradeId || data.trade_id || formData.trade_id;
+        toast.success('Contract Order updated successfully!');
+        const finalTradeId = queryTradeId || formData.trade_id;
         navigate(finalTradeId ? `/trade/${finalTradeId}` : '/');
       } else {
         const errData = await res.json();
@@ -624,10 +681,10 @@ export default function CreateContractOrderForm() {
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-slate-900 m-0">
-            New Contract Order
+            Modify Contract Order
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Raise a contract order for a trade pipeline.
+            Update the details of an existing contract order.
           </p>
         </div>
 
@@ -648,14 +705,13 @@ export default function CreateContractOrderForm() {
               <input
                 type="text"
                 required
-                placeholder="e.g. CO-2024-001"
+                disabled={true}
                 value={formData.co_no}
-                onChange={(e) => { setFormData(prev => ({ ...prev, co_no: e.target.value })); setCoNoError(''); }}
                 className={inputCls}
-                onFocus={(e) => (e.target.style.borderColor = 'var(--theme-color)')}
-                onBlur={(e)  => (e.target.style.borderColor = 'rgb(203, 213, 225)')}
               />
-              {coNoError && <p className="text-[10px] text-red-500 font-semibold mt-1 pl-1">{coNoError}</p>}
+              <p className="text-[10px] text-slate-400 font-semibold mt-1 pl-1">
+                Contract Order No. cannot be changed after creation.
+              </p>
             </div>
 
             {/* Contract Reference Autocomplete */}
@@ -717,9 +773,52 @@ export default function CreateContractOrderForm() {
                   {contractItems.length > 0 && (
                     <>
                       <span className="text-slate-300">|</span>
-                      <span className="text-blue-600">{contractItems.length} items in catalog</span>
+                      <span className="text-blue-600 font-bold">{contractItems.length} items in catalog</span>
                     </>
                   )}
+                </div>
+              )}
+
+              {selectedContract && contractItems.length > 0 && (
+                <div className="mt-2.5 p-3 bg-blue-50/70 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                      <span>Available ARC Items ({contractItems.length})</span>
+                      <span className="text-[10px] font-normal text-blue-600">— Click any item to add to order:</span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
+                    {contractItems.map(item => {
+                      const itemProcess = item.processname || item.process_name || '';
+                      const isAdded = coItems.some(i => i.item_code === item.item_code && (i.process_name || '') === itemProcess);
+                      return (
+                        <button
+                          key={item.id ? `${item.item_code}-${item.id}` : (itemProcess ? `${item.item_code}-${itemProcess}` : item.item_code)}
+                          type="button"
+                          onClick={() => addCoItem(item)}
+                          disabled={isAdded}
+                          className={`text-xs px-2.5 py-1.5 rounded-md font-medium border flex items-center gap-2 transition-all ${
+                            isAdded
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                              : 'bg-white hover:bg-blue-100/70 text-slate-800 border-blue-300 hover:border-blue-500 shadow-sm cursor-pointer'
+                          }`}
+                        >
+                          <span className="font-mono font-bold text-blue-700">{item.item_code}</span>
+                          {itemProcess && (
+                            <span className="text-[9px] px-1.5 py-0.2 bg-violet-100 text-violet-700 rounded font-bold">{itemProcess}</span>
+                          )}
+                          {item.price != null && (
+                            <span className="text-emerald-700 font-bold">₹{parseFloat(item.price).toLocaleString()}</span>
+                          )}
+                          {isAdded ? (
+                            <span className="text-[10px] font-semibold text-slate-400">✓ Added</span>
+                          ) : (
+                            <Plus size={12} className="text-blue-600" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -878,7 +977,14 @@ export default function CreateContractOrderForm() {
                     placeholder={selectedContract ? "Search items from contract catalog..." : "Search items to add (item code or description)..."}
                     value={itemSearchInput}
                     onChange={(e) => handleItemSearchInput(e.target.value)}
-                    onFocus={() => { if (itemSearchInput.trim()) setShowItemDropdown(true); }}
+                    onFocus={() => {
+                      if (selectedContract && contractItems.length > 0) {
+                        setItemSuggestions(contractItems);
+                        setShowItemDropdown(true);
+                      } else if (itemSearchInput.trim()) {
+                        setShowItemDropdown(true);
+                      }
+                    }}
                     className={inputCls}
                     autoComplete="off"
                   />
@@ -886,23 +992,46 @@ export default function CreateContractOrderForm() {
                 </div>
 
                 {showItemDropdown && itemSuggestions.length > 0 && (
-                  <div className="absolute z-40 left-0 right-0 mt-1  bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="absolute z-40 left-0 right-0 mt-1 bg-[white] border border-slate-300 rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
                     {itemSuggestions.map(item => (
                       <button
-                        key={item.item_code}
+                        key={item.id ? `${item.item_code}-${item.id}` : (item.processname ? `${item.item_code}-${item.processname}` : item.item_code)}
                         type="button"
                         onClick={() => addCoItem(item)}
-                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-mono font-bold text-xs text-slate-900">{item.item_code}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-xs text-blue-600">{item.item_code}</span>
+                            {item.processname && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700">
+                                {item.processname}
+                              </span>
+                            )}
+                            {selectedContract && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wider">
+                                ARC Rate
+                              </span>
+                            )}
+                          </div>
                           {item.price != null && (
-                            <span className="text-xs font-semibold text-emerald-700">₹{item.price}</span>
+                            <div className="text-right">
+                              <span className="text-xs font-bold text-emerald-700">₹{parseFloat(item.price).toLocaleString()}</span>
+                            </div>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-500 truncate">{item.description}</p>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                          {item.description || item.long_description || '—'}
+                          {item.drawing_number && <span className="text-slate-400"> &bull; DWG: {item.drawing_number}</span>}
+                        </p>
                       </button>
                     ))}
+                  </div>
+                )}
+
+                {showItemDropdown && selectedContract && itemSearchInput.trim() && itemSuggestions.length === 0 && (
+                  <div className="absolute z-40 left-0 right-0 mt-1 bg-[white] border border-slate-300 rounded-lg shadow-lg p-3 text-center text-xs text-slate-500">
+                    No items found matching "{itemSearchInput}" in selected ARC contract "{selectedContract.company_name}"
                   </div>
                 )}
               </div>
@@ -1191,7 +1320,7 @@ export default function CreateContractOrderForm() {
                 {isLoading ? (
                   <><RefreshCw size={14} className="animate-spin" /> Saving...</>
                 ) : (
-                  <><Plus size={14} /> Raise Contract Order</>
+                  <><RefreshCw size={14} /> Update Contract Order</>
                 )}
               </button>
             </div>
