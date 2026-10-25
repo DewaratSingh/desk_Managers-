@@ -72,6 +72,8 @@ export default function ProtectedRoute() {
     requiredPermission = 'process_rq:update';
   } else if (path.startsWith('/addProcessPurchaseOrder') || path.startsWith('/addProcessContractOrder')) {
     requiredPermission = 'process_order:create';
+  } else if (path.startsWith('/updateProcessPurchaseOrder') || path.startsWith('/updateProcessContractOrder')) {
+    requiredPermission = 'process_order:update';
   } else if (
     path.startsWith('/order') ||
     path.startsWith('/addReceivedPurchaseOrder') ||

@@ -824,6 +824,10 @@ export default function CreateProcessPurchaseOrderForm({ isContractOrder = false
     toast.success(`Selected ${newSourceItems.length} source trace item(s)`);
   };
 
+  const updateSourceItemQty = (index, value) => {
+    setSourceItems(prev => prev.map((item, i) => (i === index ? { ...item, qty: value } : item)));
+  };
+
   const handleRemoveSourceItem = (index) => {
     setSourceItems(prev => prev.filter((_, idx) => idx !== index));
   };
@@ -1561,9 +1565,15 @@ export default function CreateProcessPurchaseOrderForm({ isContractOrder = false
                       <div className="flex items-center gap-3 w-full sm:w-auto">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] font-bold text-slate-500 uppercase">Qty:</span>
-                          <span className="text-xs font-mono font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg shadow-2xs">
-                            {src.qty || 0}
-                          </span>
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="any"
+                            max={src.available_qty ? Number(src.available_qty) : undefined}
+                            value={src.qty || ''}
+                            onChange={(e) => updateSourceItemQty(idx, e.target.value)}
+                            className="w-20 px-2.5 py-1 text-xs font-mono font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg shadow-2xs focus:border-red-400 focus:outline-none"
+                          />
                         </div>
 
                         <button

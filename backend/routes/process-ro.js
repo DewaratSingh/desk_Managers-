@@ -47,9 +47,11 @@ router.get('/', async (req, res) => {
               'trace_item_id', psi.trace_item_id,
               'qty', psi.qty,
               'description', psi.description,
+              'available_qty', (COALESCE(tr.qty, 0) + COALESCE(psi.qty, 0)),
               'history', psi.history
             ))
             FROM process_ro_source_item psi
+            LEFT JOIN trace tr ON psi.trace_item_id = tr.id AND tr.company_id = psi.company_id
             WHERE psi.process_ro_id = pro.id AND psi.company_id = pro.company_id
            ), '[]'::json
          ) AS source_items,
@@ -116,9 +118,11 @@ router.get('/:id', async (req, res) => {
               'trace_item_id', psi.trace_item_id,
               'qty', psi.qty,
               'description', psi.description,
+              'available_qty', (COALESCE(tr.qty, 0) + COALESCE(psi.qty, 0)),
               'history', psi.history
             ))
             FROM process_ro_source_item psi
+            LEFT JOIN trace tr ON psi.trace_item_id = tr.id AND tr.company_id = psi.company_id
             WHERE psi.process_ro_id = pro.id AND psi.company_id = pro.company_id
            ), '[]'::json
          ) AS source_items,
@@ -441,6 +445,245 @@ router.post('/', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error creating process RO:', err.message);
     res.status(500).json({ error: 'Failed to create Process Release Order: ' + err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT Update Process RO (Contract Order)
+router.put('/:id', async (req, res) => {
+  const { id } = req.params;
+  const {
+    date_of_start,
+    date_of_end,
+    seller,
+    party,
+    gst_type,
+    gst_rate,
+    gst,
+    transport,
+    packing_forward,
+    other,
+    basic_value,
+    shipping_address,
+    message,
+    source_items,
+    target_items
+  } = req.body || {};
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const companyId = req.user.company_id;
+    const isNum = /^\d+$/.test(id);
+    const existingRes = await client.query(
+      `SELECT * FROM process_ro WHERE (${isNum ? 'id = $1 OR ' : ''}ro_no = ${isNum ? '$2' : '$1'}) AND company_id = ${isNum ? '$3' : '$2'} LIMIT 1`,
+      isNum ? [parseInt(id), id, companyId] : [id, companyId]
+    );
+
+    if (existingRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Process Contract Order not found' });
+    }
+
+    const currentPro = existingRes.rows[0];
+    const proId = currentPro.id;
+
+    // Update header
+    await client.query(
+      `UPDATE process_ro SET
+         date_of_start = COALESCE($1, date_of_start),
+         date_of_end = COALESCE($2, date_of_end),
+         seller = COALESCE($3, seller),
+         party = COALESCE($4, party),
+         gst_type = $5,
+         gst_rate = $6,
+         gst = $7,
+         transport = $8,
+         packing_forward = $9,
+         other = $10,
+         basic_value = $11,
+         shipping_address = $12,
+         message = $13
+       WHERE id = $14 AND company_id = $15`,
+      [
+        date_of_start || null,
+        date_of_end || null,
+        seller ? seller.trim() : null,
+        party ? party.trim() : null,
+        gst_type || null,
+        gst_rate !== undefined ? parseFloat(gst_rate) : currentPro.gst_rate,
+        gst !== undefined ? parseFloat(gst) : currentPro.gst,
+        transport !== undefined ? parseFloat(transport) : currentPro.transport,
+        packing_forward !== undefined ? parseFloat(packing_forward) : currentPro.packing_forward,
+        other !== undefined ? parseFloat(other) : currentPro.other,
+        basic_value !== undefined ? parseFloat(basic_value) : currentPro.basic_value,
+        shipping_address || null,
+        message || null,
+        proId,
+        companyId
+      ]
+    );
+
+    // Update source items and adjust inventory traces
+    if (Array.isArray(source_items)) {
+      // 1. Restore previous allocated trace quantities to inventory
+      const prevSourceRes = await client.query(
+        'SELECT trace_item_id, qty FROM process_ro_source_item WHERE process_ro_id = $1 AND company_id = $2',
+        [proId, companyId]
+      );
+      for (const prev of prevSourceRes.rows) {
+        const prevTraceId = prev.trace_item_id ? parseInt(prev.trace_item_id) : null;
+        const prevQty = parseFloat(prev.qty) || 0;
+        if (prevTraceId && prevQty > 0) {
+          await client.query(
+            'UPDATE trace SET qty = qty + $1 WHERE id = $2 AND company_id = $3',
+            [prevQty, prevTraceId, companyId]
+          );
+        }
+      }
+
+      // 2. Delete old records
+      await client.query('DELETE FROM process_ro_source_item WHERE process_ro_id = $1 AND company_id = $2', [proId, companyId]);
+
+      // 3. Insert new records and deduct from inventory
+      for (const src of source_items) {
+        const traceId = src.trace_item_id ? parseInt(src.trace_item_id) : (src.trace_id ? parseInt(src.trace_id) : null);
+        const consumedQty = parseFloat(src.qty) || 0;
+        let resolvedId = null;
+
+        if (src.item_code) {
+          const itmRes = await client.query(
+            'SELECT id FROM items WHERE (item_code = $1 OR id = $2) AND company_id = $3 LIMIT 1',
+            [String(src.item_code).trim(), parseInt(src.item_code) || 0, companyId]
+          );
+          if (itmRes.rows.length > 0) resolvedId = itmRes.rows[0].id;
+        }
+
+        if (traceId && consumedQty > 0) {
+          await client.query(
+            'UPDATE trace SET qty = GREATEST(qty - $1, 0) WHERE id = $2 AND company_id = $3',
+            [consumedQty, traceId, companyId]
+          );
+        }
+
+        await client.query(
+          `INSERT INTO process_ro_source_item (
+             process_ro_id, item_id, item_code, trace_item_id, qty, description, company_id, history
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+          [
+            proId,
+            resolvedId,
+            src.item_code || '',
+            traceId,
+            consumedQty,
+            src.description || null,
+            companyId,
+            JSON.stringify([])
+          ]
+        );
+      }
+    }
+
+    // Update target items
+    if (Array.isArray(target_items)) {
+      await client.query('DELETE FROM process_ro_target_item WHERE process_ro_id = $1 AND company_id = $2', [proId, companyId]);
+      for (const tgt of target_items) {
+        let resolvedId = null;
+        if (tgt.item_code) {
+          const itmRes = await client.query(
+            'SELECT id, description, drawing_number FROM items WHERE (item_code = $1 OR id = $2) AND company_id = $3 LIMIT 1',
+            [String(tgt.item_code).trim(), parseInt(tgt.item_code) || 0, companyId]
+          );
+          if (itmRes.rows.length > 0) resolvedId = itmRes.rows[0].id;
+        }
+
+        await client.query(
+          `INSERT INTO process_ro_target_item (
+             process_ro_id, item_id, item_code, description, drawing_number,
+             process_name, qty, price, gst_type, gst_rate, shipping_address, delivery_date, company_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [
+            proId,
+            resolvedId,
+            tgt.item_code || '',
+            tgt.description || null,
+            tgt.drawing_number || null,
+            tgt.process_name || null,
+            parseFloat(tgt.qty) || 0,
+            parseFloat(tgt.price) || 0,
+            tgt.gst_type || gst_type || null,
+            tgt.gst_rate !== undefined ? parseFloat(tgt.gst_rate) : (gst_rate ? parseFloat(gst_rate) : 0),
+            tgt.shipping_address || shipping_address || null,
+            tgt.delivery_date || date_of_end || null,
+            companyId
+          ]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      message: 'Process Contract Order updated successfully',
+      id: proId,
+      ro_no: currentPro.ro_no,
+      trade_id: currentPro.trade_id
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error updating Process Contract Order:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to update Process Contract Order' });
+  } finally {
+    client.release();
+  }
+});
+
+// DELETE Process RO and restore raw material inventory
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  const companyId = req.user.company_id;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const isNum = /^\d+$/.test(id);
+    const existingRes = await client.query(
+      `SELECT * FROM process_ro WHERE (${isNum ? 'id = $1 OR ' : ''}ro_no = ${isNum ? '$2' : '$1'}) AND company_id = ${isNum ? '$3' : '$2'} LIMIT 1`,
+      isNum ? [parseInt(id), id, companyId] : [id, companyId]
+    );
+
+    if (existingRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Process Contract Order not found' });
+    }
+
+    const proId = existingRes.rows[0].id;
+
+    // Restore trace quantities for source items
+    const prevSourceRes = await client.query(
+      'SELECT trace_item_id, qty FROM process_ro_source_item WHERE process_ro_id = $1 AND company_id = $2',
+      [proId, companyId]
+    );
+    for (const prev of prevSourceRes.rows) {
+      const prevTraceId = prev.trace_item_id ? parseInt(prev.trace_item_id) : null;
+      const prevQty = parseFloat(prev.qty) || 0;
+      if (prevTraceId && prevQty > 0) {
+        await client.query(
+          'UPDATE trace SET qty = qty + $1 WHERE id = $2 AND company_id = $3',
+          [prevQty, prevTraceId, companyId]
+        );
+      }
+    }
+
+    await client.query('DELETE FROM process_ro_source_item WHERE process_ro_id = $1 AND company_id = $2', [proId, companyId]);
+    await client.query('DELETE FROM process_ro_target_item WHERE process_ro_id = $1 AND company_id = $2', [proId, companyId]);
+    await client.query('DELETE FROM process_ro WHERE id = $1 AND company_id = $2', [proId, companyId]);
+
+    await client.query('COMMIT');
+    res.json({ message: 'Process Contract Order deleted successfully and inventory restored', id: proId });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting Process Contract Order:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to delete Process Contract Order' });
   } finally {
     client.release();
   }

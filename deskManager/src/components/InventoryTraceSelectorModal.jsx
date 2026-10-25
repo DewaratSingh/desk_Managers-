@@ -41,11 +41,11 @@ export default function InventoryTraceSelectorModal({
         });
       }
       setSelectedSelections(selMap);
-      fetchTraceItems();
+      fetchTraceItems(selMap);
     }
   }, [isOpen, sourceItemCode, JSON.stringify(allowedItemCodes), rqId]);
 
-  const fetchTraceItems = async () => {
+  const fetchTraceItems = async (activeSelMap = null) => {
     setLoading(true);
     try {
       let baseUrl = apiEndpoint || '/api/process-po/trace-items';
@@ -62,8 +62,14 @@ export default function InventoryTraceSelectorModal({
         params.append('rq_id', String(rqId).trim());
       }
 
+      const currentSels = activeSelMap || selectedSelections || {};
+      const heldIds = Object.keys(currentSels).filter(Boolean);
+      if (heldIds.length > 0 && !baseUrl.includes('include_trace_ids=')) {
+        params.append('include_trace_ids', heldIds.join(','));
+      }
+
       const queryString = params.toString();
-      const url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
+      const url = queryString ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${queryString}` : baseUrl;
 
       let res = await fetch(url);
       if (!res.ok && baseUrl.includes('/api/process-po/trace-items')) {
@@ -74,12 +80,21 @@ export default function InventoryTraceSelectorModal({
       if (res.ok) {
         const data = await res.json();
         // Map new schema fields if needed
-        const mappedData = data.map(item => ({
-          ...item,
-          trace_id: item.trace_id || item.trace_item_id || item.id,
-          available_qty: item.available_qty !== undefined ? item.available_qty : item.qty,
-          price: item.price !== undefined ? item.price : item.cost_price,
-        }));
+        const mappedData = data.map(item => {
+          const tid = item.trace_id || item.trace_item_id || item.id;
+          const initialSel = currentSels[tid];
+          const baseAvailable = parseFloat(item.available_qty !== undefined ? item.available_qty : item.qty) || 0;
+          const heldQty = initialSel ? (parseFloat(initialSel.Qty || initialSel.qty) || 0) : 0;
+          const effectiveAvailable = baseAvailable + heldQty;
+
+          return {
+            ...item,
+            trace_id: tid,
+            trace_item_id: tid,
+            available_qty: effectiveAvailable,
+            price: item.price !== undefined ? item.price : item.cost_price,
+          };
+        });
         setTraceItems(mappedData);
       } else {
         toast.error('Failed to load inventory trace items');

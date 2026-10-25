@@ -122,8 +122,11 @@ function App() {
           <Route path="/addReceivedQuotation" element={<CreateReceivedQuotationForm />} />
           <Route path="/updateReceivedQuotation/:id" element={<UpdateReceivedQuotationForm />} />
           <Route path="/addProcessPurchaseOrder" element={<CreateProcessPurchaseOrderForm />} />
+          <Route path="/addProcessPurchaseOrder/:id" element={<UpdateProcessPurchaseOrderForm />} />
           <Route path="/updateProcessPurchaseOrder/:id" element={<UpdateProcessPurchaseOrderForm />} />
+          <Route path="/updateProcessPurchaseOrder/*" element={<UpdateProcessPurchaseOrderForm />} />
           <Route path="/addProcessContractOrder" element={<CreateProcessContractOrderForm />} />
+          <Route path="/addProcessContractOrder/:id" element={<UpdateProcessContractOrderForm />} />
           <Route path="/updateProcessContractOrder/:id" element={<UpdateProcessContractOrderForm />} />
           <Route path="/updateProcessContractOrder/*" element={<UpdateProcessContractOrderForm />} />
           <Route path="/party/form" element={<AddCustomerView />} />

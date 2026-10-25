@@ -277,6 +277,7 @@ const initializeDatabase = async () => {
     await client.query(`
       ALTER TABLE purchase_orders 
       ADD COLUMN IF NOT EXISTS received_quotation_id INTEGER REFERENCES received_quotations(id) ON DELETE SET NULL;
+      ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'PO';
     `);
 
     // 15. Purchase Order Items Table
@@ -329,6 +330,7 @@ const initializeDatabase = async () => {
     await client.query(`
       ALTER TABLE release_orders ADD COLUMN IF NOT EXISTS ro_type VARCHAR(10) DEFAULT 'sell';
       ALTER TABLE release_orders ADD COLUMN IF NOT EXISTS contract_id INTEGER REFERENCES contracts(id) ON DELETE SET NULL;
+      ALTER TABLE release_orders ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'RO';
       UPDATE release_orders SET ro_type = 'sell' WHERE ro_type IS NULL;
     `);
 

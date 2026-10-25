@@ -17,7 +17,7 @@ router.get('/next-no', async (req, res) => {
 
 // GET trace items from inventory for Process PO / Subcontracting (lists available raw material inventory traces)
 router.get('/trace-items', async (req, res) => {
-  const { item_code, allowed_item_codes } = req.query || {};
+  const { item_code, allowed_item_codes, include_trace_ids } = req.query || {};
 
   try {
     let allowedCodes = [];
@@ -29,6 +29,15 @@ router.get('/trace-items', async (req, res) => {
         allowedCodes = allowed_item_codes.map(c => String(c).trim()).filter(Boolean);
       } else if (typeof allowed_item_codes === 'string') {
         allowedCodes = allowed_item_codes.split(',').map(c => c.trim()).filter(Boolean);
+      }
+    }
+
+    let includeIds = [];
+    if (include_trace_ids) {
+      if (Array.isArray(include_trace_ids)) {
+        includeIds = include_trace_ids.map(Number).filter(n => !isNaN(n));
+      } else if (typeof include_trace_ids === 'string') {
+        includeIds = include_trace_ids.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
       }
     }
 
@@ -44,12 +53,19 @@ router.get('/trace-items', async (req, res) => {
        FROM trace t
        JOIN inventory inv ON t.inventory_id = inv.id
        JOIN items it ON t.item_code = it.id
-       WHERE t.company_id = $1 AND t.qty > 0
+       WHERE t.company_id = $1
     `;
     const params = [req.user.company_id];
 
+    if (includeIds.length > 0) {
+      queryText += ` AND (t.qty > 0 OR t.id = ANY($${params.length + 1}))`;
+      params.push(includeIds);
+    } else {
+      queryText += ` AND t.qty > 0`;
+    }
+
     if (allowedCodes.length > 0) {
-      queryText += ` AND (it.item_code = ANY($2) OR CAST(it.id AS VARCHAR) = ANY($2))`;
+      queryText += ` AND (it.item_code = ANY($${params.length + 1}) OR CAST(it.id AS VARCHAR) = ANY($${params.length + 1}))`;
       params.push(allowedCodes);
     }
 
@@ -99,10 +115,12 @@ router.get('/', async (req, res) => {
               'item_code', sit.item_code,
               'trace_item_id', psi.trace_item_id,
               'qty', psi.qty,
+              'available_qty', (COALESCE(tr.qty, 0) + COALESCE(psi.qty, 0)),
               'description', sit.description
             ))
             FROM process_po_source_item psi
             LEFT JOIN items sit ON psi.item_code = sit.id AND sit.company_id = psi.company_id
+            LEFT JOIN trace tr ON psi.trace_item_id = tr.id AND tr.company_id = psi.company_id
             WHERE psi.process_po_id = ppo.id AND psi.company_id = ppo.company_id
            ), '[]'::json
          ) AS source_items,
@@ -218,10 +236,12 @@ router.get('/:id', async (req, res) => {
               'item_code', sit.item_code,
               'trace_item_id', psi.trace_item_id,
               'qty', psi.qty,
+              'available_qty', (COALESCE(tr.qty, 0) + COALESCE(psi.qty, 0)),
               'description', sit.description
             ))
             FROM process_po_source_item psi
             LEFT JOIN items sit ON psi.item_code = sit.id AND sit.company_id = psi.company_id
+            LEFT JOIN trace tr ON psi.trace_item_id = tr.id AND tr.company_id = psi.company_id
             WHERE psi.process_po_id = ppo.id AND psi.company_id = ppo.company_id
            ), '[]'::json
          ) AS source_items,
@@ -449,11 +469,21 @@ router.post('/', async (req, res) => {
     if (hasLegacyItems && normalizedSourceItems.length === 0) {
       items.forEach(it => {
         if (it.source_item_code) {
-          normalizedSourceItems.push({
-            item_code: it.source_item_code,
-            qty: it.source_qty,
-            trace_item_id: it.source_trace_id_array && it.source_trace_id_array[0] ? it.source_trace_id_array[0].trace_id : null
-          });
+          if (Array.isArray(it.source_trace_id_array) && it.source_trace_id_array.length > 0) {
+            it.source_trace_id_array.forEach(st => {
+              normalizedSourceItems.push({
+                item_code: it.source_item_code,
+                qty: parseFloat(st.Qty || st.qty) || parseFloat(it.source_qty) || 0,
+                trace_item_id: st.trace_id || st.traceid || st.trace_item_id || null
+              });
+            });
+          } else {
+            normalizedSourceItems.push({
+              item_code: it.source_item_code,
+              qty: parseFloat(it.source_qty) || 0,
+              trace_item_id: null
+            });
+          }
         }
       });
     }
@@ -587,17 +617,28 @@ router.post('/', async (req, res) => {
     // 1. Process Multi-Source Items
     for (const src of normalizedSourceItems) {
       const srcItemId = await resolveItemId(src.item_code, src.description);
+      const traceId = src.trace_item_id ? parseInt(src.trace_item_id) : (src.trace_id ? parseInt(src.trace_id) : null);
+      const qty = parseFloat(src.qty) || 0;
+
       await client.query(
         `INSERT INTO process_po_source_item (process_po_id, item_code, trace_item_id, qty, company_id)
          VALUES ($1, $2, $3, $4, $5)`,
         [
           ppoId,
           srcItemId,
-          src.trace_item_id ? parseInt(src.trace_item_id) : null,
-          parseFloat(src.qty) || 0,
+          traceId,
+          qty,
           companyId
         ]
       );
+
+      // Deduct consumed raw material from inventory trace table
+      if (traceId && qty > 0) {
+        await client.query(
+          'UPDATE trace SET qty = GREATEST(qty - $1, 0) WHERE id = $2 AND company_id = $3',
+          [qty, traceId, companyId]
+        );
+      }
     }
 
     // 2. Process Multi-Target Items
@@ -1006,23 +1047,53 @@ router.put('/:id', async (req, res) => {
       ]
     );
 
-    // Update Source Items if provided
-    const normalizedSourceItems = Array.isArray(source_items) ? source_items : [];
-    if (normalizedSourceItems.length > 0) {
+    // Update Source Items if provided and adjust inventory trace quantities
+    const normalizedSourceItems = Array.isArray(source_items) ? source_items : null;
+    if (normalizedSourceItems !== null) {
+      // 1. Restore previous allocated quantities back to inventory
+      const prevSourceRes = await client.query(
+        'SELECT trace_item_id, qty FROM process_po_source_item WHERE process_po_id = $1 AND company_id = $2',
+        [ppoId, companyId]
+      );
+      for (const prev of prevSourceRes.rows) {
+        const prevTraceId = prev.trace_item_id ? parseInt(prev.trace_item_id) : null;
+        const prevQty = parseFloat(prev.qty) || 0;
+        if (prevTraceId && prevQty > 0) {
+          await client.query(
+            'UPDATE trace SET qty = qty + $1 WHERE id = $2 AND company_id = $3',
+            [prevQty, prevTraceId, companyId]
+          );
+        }
+      }
+
+      // 2. Delete old records
       await client.query('DELETE FROM process_po_source_item WHERE process_po_id = $1 AND company_id = $2', [ppoId, companyId]);
+
+      // 3. Insert new records and deduct new quantities from inventory
       for (const src of normalizedSourceItems) {
         const srcItemId = await resolveItemId(src.item_code, src.description);
+        const traceId = src.trace_item_id ? parseInt(src.trace_item_id) : (src.trace_id ? parseInt(src.trace_id) : null);
+        const qty = parseFloat(src.qty) || 0;
+
         await client.query(
           `INSERT INTO process_po_source_item (process_po_id, item_code, trace_item_id, qty, company_id)
            VALUES ($1, $2, $3, $4, $5)`,
           [
             ppoId,
             srcItemId,
-            src.trace_item_id ? parseInt(src.trace_item_id) : null,
-            parseFloat(src.qty) || 0,
+            traceId,
+            qty,
             companyId
           ]
         );
+
+        // Deduct consumed raw material from inventory trace table
+        if (traceId && qty > 0) {
+          await client.query(
+            'UPDATE trace SET qty = GREATEST(qty - $1, 0) WHERE id = $2 AND company_id = $3',
+            [qty, traceId, companyId]
+          );
+        }
       }
     }
 
@@ -1097,6 +1168,58 @@ router.put('/:id', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error updating Process PO:', err.message);
     res.status(500).json({ error: err.message || 'Failed to update Process PO' });
+  } finally {
+    client.release();
+  }
+});
+
+// DELETE Process PO and restore raw material inventory
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  const companyId = req.user.company_id;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const isNum = /^\d+$/.test(id);
+    const existingRes = await client.query(
+      `SELECT * FROM process_po WHERE (${isNum ? 'id = $1 OR ' : ''}po_no = ${isNum ? '$2' : '$1'}) AND company_id = ${isNum ? '$3' : '$2'} LIMIT 1`,
+      isNum ? [parseInt(id), id, companyId] : [id, companyId]
+    );
+
+    if (existingRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Process PO not found' });
+    }
+
+    const ppoId = existingRes.rows[0].id;
+
+    // Restore trace quantities for source items
+    const prevSourceRes = await client.query(
+      'SELECT trace_item_id, qty FROM process_po_source_item WHERE process_po_id = $1 AND company_id = $2',
+      [ppoId, companyId]
+    );
+    for (const prev of prevSourceRes.rows) {
+      const prevTraceId = prev.trace_item_id ? parseInt(prev.trace_item_id) : null;
+      const prevQty = parseFloat(prev.qty) || 0;
+      if (prevTraceId && prevQty > 0) {
+        await client.query(
+          'UPDATE trace SET qty = qty + $1 WHERE id = $2 AND company_id = $3',
+          [prevQty, prevTraceId, companyId]
+        );
+      }
+    }
+
+    await client.query('DELETE FROM process_po_source_item WHERE process_po_id = $1 AND company_id = $2', [ppoId, companyId]);
+    await client.query('DELETE FROM process_po_target_item WHERE process_po_id = $1 AND company_id = $2', [ppoId, companyId]);
+    await client.query('DELETE FROM process_po_item WHERE process_po_id = $1 AND company_id = $2', [ppoId, companyId]);
+    await client.query('DELETE FROM process_po WHERE id = $1 AND company_id = $2', [ppoId, companyId]);
+
+    await client.query('COMMIT');
+    res.json({ message: 'Process PO deleted successfully and inventory restored', id: ppoId });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting Process PO:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to delete Process PO' });
   } finally {
     client.release();
   }
