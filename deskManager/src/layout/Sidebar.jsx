@@ -93,30 +93,30 @@ const OPERATIONS = [
       },
     ],
   },
-  {
-    id: "ops-sell-process",
-    label: "Sell Process",
-    icon: Cpu,
-    color: "violet",
-    links: [
-      {
-        id: "ops-sp-rfq",
-        label: "RFQ",
-        icon: Send,
-        path: "/under-construction",
-        hint: "Create RFQ",
-        permission: "process_rq:create"
-      },
-      {
-        id: "ops-sp-ro",
-        label: "Release Order",
-        icon: FileOutput,
-        path: "/under-construction",
-        hint: "Create Release Order",
-        permission: "process_order:create"
-      },
-    ],
-  },
+  // {
+  //   id: "ops-sell-process",
+  //   label: "Sell Process",
+  //   icon: Cpu,
+  //   color: "violet",
+  //   links: [
+  //     {
+  //       id: "ops-sp-rfq",
+  //       label: "RFQ",
+  //       icon: Send,
+  //       path: "/under-construction",
+  //       hint: "Create RFQ",
+  //       permission: "process_rq:create"
+  //     },
+  //     {
+  //       id: "ops-sp-ro",
+  //       label: "Release Order",
+  //       icon: FileOutput,
+  //       path: "/under-construction",
+  //       hint: "Create Release Order",
+  //       permission: "process_order:create"
+  //     },
+  //   ],
+  // },
   {
     id: "ops-buy-process",
     label: "Buy Process",
