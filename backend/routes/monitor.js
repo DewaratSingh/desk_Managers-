@@ -4,6 +4,9 @@ const { exec } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const { requirePermission } = require('../middleware/auth');
+
+router.use(requirePermission(['monitor:view', 'manage_monitor']));
 
 // Helper to format bytes into readable string
 function formatBytes(bytes, decimals = 1) {

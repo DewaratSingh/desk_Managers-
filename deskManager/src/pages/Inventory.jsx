@@ -17,6 +17,7 @@ import {
   GitCommit
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { hasPermission } from '../utils/permissions';
 
 const EMPTY_FORM = {
   item_code: '',
@@ -37,6 +38,13 @@ const fmtQty = (val) => {
 export default function InventoryView() {
   const navigate = useNavigate();
   const location = useLocation();
+  const userStr = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const canCreateInventory = hasPermission(currentUser, 'inventory:create');
+  const canUpdateInventory = hasPermission(currentUser, 'inventory:update');
+  const canViewTraceHistory = hasPermission(currentUser, 'inventory:trace_history');
+  const canViewPricing = hasPermission(currentUser, 'pricing:view');
+
   const isFormRoute = location.pathname.endsWith('/form');
   const [viewMode, setViewMode] = useState(isFormRoute ? 'form' : 'list');
   const [inventoryList, setInventoryList] = useState([]);
@@ -398,16 +406,18 @@ export default function InventoryView() {
                 Monitor and manage physical item stock levels, warehouse locations, and pricing.
               </p>
             </div>
-            <button
-              onClick={handleOpenAddForm}
-              className="px-4 py-2 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
-              style={{ backgroundColor: 'var(--theme-color)' }}
-              onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
-              onMouseLeave={(e) => e.target.style.filter = 'none'}
-            >
-              <Plus size={16} />
-              Add Inventory
-            </button>
+            {canCreateInventory && (
+              <button
+                onClick={handleOpenAddForm}
+                className="px-4 py-2 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                style={{ backgroundColor: 'var(--theme-color)' }}
+                onMouseEnter={(e) => e.target.style.filter = 'brightness(0.9)'}
+                onMouseLeave={(e) => e.target.style.filter = 'none'}
+              >
+                <Plus size={16} />
+                Add Inventory
+              </button>
+            )}
           </div>
 
           {/* Search Bar */}
@@ -492,7 +502,7 @@ export default function InventoryView() {
 
                           {/* Price */}
                           <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                            ₹{parseFloat(item.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            {canViewPricing ? `₹${parseFloat(item.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '₹ ••••'}
                           </td>
 
                           {/* Status */}
@@ -530,20 +540,24 @@ export default function InventoryView() {
                           {/* Actions */}
                           <td className="px-5 py-4 text-center">
                             <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => handleEditClick(item)}
-                                className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-[var(--theme-color)] hover:border-[var(--theme-color)]  bg-[white] transition-colors cursor-pointer"
-                                title="Edit Stock"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                              <button
-                                onClick={() => navigate(`/inventory/trace-history/${item.id}`)}
-                                className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-purple-600 hover:border-purple-600  bg-[white] transition-colors cursor-pointer"
-                                title="View Trace History"
-                              >
-                                <GitCommit size={12} />
-                              </button>
+                              {canUpdateInventory && (
+                                <button
+                                  onClick={() => handleEditClick(item)}
+                                  className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-[var(--theme-color)] hover:border-[var(--theme-color)]  bg-[white] transition-colors cursor-pointer"
+                                  title="Edit Stock"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                              )}
+                              {canViewTraceHistory && (
+                                <button
+                                  onClick={() => navigate(`/inventory/trace-history/${item.id}`)}
+                                  className="p-1.5 border border-slate-300 rounded text-slate-600 hover:text-purple-600 hover:border-purple-600  bg-[white] transition-colors cursor-pointer"
+                                  title="View Trace History"
+                                >
+                                  <GitCommit size={12} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

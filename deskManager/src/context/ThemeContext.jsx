@@ -15,11 +15,11 @@ export const defaultTheme = {
 
 const sanitizeTheme = (raw) => {
   if (!raw || typeof raw !== 'object') return { ...defaultTheme };
-  const merged = { ...defaultTheme, ...raw };
-  if (!merged.bgForm || merged.bgForm === 'transparent') {
-    merged.bgForm = '#ffffff';
-  }
-  return merged;
+  // Only accent color (secondary) can be customized; other colors stay at design system defaults
+  return {
+    ...defaultTheme,
+    secondary: typeof raw.secondary === 'string' && raw.secondary.trim() ? raw.secondary.trim() : defaultTheme.secondary
+  };
 };
 
 export function ThemeProvider({ children }) {
@@ -91,14 +91,18 @@ export function ThemeProvider({ children }) {
 
     // Apply to CSS variables on root
     const root = document.documentElement;
-    root.style.setProperty('--theme-primary', theme.primary);
-    root.style.setProperty('--theme-secondary', theme.secondary);
-    root.style.setProperty('--bg-app', theme.bgApp);
-    root.style.setProperty('--bg-sidebar', theme.bgSidebar || theme.primary);
-    root.style.setProperty('--bg-form', theme.bgForm);
-    root.style.setProperty('--text-primary', theme.textPrimary);
-    root.style.setProperty('--text-sidebar', theme.textSidebar);
-    root.style.setProperty('--border-color', theme.borderColor);
+    root.style.setProperty('--theme-primary', theme.primary || defaultTheme.primary);
+    root.style.setProperty('--theme-secondary', theme.secondary || defaultTheme.secondary);
+    root.style.setProperty('--bg-app', theme.bgApp || defaultTheme.bgApp);
+    root.style.setProperty('--bg-sidebar', theme.bgSidebar || defaultTheme.bgSidebar);
+    root.style.setProperty('--bg-form', theme.bgForm || defaultTheme.bgForm);
+    root.style.setProperty('--text-primary', theme.textPrimary || defaultTheme.textPrimary);
+    root.style.setProperty('--text-sidebar', theme.textSidebar || defaultTheme.textSidebar);
+    root.style.setProperty('--border-color', theme.borderColor || defaultTheme.borderColor);
+    root.style.setProperty('--theme-color', theme.secondary || defaultTheme.secondary);
+    root.style.setProperty('--theme-accent', theme.secondary || defaultTheme.secondary);
+    root.style.setProperty('--theme-color-secondary', theme.secondary || defaultTheme.secondary);
+    root.style.setProperty('--theme-secondary-text', theme.secondary || defaultTheme.secondary);
   }, [theme]);
 
   // Function to save theme directly to backend user table
@@ -141,7 +145,12 @@ export function ThemeProvider({ children }) {
 
   const updateTheme = (newTheme) => {
     setTheme(prev => {
-      const updated = { ...prev, ...newTheme };
+      const updated = {
+        ...defaultTheme,
+        ...prev,
+        ...newTheme,
+        secondary: newTheme.secondary || prev.secondary || defaultTheme.secondary
+      };
 
       // Debounce saving to database (600ms)
       if (debounceTimerRef.current) {

@@ -1,10 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const { hasUserPermission, sanitizePrices } = require('../middleware/auth');
 
 // Get trades (optional pagination & optional search/filtering)
 router.get('/', async (req, res) => {
   const { q, status, trade_type } = req.query || {};
+
+  // Require read access to trades
+  if (!hasUserPermission(req.user, ['trades:read', 'trades:search', 'view_dashboard'])) {
+    return res.status(403).json({ error: "Access Denied: Permission 'trades:read' or 'view_dashboard' required." });
+  }
+
+  // If search query is used, explicitly require trades:search
+  if (q && !hasUserPermission(req.user, ['trades:search', 'view_dashboard'])) {
+    return res.status(403).json({ error: "Access Denied: Permission 'trades:search' required to search company trades." });
+  }
   const limit = req.query.limit ? parseInt(req.query.limit) : null;
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
 

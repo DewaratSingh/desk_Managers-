@@ -3,8 +3,9 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Printer, Edit2, Check, X, FileText,
-  ChevronRight, Save, RefreshCw
+  ChevronRight, Save, RefreshCw, Link2, Factory, ArrowRightLeft
 } from 'lucide-react';
+import LinkOperationModal from '../components/LinkOperationModal';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const fmtDate = (d) => {
@@ -105,14 +106,61 @@ function SearchDropdown({ value, onChange, suggestions, placeholder, onSelect, o
   );
 }
 
+/* ── helper to compute live item status from linked operations ────────────── */
+export function computeItemOperationStatus(item) {
+  const links = item.linked_operations || [];
+  if (!links || links.length === 0) {
+    return item.status || 'pending';
+  }
+  let hasPartial = false;
+  let partialPct = 0;
+  let allDelivered = true;
+  let statusList = [];
+
+  for (const op of links) {
+    if (op.operation_type === 'TRADE') {
+      const pct = parseFloat(op.trade_delivery_percentage) || 0;
+      const stat = (op.trade_status || '').toLowerCase();
+      if (pct >= 100 || stat === 'delivered' || stat === 'completed') {
+        statusList.push('Delivered');
+      } else if (pct > 0 || stat.includes('partial')) {
+        hasPartial = true;
+        partialPct = Math.max(partialPct, pct);
+        allDelivered = false;
+        statusList.push(`Delivery ${pct}%`);
+      } else {
+        allDelivered = false;
+        statusList.push(op.trade_status || 'Ordered');
+      }
+    } else {
+      const stat = (op.job_status || 'pending').toLowerCase();
+      const formatted = (op.job_status || 'Pending').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      if (stat === 'completed' || stat === 'done') {
+        statusList.push('Completed');
+      } else {
+        allDelivered = false;
+        statusList.push(formatted);
+      }
+    }
+  }
+
+  if (allDelivered && statusList.length > 0) return 'Delivered';
+  if (hasPartial) return partialPct > 0 ? `Delivery ${partialPct}%` : 'Partially Delivered';
+  return statusList[0] || 'Ordered';
+}
+
 /* ── status badge ────────────────────────────────────────────────────────── */
-function StatusBadge({ status }) {
+export function StatusBadge({ status }) {
   const v = (status || '').toLowerCase();
   let style = {};
   if (v === 'delivered' || v === 'received' || v === 'completed') {
     style = { color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac' };
+  } else if (v.includes('delivery') || v.includes('partial')) {
+    style = { color: '#b45309', background: '#fef3c7', border: '1px solid #fcd34d' };
   } else if (v === 'shipped' || v === 'in transit') {
     style = { color: '#1d4ed8', background: '#eff6ff', border: '1px solid #93c5fd' };
+  } else if (v.includes('progress')) {
+    style = { color: '#4338ca', background: '#eef2ff', border: '1px solid #a5b4fc' };
   } else if (v === 'ordered') {
     style = { color: '#6d28d9', background: '#f5f3ff', border: '1px solid #c4b5fd' };
   } else if (v === 'cancelled') {
@@ -136,12 +184,12 @@ function StatusBadge({ status }) {
 function TH({ children, align = 'left', className = '', style = {} }) {
   return (
     <th
-      className={`px-2 py-2 text-[9px] font-black uppercase tracking-widest whitespace-nowrap border-r last:border-r-0 select-none ${className}`}
+      className={`px-3 py-2.5 text-[11px] font-black uppercase tracking-wider whitespace-nowrap border-b-2 border-r select-none ${className}`}
       style={{
         textAlign: align,
-        backgroundColor: 'var(--theme-primary)',
-        color: 'var(--text-sidebar)',
-        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'color-mix(in srgb, var(--text-primary, #0f172a) 8%, var(--bg-form, #ffffff))',
+        color: 'var(--text-primary, #0f172a)',
+        borderColor: 'var(--border-color, #cbd5e1)',
         ...style
       }}
     >
@@ -185,6 +233,7 @@ export default function PurchaseOrderView() {
   const [editVendor, setEditVendor]   = useState('');
   const [isSaving, setIsSaving]       = useState(false);
   const [saveError, setSaveError]     = useState(null);
+  const [linkModalItem, setLinkModalItem] = useState(null);
 
   useEffect(() => { fetchPo(); }, [po_no]);
 
@@ -452,7 +501,7 @@ export default function PurchaseOrderView() {
               Ordered Items — {items.length} row{items.length !== 1 ? 's' : ''}
             </span>
             <span className="text-[9px] font-semibold" style={{ color: 'var(--theme-secondary)' }}>
-              Click ✏ to edit Status &amp; Vendor inline
+              Click <strong>Link</strong> to associate Trade or Manufacture operations
             </span>
           </div>
 
@@ -472,9 +521,9 @@ export default function PurchaseOrderView() {
                 <col style={{ width: '70px' }} />   {/* GST % */}
                 <col style={{ width: '100px' }} />  {/* Line Total */}
                 <col style={{ width: '80px' }} />   {/* Del. Date */}
-                <col style={{ width: '140px' }} />  {/* Status */}
-                <col style={{ width: '140px' }} />  {/* Vendor */}
-                <col style={{ width: '64px' }} />   {/* Actions */}
+                <col style={{ width: '130px' }} />  {/* Status */}
+                <col style={{ width: '200px' }} />  {/* Linked Operations */}
+                <col style={{ width: '75px' }} />   {/* Link Action */}
               </colgroup>
 
               <thead>
@@ -489,8 +538,8 @@ export default function PurchaseOrderView() {
                   <TH align="right">Line Total</TH>
                   <TH>Del. Date</TH>
                   <TH>Status</TH>
-                  <TH>Vendor</TH>
-                  <TH align="center" className="print:hidden">Edit</TH>
+                  <TH>Linked Operations</TH>
+                  <TH align="center" className="print:hidden">Link</TH>
                 </tr>
               </thead>
 
@@ -619,77 +668,74 @@ export default function PurchaseOrderView() {
                           </span>
                         </TD>
 
-                        {/* Status */}
+                        {/* Status (Live from Linked Operations) */}
                         <TD>
-                          {isEditing ? (
-                            <SearchDropdown
-                              value={editStatus}
-                              onChange={setEditStatus}
-                              suggestions={statuses}
-                              placeholder="Search status…"
-                              onSelect={setEditStatus}
-                              onClear={() => setEditStatus('')}
-                            />
-                          ) : (
-                            <StatusBadge status={item.status} />
-                          )}
+                          <StatusBadge status={computeItemOperationStatus(item)} />
                         </TD>
 
-                        {/* Vendor */}
+                        {/* Linked Operations */}
                         <TD>
-                          {isEditing ? (
-                            <SearchDropdown
-                              value={editVendor}
-                              onChange={setEditVendor}
-                              suggestions={customers}
-                              placeholder="Search vendor…"
-                              onSelect={setEditVendor}
-                              onClear={() => setEditVendor('')}
-                            />
-                          ) : (
-                            <span className="text-[11px] font-semibold" style={{ color: item.vendor ? 'var(--text-primary)' : 'rgba(0,0,0,0.2)' }}>
-                              {item.vendor || '—'}
-                            </span>
-                          )}
+                          <div className="flex flex-wrap items-center gap-1">
+                            {item.linked_operations && item.linked_operations.length > 0 ? (
+                              item.linked_operations.map((op, opIdx) => {
+                                const isTrade = op.operation_type === 'TRADE';
+                                const refText = isTrade ? (op.trade_ref || `Trade #${op.trade_id}`) : (op.job_ref || `Job #${op.job_id}`);
+                                const procName = op.trade_process_name || (!isTrade ? op.job_ref : '');
+                                const opStat = isTrade
+                                  ? (parseFloat(op.trade_delivery_percentage) > 0 ? `Delivery ${op.trade_delivery_percentage}%` : op.trade_status)
+                                  : (op.job_status || 'Pending').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                                return (
+                                  <button
+                                    type="button"
+                                    key={`link-${op.id || opIdx}`}
+                                    onClick={() => {
+                                      if (isTrade) {
+                                        const tradeCode = op.trade_ref || op.trade_id;
+                                        if (tradeCode) navigate(`/trade/${encodeURIComponent(tradeCode)}`);
+                                      } else {
+                                        const jobQuery = op.job_ref || (op.job_id ? String(op.job_id) : '');
+                                        navigate(`/manufactures?q=${encodeURIComponent(jobQuery)}`);
+                                      }
+                                    }}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer hover:shadow-xs hover:border-[var(--theme-color)] ${
+                                      isTrade
+                                        ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                        : 'bg-indigo-50 text-indigo-900 border-indigo-200'
+                                    }`}
+                                    title={isTrade ? `Click to open Trade ${refText}${procName ? ` (${procName})` : ''}` : `Click to open Manufacture ${refText}`}
+                                  >
+                                    {isTrade ? <ArrowRightLeft size={10} className="text-amber-600" /> : <Factory size={10} className="text-indigo-600" />}
+                                    <span className="font-mono hover:underline">{refText}</span>
+                                    {procName && procName !== refText && (
+                                      <span className="text-[8.5px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1 py-0.2 rounded" title={`Process: ${procName}`}>
+                                        ⚙ {procName}
+                                      </span>
+                                    )}
+                                    {opStat && (
+                                      <span className="text-[9px] font-semibold text-slate-500 opacity-80">
+                                        · {opStat}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">No links</span>
+                            )}
+                          </div>
                         </TD>
 
-                        {/* Actions */}
+                        {/* Link Action */}
                         <TD align="center" className="print:hidden">
-                          {isEditing ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => saveEdit(item.item_code)}
-                                disabled={isSaving}
-                                title="Save"
-                                className="p-1 rounded cursor-pointer transition-colors disabled:opacity-40 text-white"
-                                style={{ backgroundColor: '#15803d' }}
-                                onMouseEnter={e => e.currentTarget.style.filter = 'brightness(0.85)'}
-                                onMouseLeave={e => e.currentTarget.style.filter = 'none'}
-                              >
-                                {isSaving ? <RefreshCw size={10} className="animate-spin" /> : <Check size={10} />}
-                              </button>
-                              <button
-                                onClick={cancelEdit}
-                                disabled={isSaving}
-                                title="Cancel"
-                                className="p-1 rounded cursor-pointer transition-colors disabled:opacity-40"
-                                style={{ backgroundColor: '#fff1f2', color: '#9f1239', border: '1px solid #fca5a5' }}
-                              >
-                                <X size={10} />
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => startEdit(item)}
-                              title="Edit"
-                              className="p-1 rounded cursor-pointer transition-colors"
-                              style={{ color: 'var(--text-primary)', opacity: 0.35 }}
-                              onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--theme-secondary)'; }}
-                              onMouseLeave={e => { e.currentTarget.style.opacity = '0.35'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                            >
-                              <Edit2 size={11} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setLinkModalItem(item)}
+                            title="Link Trade or Manufacture Job"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-[var(--theme-color)] bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 transition-all cursor-pointer whitespace-nowrap"
+                          >
+                            <Link2 size={12} /> Link
+                          </button>
                         </TD>
                       </tr>
                     );
@@ -788,6 +834,22 @@ export default function PurchaseOrderView() {
             </table>
           </div>
         </div>
+
+        {/* Link Operation Modal */}
+        {linkModalItem && (
+          <LinkOperationModal
+            isOpen={Boolean(linkModalItem)}
+            onClose={() => setLinkModalItem(null)}
+            itemType="po"
+            itemId={linkModalItem.id}
+            itemCode={linkModalItem.item_code}
+            itemDescription={linkModalItem.description}
+            initialLinks={linkModalItem.linked_operations || []}
+            onSaveSuccess={() => {
+              fetchPo();
+            }}
+          />
+        )}
 
         {/* bottom spacer */}
         <div className="h-6 print:hidden" />

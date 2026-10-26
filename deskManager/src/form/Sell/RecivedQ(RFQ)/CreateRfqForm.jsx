@@ -4,6 +4,7 @@ import { AlertCircle, ArrowLeft, Plus, RefreshCw, X, History } from 'lucide-reac
 import { toast } from 'react-toastify';
 import { useRfq } from '../../../context/RfqContext.jsx';
 import ItemQuoteHistory from '../../../components/ItemQuoteHistory.jsx';
+import { hasPermission } from '../../../utils/permissions';
 
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
 const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
@@ -31,6 +32,10 @@ export default function CreateRfqForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [historyItem, setHistoryItem] = useState(null);
+
+  const userStr = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const canViewQuoteHistory = hasPermission(currentUser, 'items:quote_history');
 
   // Auto-complete resources from DB
   const [buyers, setBuyers] = useState([]);
@@ -575,14 +580,16 @@ export default function CreateRfqForm() {
                                   className="w-20 px-1.5 py-1 text-center font-bold text-xs text-slate-800  bg-[white] border border-slate-300 rounded focus:outline-none focus:border-[var(--theme-color)]"
                                 />
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => setHistoryItem(item.item_code)}
-                                className="p-1 mt-3.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
-                                title="View Quote History"
-                              >
-                                <History size={14} />
-                              </button>
+                              {canViewQuoteHistory && (
+                                <button
+                                  type="button"
+                                  onClick={() => setHistoryItem(item.item_code)}
+                                  className="p-1 mt-3.5 text-slate-400 hover:text-[var(--theme-color)] hover:bg-slate-50 rounded transition-colors cursor-pointer shrink-0"
+                                  title="View Quote History"
+                                >
+                                  <History size={14} />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => removeItem(item.item_code)}

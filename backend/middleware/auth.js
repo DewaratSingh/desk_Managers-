@@ -14,27 +14,95 @@ const ALL_MENU_ITEMS = [
   { id: "arc", label: "ARC", icon: "FileSignature", path: "/arc", permission: "manage_arc" },
   { id: "gst-category", label: "GST Categories", icon: "Percent", path: "/gst-category", permission: "manage_gst" },
   { id: "users", label: "Users", icon: "Users", path: "/users", permission: "manage_users" },
+  { id: "backup", label: "Backup", icon: "CloudUpload", path: "/backup", permission: "manage_backup" },
+  { id: "monitor", label: "Monitor", icon: "Activity", path: "/monitor", permission: "manage_monitor" },
+  { id: "settings", label: "Settings", icon: "Settings", path: "/settings" },
 ];
+
+const LEGACY_MODULE_PREFIXES = {
+  manage_rfqs: ['sell_rfq:'],
+  manage_quotations: ['sell_quotation:', 'buy_rq:'],
+  manage_orders: ['sell_po:', 'ro:', 'buy_contract_order:', 'delivery_note:', 'invoice:', 'orders:'],
+  manage_manufacture: ['process_rq:', 'process_order:', 'manufacture:'],
+  manage_inventory: ['inventory:'],
+  manage_items: ['items:'],
+  manage_parties: ['parties:'],
+  manage_contacts: ['contacts:'],
+  manage_arc: ['arc:'],
+  manage_gst: ['gst:'],
+  manage_users: ['users:'],
+  manage_backup: ['backup:'],
+  manage_monitor: ['monitor:']
+};
+
+function hasUserPermission(user, permissionKey) {
+  if (!user) return false;
+  const role = (user.role || '').toLowerCase();
+  if (role === 'admin' || role === 'owner' || role === 'boss') return true;
+
+  const perms = Array.isArray(user.permissions) ? user.permissions : [];
+  if (perms.includes('*')) return true;
+  if (!permissionKey) return true;
+
+  const checkSingle = (key) => {
+    if (!key) return true;
+    if (perms.includes(key)) return true;
+
+    // Check wildcard match: e.g. user has 'inventory:*'
+    const parts = key.split(':');
+    if (parts.length === 2 && perms.includes(`${parts[0]}:*`)) return true;
+
+    // Legacy module granted -> satisfies granular
+    for (const [legacyMod, prefixes] of Object.entries(LEGACY_MODULE_PREFIXES)) {
+      if (perms.includes(legacyMod)) {
+        if (prefixes.some(p => key.startsWith(p))) return true;
+      }
+    }
+
+    // Granular key granted -> satisfies legacy module
+    if (LEGACY_MODULE_PREFIXES[key]) {
+      const prefixes = LEGACY_MODULE_PREFIXES[key];
+      const hasAnyGranular = perms.some(p =>
+        typeof p === 'string' && prefixes.some(prefix => p.startsWith(prefix))
+      );
+      if (hasAnyGranular) return true;
+    }
+
+    // Aliases
+    if (key === 'items:quote_history' && perms.includes('view_history')) return true;
+    if (key === 'pricing:view' && perms.includes('view_pricing')) return true;
+    if (key === 'view_pricing' && perms.includes('pricing:view')) return true;
+    if (key === 'manage_users' && (perms.includes('users:read') || perms.includes('users:create'))) return true;
+    if (key === 'manage_backup' && (perms.includes('backup:read') || perms.includes('backup:manage'))) return true;
+    if (key === 'manage_monitor' && (perms.includes('monitor:view') || perms.includes('monitor:read'))) return true;
+
+    return false;
+  };
+
+  if (Array.isArray(permissionKey)) {
+    return permissionKey.some(k => checkSingle(k));
+  }
+  return checkSingle(permissionKey);
+}
 
 function computeAllowedNavigation(user) {
   const role = (user?.role || '').toLowerCase();
-  if (role === 'admin' || role === 'owner') {
+  if (role === 'admin' || role === 'owner' || role === 'boss') {
     return ALL_MENU_ITEMS;
   }
-  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
-  return ALL_MENU_ITEMS.filter(item => !item.permission || perms.includes(item.permission));
+  return ALL_MENU_ITEMS.filter(item => !item.permission || hasUserPermission(user, item.permission));
 }
 
 function sanitizePrices(data, user) {
   const role = (user?.role || '').toLowerCase();
-  if (role === 'admin' || role === 'owner') return data;
+  if (role === 'admin' || role === 'owner' || role === 'boss') return data;
   const perms = Array.isArray(user?.permissions) ? user.permissions : [];
-  if (perms.includes('view_pricing')) return data;
+  if (perms.includes('*') || perms.includes('view_pricing') || perms.includes('pricing:view')) return data;
 
   const mask = (obj) => {
     if (!obj || typeof obj !== 'object') return obj;
     const cloned = { ...obj };
-    ['unit_price', 'total_amount', 'grand_total', 'basic_value', 'price', 'rate', 'calculated_price'].forEach(f => {
+    ['unit_price', 'total_amount', 'grand_total', 'basic_value', 'price', 'rate', 'calculated_price', 'cost_price', 'margin'].forEach(f => {
       if (f in cloned) cloned[f] = null;
     });
     if (Array.isArray(cloned.items)) {
@@ -101,18 +169,16 @@ const authMiddleware = async (req, res, next) => {
 const requirePermission = (permKey) => {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized.' });
-    const role = (req.user.role || '').toLowerCase();
-    if (role === 'admin' || role === 'owner') return next();
+    if (hasUserPermission(req.user, permKey)) return next();
 
-    const perms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
-    if (perms.includes(permKey)) return next();
-
-    return res.status(403).json({ error: `Access Denied: Permission '${permKey}' required.` });
+    const requiredMsg = Array.isArray(permKey) ? permKey.join(' OR ') : permKey;
+    return res.status(403).json({ error: `Access Denied: Permission '${requiredMsg}' required.` });
   };
 };
 
 module.exports = authMiddleware;
 module.exports.authMiddleware = authMiddleware;
 module.exports.requirePermission = requirePermission;
+module.exports.hasUserPermission = hasUserPermission;
 module.exports.computeAllowedNavigation = computeAllowedNavigation;
 module.exports.sanitizePrices = sanitizePrices;

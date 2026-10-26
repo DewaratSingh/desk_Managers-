@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const { requirePermission, sanitizePrices } = require('../middleware/auth');
 
 // Get items (optional pagination & optional search)
 router.get('/', async (req, res) => {
@@ -26,7 +27,7 @@ router.get('/', async (req, res) => {
     }
     
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    res.json(sanitizePrices(result.rows, req.user));
   } catch (err) {
     console.error('Error fetching items:', err.message);
     res.status(500).json({ error: 'Failed to fetch items' });
@@ -71,7 +72,7 @@ router.put('/:item_code', async (req, res) => {
 });
 
 // Get history of an item (prices, dates, buyers, customers)
-router.get('/:item_code/history', async (req, res) => {
+router.get('/:item_code/history', requirePermission(['items:quote_history', 'view_history']), async (req, res) => {
   const { item_code } = req.params;
   const { exclude_rfq } = req.query || {};
   try {
@@ -126,7 +127,7 @@ router.get('/:item_code/history', async (req, res) => {
       LIMIT 15
     `;
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    res.json(sanitizePrices(result.rows, req.user));
   } catch (err) {
     console.error('Error fetching item history:', err.message);
     res.status(500).json({ error: 'Failed to fetch item history' });

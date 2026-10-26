@@ -14,6 +14,8 @@ export default function Layout() {
       console.error('Logout error:', e);
     }
     sessionStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    localStorage.removeItem('token');
     navigate('/login');
   };
 

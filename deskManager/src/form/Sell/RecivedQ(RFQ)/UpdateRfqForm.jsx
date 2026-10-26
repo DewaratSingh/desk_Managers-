@@ -8,7 +8,12 @@ import ItemQuoteHistory from '../../../components/ItemQuoteHistory.jsx';
 const labelCls = "block text-xs font-bold text-slate-700 uppercase mb-1.5";
 const inputCls = "w-full px-3 py-2  bg-[white] border border-slate-300 rounded text-sm placeholder:text-slate-400 font-medium focus:outline-none transition-colors duration-150 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
 
+import { hasPermission } from '../../../utils/permissions';
 export default function UpdateRfqForm() {
+  const userStr = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const canViewQuoteHistory = hasPermission(currentUser, 'items:quote_history');
+
   const { id } = useParams();
   const navigate = useNavigate();
   const editingRFQ = id;
@@ -634,7 +639,7 @@ export default function UpdateRfqForm() {
                           </div>
 
                           {/* Inline history panel for mobile/small screen */}
-                          {historyItem === item.item_code && (
+                          {canViewQuoteHistory && historyItem === item.item_code && (
                             <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
                               <ItemQuoteHistory
                                 code={historyItem}
@@ -762,7 +767,7 @@ export default function UpdateRfqForm() {
         </div>
 
         {/* Right side history panel */}
-        {historyItem && (
+        {canViewQuoteHistory && historyItem && (
           <div className="hidden lg:block lg:col-span-2 bg-[white] border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
             <ItemQuoteHistory
               code={historyItem}

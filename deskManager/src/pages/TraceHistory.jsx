@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Box, Move, GitCommit, GitBranch, MapPin, Tag, Briefcase } from 'lucide-react';
+import { ArrowLeft, Box, Move, GitCommit, GitBranch, MapPin, Tag, Briefcase, RotateCcw, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { hasPermission } from '../utils/permissions';
 
 const renderIconForStep = (step) => {
-  if (step.type === 'BUY') return <Briefcase size={20} className="text-blue-500" />;
-  if (step.type === 'PROCESS_PO' || step.action === 'Manufacture Production') return <GitBranch size={20} className="text-purple-500" />;
-  return <GitCommit size={20} className="text-amber-500" />;
+  if (step.type === 'BUY') return <Briefcase size={18} style={{ color: 'var(--theme-color)' }} />;
+  if (step.type === 'PROCESS_PO' || step.action === 'Manufacture Production') return <GitBranch size={18} className="text-purple-500" />;
+  return <GitCommit size={18} className="text-amber-500" />;
 };
 
 const getStepTitle = (step) => {
@@ -35,16 +36,22 @@ const HistoryBranch = ({ historyArray }) => {
         return (
           <div key={idx} className="flex flex-col items-center w-full">
             {/* The Node Card */}
-            <div className="bg-[var(--bg-form)] border border-slate-200 shadow-md rounded-2xl w-[320px] relative z-10 transition-transform hover:-translate-y-1 hover:shadow-xl hover:border-slate-300 cursor-default animate-fade-in-up">
+            <div className="bg-[var(--bg-form)] border border-slate-200 shadow-md rounded-2xl w-[320px] relative z-10 transition-all hover:-translate-y-1 hover:shadow-xl hover:border-[var(--theme-color)] cursor-default animate-fade-in-up">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-[var(--bg-form)] rounded-t-2xl">
                 <div className="flex items-center gap-2.5">
-                  <div className="bg-[var(--bg-form)] p-2 rounded-xl shadow-xs border border-slate-100">
+                  <div 
+                    className="p-2 rounded-xl shadow-xs border"
+                    style={{ 
+                      backgroundColor: 'color-mix(in srgb, var(--theme-color) 8%, var(--bg-form, #ffffff))',
+                      borderColor: 'color-mix(in srgb, var(--theme-color) 20%, transparent)'
+                    }}
+                  >
                     {renderIconForStep(step)}
                   </div>
                   <span className="font-black text-sm text-slate-700">{getStepTitle(step)}</span>
                 </div>
                 {step.date && (
-                  <div className="text-[10px] font-bold text-slate-400  bg-[white] px-2 py-1 rounded-md border border-slate-200">
+                  <div className="text-[10px] font-bold text-slate-400 bg-[white] px-2 py-1 rounded-md border border-slate-200">
                     {new Date(step.date).toLocaleDateString()}
                   </div>
                 )}
@@ -117,19 +124,45 @@ export default function TraceHistory() {
 
   // Pan interaction states
   const [isPanning, setIsPanning] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [position, setPosition] = useState({ x: 0, y: 50 });
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const containerRef = useRef(null);
+  const contentRef = useRef(null);
+
+  const autoCenterView = () => {
+    if (!containerRef.current || !contentRef.current) {
+      setPosition({ x: 0, y: 50 });
+      setScale(1);
+      return;
+    }
+    const containerW = containerRef.current.clientWidth;
+    const contentW = contentRef.current.scrollWidth;
+    let initialScale = 1;
+    if (contentW > containerW && containerW > 0) {
+      initialScale = Math.max(0.4, Math.min(1, (containerW - 80) / contentW));
+    }
+    setPosition({ x: 0, y: 50 });
+    setScale(initialScale);
+  };
 
   useEffect(() => {
+    if (traceData) {
+      const timer = setTimeout(autoCenterView, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [traceData]);
+
+  const userStr = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+
+  useEffect(() => {
+    if (!hasPermission(currentUser, 'inventory:trace_history')) {
+      toast.error('Access Denied: You do not have permission to view Trace History.');
+      navigate('/inventory', { replace: true });
+      return;
+    }
     fetchTraceData();
-    
-    // Center the view on load
-    setPosition({
-      x: 0, 
-      y: 50
-    });
   }, [id]);
 
   useEffect(() => {
@@ -194,6 +227,10 @@ export default function TraceHistory() {
     setIsPanning(false);
   };
 
+  const handleResetView = () => {
+    autoCenterView();
+  };
+
   return (
     <div className="h-full flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden relative">
       {/* Header */}
@@ -201,23 +238,55 @@ export default function TraceHistory() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/inventory')}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-slate-300"
+            title="Go to Inventory"
           >
             <ArrowLeft size={18} />
           </button>
           <div>
             <h1 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              <Box size={22} className="text-amber-600" />
+              <div 
+                className="p-1.5 rounded-lg text-white shadow-2xs"
+                style={{ backgroundColor: 'var(--theme-color)' }}
+              >
+                <Box size={18} />
+              </div>
               Trace Genealogy Tree
             </h1>
-            <p className="text-xs text-slate-500 font-semibold mt-0.5">
-              Trace ID: <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">TR-{id}</span>
+            <p className="text-xs text-slate-500 font-semibold mt-1">
+              Trace ID:{' '}
+              <span 
+                className="font-mono px-2 py-0.5 rounded font-bold"
+                style={{
+                  color: 'var(--theme-color)',
+                  backgroundColor: 'color-mix(in srgb, var(--theme-color) 8%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--theme-color) 20%, transparent)'
+                }}
+              >
+                TR-{id}
+              </span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-          <Move size={14} className="text-slate-500" />
-          Scroll to zoom, drag to pan
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleResetView}
+            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+            style={{
+              backgroundColor: 'color-mix(in srgb, var(--theme-color) 10%, transparent)',
+              color: 'var(--theme-color)',
+              borderColor: 'color-mix(in srgb, var(--theme-color) 30%, transparent)'
+            }}
+            title="Center Root Node & Reset Zoom"
+          >
+            <RotateCcw size={12} />
+            Center Root Node
+          </button>
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+            <Move size={14} className="text-slate-500" />
+            Scroll to zoom ({Math.round(scale * 100)}%), drag to pan
+          </div>
         </div>
       </div>
 
@@ -236,8 +305,9 @@ export default function TraceHistory() {
         }}
       >
         {loading ? (
-          <div className="absolute inset-0 flex items-center justify-center text-slate-400 font-bold text-sm">
-            Loading Tree...
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500 font-bold text-sm">
+            <Loader2 className="animate-spin" size={26} style={{ color: 'var(--theme-color)' }} />
+            <span>Loading Trace Tree...</span>
           </div>
         ) : !traceData ? (
           <div className="absolute inset-0 flex items-center justify-center text-rose-500 font-bold text-sm">
@@ -245,7 +315,8 @@ export default function TraceHistory() {
           </div>
         ) : (
           <div 
-            className="absolute left-1/2 origin-top transition-transform duration-75 ease-linear"
+            ref={contentRef}
+            className="absolute top-0 left-1/2 origin-top flex flex-col items-center pt-8 pb-32 select-none transition-transform duration-75 ease-linear"
             style={{ 
               transform: `translate(calc(-50% + ${position.x}px), ${position.y}px) scale(${scale})`,
               width: 'max-content'
@@ -256,12 +327,23 @@ export default function TraceHistory() {
             <div className="flex flex-col items-center">
 
               {/* Root Node: Current Trace Details */}
-              <div className="bg-[var(--bg-form)] border-2 border-amber-300 shadow-xl rounded-2xl w-[360px] relative z-10 animate-fade-in-up">
-                <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-5 py-3 rounded-t-xl flex justify-between items-center">
+              <div 
+                className="bg-[var(--bg-form)] border-2 shadow-xl rounded-2xl w-[360px] relative z-10 animate-fade-in-up"
+                style={{ 
+                  borderColor: 'var(--theme-color)',
+                  boxShadow: '0 0 0 4px color-mix(in srgb, var(--theme-color) 20%, transparent), 0 10px 25px -5px color-mix(in srgb, var(--theme-color) 25%, transparent)'
+                }}
+              >
+                <div 
+                  className="text-white px-5 py-3 rounded-t-xl flex justify-between items-center"
+                  style={{ 
+                    background: 'linear-gradient(135deg, var(--theme-secondary), color-mix(in srgb, var(--theme-secondary) 80%, black))'
+                  }}
+                >
                   <span className="font-black tracking-wide text-sm flex items-center gap-2">
                     <Box size={16} /> CURRENT TRACE
                   </span>
-                  <span className=" bg-[white]/20 px-2 py-0.5 rounded-md text-xs font-mono font-bold">TR-{traceData.id}</span>
+                  <span className="bg-white/20 px-2 py-0.5 rounded-md text-xs font-mono font-bold">TR-{traceData.id}</span>
                 </div>
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between items-end border-b border-slate-100 pb-3">
@@ -272,20 +354,25 @@ export default function TraceHistory() {
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Quantity</div>
-                      <div className="font-mono font-black text-amber-600 text-xl">{parseFloat(traceData.qty)}</div>
+                      <div 
+                        className="font-mono font-black text-xl"
+                        style={{ color: 'var(--theme-color)' }}
+                      >
+                        {parseFloat(traceData.qty)}
+                      </div>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-3 pt-1">
                     <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-1">
-                        <MapPin size={12} /> Location Bin
+                        <MapPin size={12} style={{ color: 'var(--theme-color)' }} /> Location Bin
                       </div>
                       <div className="text-sm font-semibold text-slate-800">{traceData.location}</div>
                     </div>
                     <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-1">
-                        <Tag size={12} /> Cost Price
+                        <Tag size={12} style={{ color: 'var(--theme-color)' }} /> Cost Price
                       </div>
                       <div className="text-sm font-semibold font-mono text-slate-800">₹{parseFloat(traceData.cost_price || 0).toLocaleString()}</div>
                     </div>
@@ -296,7 +383,10 @@ export default function TraceHistory() {
               {/* Connecting Line from Root Node down to History */}
               {Array.isArray(traceData.history) && traceData.history.length > 0 && (
                 <div className="w-1 h-10 bg-slate-300 relative z-0">
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-slate-300 border-[3px] border-white box-content"></div>
+                  <div 
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-[3px] border-white box-content shadow-xs"
+                    style={{ backgroundColor: 'var(--theme-color)' }}
+                  ></div>
                 </div>
               )}
 

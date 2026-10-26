@@ -3,8 +3,10 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Printer, Edit2, Check, X, FileText,
-  Package, Tag, Hash, ChevronRight
+  Package, Tag, Hash, ChevronRight, Link2, Factory, ArrowRightLeft
 } from 'lucide-react';
+import LinkOperationModal from '../components/LinkOperationModal';
+import { computeItemOperationStatus } from './PurchaseOrderView';
 
 const fmtDate = (d) => {
   if (!d) return '—';
@@ -24,7 +26,10 @@ const statusColor = (s) => {
   const v = (s || '').toLowerCase();
   if (v === 'delivered' || v === 'received' || v === 'completed')
     return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (v.includes('delivery') || v.includes('partial'))
+    return 'bg-amber-50 text-amber-800 border-amber-300';
   if (v === 'shipped')    return 'bg-blue-50    text-blue-700    border-blue-200';
+  if (v.includes('progress')) return 'bg-indigo-50 text-indigo-700 border-indigo-200';
   if (v === 'ordered')    return 'bg-indigo-50  text-indigo-700  border-indigo-200';
   if (v === 'cancelled')  return 'bg-red-50     text-red-700     border-red-200';
   return 'bg-amber-50 text-amber-700 border-amber-200';
@@ -138,6 +143,7 @@ export default function ReleaseOrderView() {
   const [editVendor, setEditVendor]   = useState('');
   const [isSaving, setIsSaving]       = useState(false);
   const [saveError, setSaveError]     = useState(null);
+  const [linkModalItem, setLinkModalItem] = useState(null);
 
   useEffect(() => {
     fetchRo();
@@ -346,7 +352,7 @@ export default function ReleaseOrderView() {
               Ordered Items ({(ro.items || []).length})
             </span>
             <span className="text-[10px] font-bold text-slate-400">
-              Click <strong>Edit</strong> to update Status &amp; Vendor per item
+              Click <strong>Link</strong> to associate Trade or Manufacture operations
             </span>
           </div>
 
@@ -370,8 +376,8 @@ export default function ReleaseOrderView() {
                   <th className="px-4 py-3">Shipping Address</th>
                   <th className="px-4 py-3">Del. Date</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Vendor</th>
-                  <th className="px-4 py-3 text-center print:hidden">Actions</th>
+                  <th className="px-4 py-3">Linked Operations</th>
+                  <th className="px-4 py-3 text-center print:hidden">Link</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -437,59 +443,76 @@ export default function ReleaseOrderView() {
                         {fmtDate(item.delivery_date)}
                       </td>
 
-                      {/* Status */}
+                      {/* Status (Live from Linked Operations) */}
                       <td className="px-4 py-3">
-                        {isEditing ? (
-                          <SearchDropdown
-                            value={editStatus}
-                            onChange={setEditStatus}
-                            suggestions={statuses}
-                            placeholder="Search status…"
-                            onSelect={setEditStatus}
-                            onClear={() => setEditStatus('')}
-                          />
-                        ) : (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${statusColor(item.status)}`}>
-                            {item.status || 'pending'}
-                          </span>
-                        )}
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${statusColor(computeItemOperationStatus(item))}`}>
+                          {computeItemOperationStatus(item)}
+                        </span>
                       </td>
 
-                      {/* Vendor */}
+                      {/* Linked Operations */}
                       <td className="px-4 py-3">
-                        {isEditing ? (
-                          <SearchDropdown
-                            value={editVendor}
-                            onChange={setEditVendor}
-                            suggestions={customers}
-                            placeholder="Search customer…"
-                            onSelect={setEditVendor}
-                            onClear={() => setEditVendor('')}
-                          />
-                        ) : (
-                          <span className="font-semibold text-slate-800">{item.vendor || '—'}</span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {item.linked_operations && item.linked_operations.length > 0 ? (
+                            item.linked_operations.map((op, opIdx) => {
+                              const isTrade = op.operation_type === 'TRADE';
+                              const refText = isTrade ? (op.trade_ref || `Trade #${op.trade_id}`) : (op.job_ref || `Job #${op.job_id}`);
+                              const procName = op.trade_process_name || (!isTrade ? op.job_ref : '');
+                              const opStat = isTrade
+                                ? (parseFloat(op.trade_delivery_percentage) > 0 ? `Delivery ${op.trade_delivery_percentage}%` : op.trade_status)
+                                : (op.job_status || 'Pending').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                              return (
+                                <button
+                                  type="button"
+                                  key={`ro-link-${op.id || opIdx}`}
+                                  onClick={() => {
+                                    if (isTrade) {
+                                      const tradeCode = op.trade_ref || op.trade_id;
+                                      if (tradeCode) navigate(`/trade/${encodeURIComponent(tradeCode)}`);
+                                    } else {
+                                      const jobQuery = op.job_ref || (op.job_id ? String(op.job_id) : '');
+                                      navigate(`/manufactures?q=${encodeURIComponent(jobQuery)}`);
+                                    }
+                                  }}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer hover:shadow-xs hover:border-[var(--theme-color)] ${
+                                    isTrade
+                                      ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                      : 'bg-indigo-50 text-indigo-900 border-indigo-200'
+                                  }`}
+                                  title={isTrade ? `Click to open Trade ${refText}${procName ? ` (${procName})` : ''}` : `Click to open Manufacture ${refText}`}
+                                >
+                                  {isTrade ? <ArrowRightLeft size={10} className="text-amber-600" /> : <Factory size={10} className="text-indigo-600" />}
+                                  <span className="font-mono hover:underline">{refText}</span>
+                                  {procName && procName !== refText && (
+                                    <span className="text-[8.5px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1 py-0.2 rounded" title={`Process: ${procName}`}>
+                                      ⚙ {procName}
+                                    </span>
+                                  )}
+                                  {opStat && (
+                                    <span className="text-[9px] font-semibold text-slate-500 opacity-80">
+                                      · {opStat}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">No links</span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Actions */}
                       <td className="px-4 py-3 text-center print:hidden">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button onClick={() => saveEdit(item.item_code)} disabled={isSaving} title="Save"
-                              className="p-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded border border-emerald-200 transition-colors cursor-pointer disabled:opacity-50">
-                              <Check size={13} />
-                            </button>
-                            <button onClick={cancelEdit} disabled={isSaving} title="Cancel"
-                              className="p-1 bg-red-50 hover:bg-red-100 text-red-700 rounded border border-red-200 transition-colors cursor-pointer disabled:opacity-50">
-                              <X size={13} />
-                            </button>
-                          </div>
-                        ) : (
-                          <button onClick={() => startEdit(item)}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-800 bg-transparent hover:bg-slate-100 rounded border border-transparent hover:border-slate-200 transition-all cursor-pointer">
-                            <Edit2 size={10} /> Edit
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => setLinkModalItem(item)}
+                          title="Link Trade or Manufacture Job"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-[var(--theme-color)] bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 transition-all cursor-pointer whitespace-nowrap"
+                        >
+                          <Link2 size={12} /> Link
+                        </button>
                       </td>
                     </tr>
                   );
@@ -552,6 +575,22 @@ export default function ReleaseOrderView() {
             <Printer size={15} /> Print / Save as PDF
           </button>
         </div>
+
+        {/* Link Operation Modal */}
+        {linkModalItem && (
+          <LinkOperationModal
+            isOpen={Boolean(linkModalItem)}
+            onClose={() => setLinkModalItem(null)}
+            itemType="ro"
+            itemId={linkModalItem.id}
+            itemCode={linkModalItem.item_code}
+            itemDescription={linkModalItem.description}
+            initialLinks={linkModalItem.linked_operations || []}
+            onSaveSuccess={() => {
+              fetchRo();
+            }}
+          />
+        )}
 
       </div>
     </div>

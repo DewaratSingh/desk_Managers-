@@ -9,16 +9,16 @@ import {
   Truck,
   Briefcase,
   DollarSign,
-  TrendingUp,
-  RotateCcw
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const renderIconForStep = (step) => {
-  if (step.type === 'SELL') return <Truck size={20} className="text-emerald-500" />;
-  if (step.type === 'BUY') return <Briefcase size={20} className="text-blue-500" />;
-  if (step.type === 'PROCESS_PO' || step.type === 'PROCESS_RO' || step.action === 'Manufacture Production' || step.action === 'Process RO Delivery') return <GitBranch size={20} className="text-purple-500" />;
-  return <GitCommit size={20} className="text-amber-500" />;
+  if (step.type === 'SELL') return <Truck size={18} style={{ color: 'var(--theme-color)' }} />;
+  if (step.type === 'BUY') return <Briefcase size={18} className="text-blue-500" />;
+  if (step.type === 'PROCESS_PO' || step.type === 'PROCESS_RO' || step.action === 'Manufacture Production' || step.action === 'Process RO Delivery') return <GitBranch size={18} className="text-purple-500" />;
+  return <GitCommit size={18} className="text-amber-500" />;
 };
 
 const getStepTitle = (step) => {
@@ -54,35 +54,72 @@ const HistoryBranch = ({ historyArray, isRoot = false }) => {
             {/* The Node Card */}
             <div
               className={`bg-[var(--bg-form)] border shadow-md rounded-2xl w-[340px] relative z-10 transition-transform hover:-translate-y-1 hover:shadow-xl cursor-default animate-fade-in-up ${
-                isTrueRoot
-                  ? 'border-emerald-500 ring-4 ring-emerald-500/25 shadow-xl'
-                  : isSellStep
-                  ? 'border-emerald-400 ring-2 ring-emerald-400/20'
-                  : 'border-slate-200 hover:border-slate-300'
+                !isTrueRoot && !isSellStep ? 'border-slate-200 hover:border-[var(--theme-color)]' : ''
               }`}
+              style={
+                isTrueRoot
+                  ? {
+                      borderColor: 'var(--theme-color)',
+                      boxShadow: '0 0 0 4px color-mix(in srgb, var(--theme-color) 25%, transparent), 0 10px 25px -5px color-mix(in srgb, var(--theme-color) 20%, transparent)'
+                    }
+                  : isSellStep
+                  ? {
+                      borderColor: 'color-mix(in srgb, var(--theme-color) 50%, transparent)',
+                      boxShadow: '0 0 0 2px color-mix(in srgb, var(--theme-color) 15%, transparent)'
+                    }
+                  : {}
+              }
             >
               <div
-                className={`p-4 border-b flex items-center justify-between rounded-t-2xl ${
-                  isSellStep ? 'bg-emerald-50/60 border-emerald-100' : 'bg-[var(--bg-form)] border-slate-100'
-                }`}
+                className="p-4 border-b flex items-center justify-between rounded-t-2xl"
+                style={
+                  isSellStep || isTrueRoot
+                    ? {
+                        backgroundColor: 'color-mix(in srgb, var(--theme-color) 8%, var(--bg-form, #ffffff))',
+                        borderColor: 'color-mix(in srgb, var(--theme-color) 20%, transparent)'
+                      }
+                    : {
+                        backgroundColor: 'var(--bg-form)',
+                        borderColor: 'var(--border-color, #f1f5f9)'
+                      }
+                }
               >
                 <div className="flex items-center gap-2.5">
-                  <div className={`p-2 rounded-xl shadow-xs border ${isSellStep ? 'bg-emerald-100/70 border-emerald-200' : 'bg-[var(--bg-form)] border-slate-100'}`}>
+                  <div 
+                    className="p-2 rounded-xl shadow-xs border"
+                    style={{
+                      backgroundColor: isSellStep || isTrueRoot 
+                        ? 'color-mix(in srgb, var(--theme-color) 16%, transparent)' 
+                        : 'var(--bg-form)',
+                      borderColor: isSellStep || isTrueRoot
+                        ? 'color-mix(in srgb, var(--theme-color) 30%, transparent)'
+                        : 'var(--border-color, #e2e8f0)'
+                    }}
+                  >
                     {renderIconForStep(step)}
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`font-black text-sm ${isSellStep ? 'text-emerald-900' : 'text-slate-800'}`}>
+                      <span 
+                        className="font-black text-sm"
+                        style={{ color: isSellStep || isTrueRoot ? 'var(--theme-color)' : 'var(--text-primary)' }}
+                      >
                         {getStepTitle(step)}
                       </span>
                       {isTrueRoot && (
-                        <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-emerald-600 text-white shadow-xs">
+                        <span 
+                          className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded text-white shadow-xs"
+                          style={{ backgroundColor: 'var(--theme-color)' }}
+                        >
                           Root Node
                         </span>
                       )}
                     </div>
                     {isSellStep && step.price !== undefined && (
-                      <span className="block text-xs font-mono font-black text-emerald-600">
+                      <span 
+                        className="block text-xs font-mono font-black"
+                        style={{ color: 'var(--theme-color)' }}
+                      >
                         Sell Price: ₹{parseFloat(step.price).toFixed(2)}
                       </span>
                     )}
@@ -199,7 +236,7 @@ export default function DeliveryHistory() {
     if (!container) return;
 
     const handleWheelNative = (e) => {
-      e.preventDefault();
+      e.preventDefault(); // Stop browser page zoom
       const zoomSensitivity = 0.001;
       setScale((prevScale) => {
         let newScale = prevScale - e.deltaY * zoomSensitivity;
@@ -270,20 +307,32 @@ export default function DeliveryHistory() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate(-1)}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-slate-300"
             title="Go Back"
           >
             <ArrowLeft size={18} />
           </button>
           <div>
             <h1 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              <Truck size={22} className="text-emerald-600" />
+              <div 
+                className="p-1.5 rounded-lg text-white shadow-2xs"
+                style={{ backgroundColor: 'var(--theme-color)' }}
+              >
+                <Truck size={18} />
+              </div>
               Delivery History Genealogy Chart
             </h1>
-            <div className="flex items-center gap-3 text-xs font-semibold text-slate-500 mt-0.5">
+            <div className="flex items-center gap-3 text-xs font-semibold text-slate-500 mt-1">
               <span>
                 Record ID:{' '}
-                <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
+                <span 
+                  className="font-mono px-2 py-0.5 rounded font-bold"
+                  style={{
+                    color: 'var(--theme-color)',
+                    backgroundColor: 'color-mix(in srgb, var(--theme-color) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--theme-color) 20%, transparent)'
+                  }}
+                >
                   HIST-{id}
                 </span>
               </span>
@@ -304,7 +353,14 @@ export default function DeliveryHistory() {
                 </span>
               )}
               {historyRecord?.price !== undefined && (
-                <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                <span 
+                  className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md"
+                  style={{
+                    color: 'var(--theme-color)',
+                    backgroundColor: 'color-mix(in srgb, var(--theme-color) 10%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--theme-color) 25%, transparent)'
+                  }}
+                >
                   <DollarSign size={13} />
                   Sell Price: ₹{parseFloat(historyRecord.price).toFixed(2)}
                 </span>
@@ -316,7 +372,12 @@ export default function DeliveryHistory() {
         <div className="flex items-center gap-3">
           <button
             onClick={handleResetView}
-            className="flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+            style={{
+              backgroundColor: 'color-mix(in srgb, var(--theme-color) 10%, transparent)',
+              color: 'var(--theme-color)',
+              borderColor: 'color-mix(in srgb, var(--theme-color) 30%, transparent)'
+            }}
             title="Center Root Node & Reset Zoom"
           >
             <RotateCcw size={12} />
@@ -346,8 +407,9 @@ export default function DeliveryHistory() {
         }}
       >
         {loading ? (
-          <div className="absolute inset-0 flex items-center justify-center text-slate-400 font-bold text-sm">
-            Loading Tree...
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500 font-bold text-sm">
+            <Loader2 className="animate-spin" size={26} style={{ color: 'var(--theme-color)' }} />
+            <span>Loading Delivery History Tree...</span>
           </div>
         ) : historyArray.length === 0 ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-2">

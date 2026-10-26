@@ -107,9 +107,6 @@
 
 /* 1. Every Table Background uses Card & Form Background (--bg-form) */
 :not(.pds-root) table,
-:not(.pds-root) table thead,
-:not(.pds-root) table thead tr,
-:not(.pds-root) table thead th,
 :not(.pds-root) table tbody,
 :not(.pds-root) table tbody tr,
 :not(.pds-root) table tbody td,
@@ -121,6 +118,12 @@
 :not(.pds-root) div:has(> .overflow-x-auto > table) {
 	background-color: var(--bg-form) !important;
 	border-color: var(--border-color);
+}
+
+:not(.pds-root) table thead th {
+	background-color: color-mix(in srgb, var(--text-primary) 8%, var(--bg-form, #ffffff)) !important;
+	color: var(--text-primary, #0f172a) !important;
+	border-color: var(--border-color, #cbd5e1);
 }
 
 :not(.pds-root) table tbody tr:hover,

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, RefreshCw, X, TrendingUp, ShoppingCart, Workflow } from 'lucide-react';
+import { Search, RefreshCw, X, TrendingUp, FileOutput, ArrowRightLeft, Factory, Workflow } from 'lucide-react';
 import { hasPermission } from '../utils/permissions';
+import { computeItemOperationStatus } from './PurchaseOrderView';
 
 const statusStyle = (s) => {
   const v = (s || '').toLowerCase();
@@ -24,6 +25,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
   const userStr = sessionStorage.getItem('user');
   const currentUser = userStr ? JSON.parse(userStr) : null;
+  const canSearchTrades = hasPermission(currentUser, 'trades:search') || hasPermission(currentUser, 'view_dashboard');
 
   const [trades, setTrades] = useState([]);
   const [tradesLoading, setTradesLoading] = useState(false);
@@ -43,8 +45,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   const [pposLoading, setPposLoading]       = useState(false);
   const [processROs, setProcessROs]         = useState([]);
   const [prosLoading, setProsLoading]       = useState(false);
-  const [orderTypeTab, setOrderTypeTab]     = useState('sell'); // 'sell' (default) | 'buy' | 'buy_process'
-  const [orderFilter, setOrderFilter]       = useState('ALL'); // 'ALL', 'PO', 'RO', 'PO_BUY'
+  const [orderFilter, setOrderFilter]       = useState('ALL'); // 'ALL' | 'PO' | 'RO' | 'BUY_PROCESS'
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
 
   useEffect(() => {
@@ -92,13 +93,13 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'dashboard') {
+    if (activeTab === 'dashboard' && canSearchTrades) {
       const delayDebounceFn = setTimeout(() => {
         fetchTrades(false, tradeSearchQuery, selectedFilter);
       }, 300);
       return () => clearTimeout(delayDebounceFn);
     }
-  }, [tradeSearchQuery, selectedFilter, activeTab]);
+  }, [tradeSearchQuery, selectedFilter, activeTab, canSearchTrades]);
 
   const fetchTrades = async (isLoadMore = false, searchVal = tradeSearchQuery, filterObj = selectedFilter) => {
     if (isLoadMore) {
@@ -157,7 +158,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
     try {
       const res = await fetch('/api/process-po');
       if (res.ok) setProcessPOs(await res.json());
-    } catch (err) { console.error('Failed to fetch PPOs:', err); }
+    } catch (err) { console.error('Failed to fetch Process POs:', err); }
     finally { setPposLoading(false); }
   };
 
@@ -166,7 +167,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
     try {
       const res = await fetch('/api/process-ro');
       if (res.ok) setProcessROs(await res.json());
-    } catch (err) { console.error('Failed to fetch PROs:', err); }
+    } catch (err) { console.error('Failed to fetch Process ROs:', err); }
     finally { setProsLoading(false); }
   };
 
@@ -191,8 +192,84 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             {/* Top 10 Trades Chart (Line Graph) */}
             {/* <TradeComparisonChart trades={trades} /> */}
 
-            {/* List all trade at bottom */}
-            {(() => {
+            {/* List all trade or Operation Desk */}
+            {!canSearchTrades ? (
+              <div className="space-y-6 pt-4 border-t border-slate-200">
+                <div className="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-2xl p-6 text-white shadow-md">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl">✍️</span>
+                    <h3 className="text-lg font-bold">Operations Desk</h3>
+                  </div>
+                  <p className="text-xs text-slate-300 max-w-xl">
+                    Welcome to your transaction entry portal. Select any workflow below to fill and submit operational documents.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Sell Workflows */}
+                  {hasPermission(currentUser, 'sell_rfq:create') && (
+                    <div onClick={() => navigate('/addRfq')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Sell Workflow</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">Create RFQ</h4>
+                      <p className="text-xs text-slate-500 mt-1">Submit new Request for Quotation</p>
+                    </div>
+                  )}
+                  {hasPermission(currentUser, 'sell_quotation:create') && (
+                    <div onClick={() => navigate('/addQuotation')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Sell Workflow</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">Send Quotation</h4>
+                      <p className="text-xs text-slate-500 mt-1">Prepare customer sales quotation</p>
+                    </div>
+                  )}
+                  {hasPermission(currentUser, 'sell_po:create') && (
+                    <div onClick={() => navigate('/addPurchaseOrder')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Sell Workflow</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">Customer PO</h4>
+                      <p className="text-xs text-slate-500 mt-1">Input incoming purchase order</p>
+                    </div>
+                  )}
+                  {hasPermission(currentUser, 'ro:create') && (
+                    <div onClick={() => navigate('/addReleaseOrder')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-emerald-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Sell Workflow</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">Release Order (RO)</h4>
+                      <p className="text-xs text-slate-500 mt-1">Dispatch and release order allocation</p>
+                    </div>
+                  )}
+
+                  {/* Buy Workflows */}
+                  {hasPermission(currentUser, 'buy_rq:create') && (
+                    <div onClick={() => navigate('/addReceivedQuotation')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-blue-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">Buy Workflow</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">Received Quotation (RQ)</h4>
+                      <p className="text-xs text-slate-500 mt-1">Record supplier received quote</p>
+                    </div>
+                  )}
+                  {hasPermission(currentUser, 'buy_contract_order:create') && (
+                    <div onClick={() => navigate('/addContractOrder')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-blue-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">Buy Workflow</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">Contract Order</h4>
+                      <p className="text-xs text-slate-500 mt-1">Vendor purchase order / contract</p>
+                    </div>
+                  )}
+
+                  {/* Process / Manufacture Workflows */}
+                  {hasPermission(currentUser, 'process_rq:create') && (
+                    <div onClick={() => navigate('/addProcessReceivedQuotation')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-amber-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Manufacture / Process</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">Process Received Quotation</h4>
+                      <p className="text-xs text-slate-500 mt-1">Outsourced process quote</p>
+                    </div>
+                  )}
+                  {hasPermission(currentUser, 'process_order:create') && (
+                    <div onClick={() => navigate('/addProcessContractOrder')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-amber-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Manufacture / Process</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">Process Contract Order</h4>
+                      <p className="text-xs text-slate-500 mt-1">Outsourced job work order</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (() => {
               const staticTypes = ['Sell', 'Buy', 'Buy Process', 'Sell Process', 'ARC', 'buyARC', 'sellARC', 'Process'];
               const filterOptions = [
                 ...staticTypes.map(t => ({ label: `Type: ${t}`, type: 'trade_type', value: t })),
@@ -387,50 +464,103 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         const fmtAmt = (v) => (parseFloat(v)||0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
         const fmtQty = (v) => (parseFloat(v)||0).toLocaleString('en-IN');
 
-        // Categorize all orders into: Sell, Buy, Buy Process
+        // Sell Orders: Customer Purchase Orders (PO) & Release Orders (RO)
         const sellOrders = [];
-        const buyOrders = [];
+
+        // 1. Purchase Orders from /api/purchase-orders (Customer POs)
+        purchaseOrders.forEach(po => {
+          if (!po.po_no) return;
+          const tType = (po.trade_type || '').toLowerCase();
+          const isProcess = tType.includes('process') || po.po_no.startsWith('PPO-');
+          const isBuy = tType.includes('buy') || Boolean(po.received_quotation_id);
+
+          if (!isProcess && !isBuy) {
+            sellOrders.push({
+              groupKey: po.po_no,
+              type: 'PO',
+              number: po.po_no,
+              date: po.po_date,
+              partyId: po.party_id || '—',
+              partyName: po.party_name || '',
+              items: po.items || [],
+              tradeId: po.trade_id,
+              navigatePath: `/order/${encodeURIComponent(po.po_no)}`,
+            });
+          }
+        });
+
+        // 2. Release Orders from /api/release-orders (Customer ROs)
+        releaseOrders.forEach(ro => {
+          if (!ro.ro_no) return;
+          const tType = (ro.trade_type || '').toLowerCase();
+          const rType = (ro.ro_type || '').toLowerCase();
+          const isProcess = tType.includes('process') || ro.ro_no.startsWith('PRO-');
+          const isBuy = tType.includes('buy') || rType === 'buy';
+
+          if (!isProcess && !isBuy) {
+            sellOrders.push({
+              groupKey: ro.ro_no,
+              type: 'RO',
+              number: ro.ro_no,
+              date: ro.ro_date,
+              partyId: ro.party_id || ro.customer_code || '—',
+              partyName: ro.customer_name || '',
+              items: ro.items || [],
+              tradeId: ro.trade_id,
+              navigatePath: `/release-order/${encodeURIComponent(ro.ro_no)}`,
+            });
+          }
+        });
+
+        // 3. Buy Process Orders (Process POs & Process ROs)
         const buyProcessOrders = [];
         const seenProcessKeys = new Set();
 
-        // 1. Process POs from /api/process-po -> Buy Process
-        processPOs.forEach(ppo => {
+        (processPOs || []).forEach(ppo => {
           if (!ppo.po_no || seenProcessKeys.has(ppo.po_no)) return;
           seenProcessKeys.add(ppo.po_no);
-
           let items = [];
-          if (Array.isArray(ppo.target_items) && ppo.target_items.length > 0) {
-            items = ppo.target_items.map(t => ({
+          const tradeCode = ppo.trade_id ? (String(ppo.trade_id).startsWith('TRD-') ? ppo.trade_id : `TRD-PRO-${String(ppo.trade_id).padStart(4, '0')}`) : '';
+          const targetItems = Array.isArray(ppo.target_items) ? ppo.target_items : (Array.isArray(ppo.items) ? ppo.items : []);
+          if (targetItems.length > 0) {
+            items = targetItems.map(t => ({
               item_code: t.item_code || '—',
               description: t.description || '—',
+              process_name: t.process_name || ppo.process_name || '',
               quantity: parseFloat(t.qty || t.quantity || 0),
               delivered_qty: parseFloat(t.delivered_qty || 0),
               delivery_date: t.delivery_date || ppo.delivery_date || ppo.date_of_end,
-              vendor: t.vendor || ppo.seller || ppo.party || '—',
               status: t.status || ppo.status || 'ordered',
-              unit_price: parseFloat(t.price || t.rate || 0),
-            }));
-          } else if (Array.isArray(ppo.items) && ppo.items.length > 0) {
-            items = ppo.items.map(it => ({
-              item_code: it.target_item_code || it.source_item_code || '—',
-              description: it.target_item_description || it.source_item_description || '—',
-              quantity: parseFloat(it.target_qty || it.target_item_quantity || it.source_qty || 0),
-              delivered_qty: parseFloat(it.delivered_qty || 0),
-              delivery_date: ppo.delivery_date || ppo.date_of_end,
-              vendor: ppo.seller || ppo.party || '—',
-              status: ppo.status || 'ordered',
-              unit_price: parseFloat(it.price || 0),
+              unit_price: parseFloat(t.price || t.rate || ppo.basic_value || 0),
+              linked_operations: tradeCode ? [{
+                operation_type: 'TRADE',
+                trade_ref: tradeCode,
+                trade_id: ppo.trade_id,
+                trade_type: 'BUY_PROCESS',
+                trade_status: ppo.status || 'Ordered',
+                trade_process_name: t.process_name || ppo.process_name || '',
+                trade_delivery_percentage: 0
+              }] : []
             }));
           } else {
             items = [{
               item_code: '—',
-              description: ppo.message || 'Process PO',
+              description: ppo.message || 'Process Purchase Order',
+              process_name: ppo.process_name || '',
               quantity: 1,
-              delivered_qty: parseFloat(ppo.delivery_percentage || 0) >= 100 ? 1 : 0,
+              delivered_qty: 0,
               delivery_date: ppo.delivery_date || ppo.date_of_end,
-              vendor: ppo.seller || ppo.party || '—',
               status: ppo.status || 'ordered',
               unit_price: parseFloat(ppo.basic_value || 0),
+              linked_operations: tradeCode ? [{
+                operation_type: 'TRADE',
+                trade_ref: tradeCode,
+                trade_id: ppo.trade_id,
+                trade_type: 'BUY_PROCESS',
+                trade_status: ppo.status || 'Ordered',
+                trade_process_name: ppo.process_name || '',
+                trade_delivery_percentage: 0
+              }] : []
             }];
           }
 
@@ -440,50 +570,58 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             number: ppo.po_no,
             date: ppo.date_of_start || ppo.created_at,
             partyId: ppo.party || ppo.seller || '—',
+            partyName: ppo.seller || ppo.party || '',
             items,
             tradeId: ppo.trade_id,
-            navigatePath: ppo.trade_id ? `/trade/${ppo.trade_id}` : `/order/${encodeURIComponent(ppo.po_no)}`,
+            navigatePath: tradeCode ? `/trade/${encodeURIComponent(tradeCode)}` : `/order/${encodeURIComponent(ppo.po_no)}`,
           });
         });
 
-        // 2. Process ROs from /api/process-ro -> Buy Process
-        processROs.forEach(pro => {
+        (processROs || []).forEach(pro => {
           if (!pro.ro_no || seenProcessKeys.has(pro.ro_no)) return;
           seenProcessKeys.add(pro.ro_no);
-
           let items = [];
-          if (Array.isArray(pro.target_items) && pro.target_items.length > 0) {
-            items = pro.target_items.map(t => ({
+          const tradeCode = pro.trade_id ? (String(pro.trade_id).startsWith('TRD-') ? pro.trade_id : `TRD-PRO-${String(pro.trade_id).padStart(4, '0')}`) : '';
+          const targetItems = Array.isArray(pro.target_items) ? pro.target_items : (Array.isArray(pro.items) ? pro.items : []);
+          if (targetItems.length > 0) {
+            items = targetItems.map(t => ({
               item_code: t.item_code || '—',
               description: t.description || '—',
+              process_name: t.process_name || pro.process_name || '',
               quantity: parseFloat(t.qty || t.quantity || 0),
               delivered_qty: parseFloat(t.delivered_qty || 0),
               delivery_date: t.delivery_date || pro.delivery_date || pro.date_of_end,
-              vendor: t.vendor || pro.seller || pro.party || '—',
               status: t.status || pro.status || 'RO',
-              unit_price: parseFloat(t.price || t.rate || 0),
-            }));
-          } else if (Array.isArray(pro.source_items) && pro.source_items.length > 0) {
-            items = pro.source_items.map(s => ({
-              item_code: s.item_code || '—',
-              description: s.description || '—',
-              quantity: parseFloat(s.qty || 0),
-              delivered_qty: 0,
-              delivery_date: pro.delivery_date,
-              vendor: pro.seller || pro.party || '—',
-              status: pro.status || 'RO',
-              unit_price: 0,
+              unit_price: parseFloat(t.price || t.rate || pro.basic_value || 0),
+              linked_operations: tradeCode ? [{
+                operation_type: 'TRADE',
+                trade_ref: tradeCode,
+                trade_id: pro.trade_id,
+                trade_type: 'BUY_PROCESS',
+                trade_status: pro.status || 'RO',
+                trade_process_name: t.process_name || pro.process_name || '',
+                trade_delivery_percentage: 0
+              }] : []
             }));
           } else {
             items = [{
               item_code: '—',
-              description: pro.message || 'Process RO',
+              description: pro.message || 'Process Release Order',
+              process_name: pro.process_name || '',
               quantity: 1,
               delivered_qty: 0,
-              delivery_date: pro.delivery_date,
-              vendor: pro.seller || pro.party || '—',
+              delivery_date: pro.delivery_date || pro.date_of_end,
               status: pro.status || 'RO',
               unit_price: parseFloat(pro.basic_value || 0),
+              linked_operations: tradeCode ? [{
+                operation_type: 'TRADE',
+                trade_ref: tradeCode,
+                trade_id: pro.trade_id,
+                trade_type: 'BUY_PROCESS',
+                trade_status: pro.status || 'RO',
+                trade_process_name: pro.process_name || '',
+                trade_delivery_percentage: 0
+              }] : []
             }];
           }
 
@@ -493,126 +631,39 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             number: pro.ro_no,
             date: pro.date_of_start || pro.created_at,
             partyId: pro.party || pro.seller || '—',
+            partyName: pro.seller || pro.party || '',
             items,
             tradeId: pro.trade_id,
-            navigatePath: pro.trade_id ? `/trade/${pro.trade_id}` : `/release-order/${encodeURIComponent(pro.ro_no)}`,
+            navigatePath: tradeCode ? `/trade/${encodeURIComponent(tradeCode)}` : `/release-order/${encodeURIComponent(pro.ro_no)}`,
           });
         });
 
-        // 3. Purchase Orders from /api/purchase-orders
-        purchaseOrders.forEach(po => {
-          if (!po.po_no) return;
-          const tType = (po.trade_type || '').toLowerCase();
-          const isProcess = tType.includes('process') || po.po_no.startsWith('PPO-');
-          const isBuy = tType.includes('buy') || Boolean(po.received_quotation_id);
-
-          if (isProcess) {
-            if (!seenProcessKeys.has(po.po_no)) {
-              seenProcessKeys.add(po.po_no);
-              buyProcessOrders.push({
-                groupKey: po.po_no,
-                type: 'PPO',
-                number: po.po_no,
-                date: po.po_date,
-                partyId: po.party_id || '—',
-                items: po.items || [],
-                tradeId: po.trade_id,
-                navigatePath: po.trade_id ? `/trade/${po.trade_id}` : `/order/${encodeURIComponent(po.po_no)}`,
-              });
-            }
-          } else if (isBuy) {
-            buyOrders.push({
-              groupKey: po.po_no,
-              type: 'BUY PO',
-              number: po.po_no,
-              date: po.po_date,
-              partyId: po.party_id || '—',
-              items: po.items || [],
-              tradeId: po.trade_id,
-              navigatePath: `/order/${encodeURIComponent(po.po_no)}`,
-            });
-          } else {
-            sellOrders.push({
-              groupKey: po.po_no,
-              type: 'PO',
-              number: po.po_no,
-              date: po.po_date,
-              partyId: po.party_id || '—',
-              items: po.items || [],
-              tradeId: po.trade_id,
-              navigatePath: `/order/${encodeURIComponent(po.po_no)}`,
-            });
-          }
-        });
-
-        // 4. Release Orders from /api/release-orders
-        releaseOrders.forEach(ro => {
-          if (!ro.ro_no) return;
-          const tType = (ro.trade_type || '').toLowerCase();
-          const rType = (ro.ro_type || '').toLowerCase();
-          const isProcess = tType.includes('process') || ro.ro_no.startsWith('PRO-');
-          const isBuy = tType.includes('buy') || rType === 'buy';
-
-          if (isProcess) {
-            if (!seenProcessKeys.has(ro.ro_no)) {
-              seenProcessKeys.add(ro.ro_no);
-              buyProcessOrders.push({
-                groupKey: ro.ro_no,
-                type: 'PRO',
-                number: ro.ro_no,
-                date: ro.ro_date,
-                partyId: ro.party_id || ro.customer_code || '—',
-                items: ro.items || [],
-                tradeId: ro.trade_id,
-                navigatePath: ro.trade_id ? `/trade/${ro.trade_id}` : `/release-order/${encodeURIComponent(ro.ro_no)}`,
-              });
-            }
-          } else if (isBuy) {
-            buyOrders.push({
-              groupKey: ro.ro_no,
-              type: 'CONTRACT',
-              number: ro.ro_no,
-              date: ro.ro_date,
-              partyId: ro.party_id || ro.customer_code || '—',
-              items: ro.items || [],
-              tradeId: ro.trade_id,
-              navigatePath: `/release-order/${encodeURIComponent(ro.ro_no)}`,
-            });
-          } else {
-            sellOrders.push({
-              groupKey: ro.ro_no,
-              type: 'RO',
-              number: ro.ro_no,
-              date: ro.ro_date,
-              partyId: ro.party_id || ro.customer_code || '—',
-              items: ro.items || [],
-              tradeId: ro.trade_id,
-              navigatePath: `/release-order/${encodeURIComponent(ro.ro_no)}`,
-            });
-          }
-        });
-
-        // Select active list based on the active tab (sell by default)
-        let activeOrders = [];
-        if (orderTypeTab === 'sell') {
-          activeOrders = sellOrders;
-        } else if (orderTypeTab === 'buy') {
-          activeOrders = buyOrders;
-        } else if (orderTypeTab === 'buy_process') {
-          activeOrders = buyProcessOrders;
+        // Filter by order type: ALL, PO, RO, BUY_PROCESS
+        let filteredOrders = sellOrders;
+        if (orderFilter === 'PO') {
+          filteredOrders = sellOrders.filter(ord => ord.type === 'PO');
+        } else if (orderFilter === 'RO') {
+          filteredOrders = sellOrders.filter(ord => ord.type === 'RO');
+        } else if (orderFilter === 'BUY_PROCESS') {
+          filteredOrders = buyProcessOrders;
         }
 
-        activeOrders.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        filteredOrders.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-        let displayedOrders = activeOrders;
+        let displayedOrders = filteredOrders;
         if (orderSearchQuery.trim()) {
           const q = orderSearchQuery.toLowerCase();
-          displayedOrders = activeOrders.filter(ord =>
+          displayedOrders = filteredOrders.filter(ord =>
             ord.number.toLowerCase().includes(q) ||
             ord.partyId.toLowerCase().includes(q) ||
+            (ord.partyName||'').toLowerCase().includes(q) ||
             (ord.items||[]).some(i =>
               (i.item_code||'').toLowerCase().includes(q) ||
-              (i.description||'').toLowerCase().includes(q)
+              (i.description||'').toLowerCase().includes(q) ||
+              (i.linked_operations||[]).some(lo =>
+                (lo.trade_ref||'').toLowerCase().includes(q) ||
+                (lo.job_ref||'').toLowerCase().includes(q)
+              )
             )
           );
         }
@@ -630,6 +681,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
               _number:      ord.number,
               _date:        ord.date,
               _partyId:     ord.partyId,
+              _partyName:   ord.partyName,
               _isFirst:     idx === 0,
               _groupSize:   (ord.items||[]).length,
               _navigatePath: ord.navigatePath,
@@ -639,17 +691,17 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
         const isLoadingAll = posLoading || rosLoading || pposLoading || prosLoading;
 
-        const TH = ({ children, align = 'left', style = {} }) => (
+        const TH = ({ children, align = 'left', className = '', style = {} }) => (
           <th
-            className="px-2 py-2 text-[9px] font-black uppercase tracking-widest whitespace-nowrap border-r last:border-r-0 select-none"
+            className={`px-2 py-1.5 text-[9.5px] font-black uppercase tracking-wider whitespace-nowrap border-b-2 border-r select-none ${className}`}
             style={{
               textAlign: align,
-              backgroundColor: 'var(--theme-primary)',
-              color: 'var(--text-sidebar, #fff)',
-              borderColor: 'rgba(255,255,255,0.12)',
+              backgroundColor: 'color-mix(in srgb, var(--text-primary, #0f172a) 8%, var(--bg-form, #ffffff))',
+              color: 'var(--text-primary, #0f172a)',
+              borderColor: 'var(--border-color, #cbd5e1)',
               position: 'sticky',
               top: 0,
-              zIndex: 2,
+              zIndex: 10,
               ...style
             }}
           >
@@ -669,13 +721,15 @@ export default function Dashboard({ activeTab: propActiveTab }) {
         const StatusBadge = ({ status }) => {
           const v = (status||'').toLowerCase();
           let s = { color:'var(--theme-secondary)', background:'rgba(217,53,45,0.06)', border:'1px solid var(--theme-secondary)' };
-          if (v==='delivered'||v==='received'||v==='completed') s={color:'#15803d',background:'#f0fdf4',border:'1px solid #86efac'};
+          if (v.startsWith('delivered')||v==='received'||v==='completed') s={color:'#15803d',background:'#f0fdf4',border:'1px solid #86efac'};
+          else if (v.includes('delivery')||v.includes('partial')) s={color:'#b45309',background:'#fef3c7',border:'1px solid #fcd34d'};
           else if (v==='shipped'||v==='in transit') s={color:'#1d4ed8',background:'#eff6ff',border:'1px solid #93c5fd'};
+          else if (v.includes('progress')) s={color:'#4338ca',background:'#eef2ff',border:'1px solid #a5b4fc'};
           else if (v==='ordered') s={color:'#6d28d9',background:'#f5f3ff',border:'1px solid #c4b5fd'};
           else if (v==='cancelled') s={color:'#9f1239',background:'#fff1f2',border:'1px solid #fca5a5'};
           else if (v.includes('await')||v==='pending') s={color:'#92400e',background:'#fffbeb',border:'1px solid #fcd34d'};
           return (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide whitespace-nowrap" style={s}>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wide whitespace-nowrap" style={s}>
               {status || '—'}
             </span>
           );
@@ -683,27 +737,26 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
         return (
           <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--bg-app)' }}>
-            {/* Top Bar with 3 Category Buttons: Sell, Buy, Buy Process (Sell is default) */}
+            {/* Top Bar with Filter Tabs: All, PO, RO */}
             <div
               className="px-4 py-2.5 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0"
               style={{ backgroundColor: 'var(--bg-form,white)', borderColor: 'var(--border-color)' }}
             >
-              {/* 3 Buttons on top */}
+              {/* Filter Tabs for Customer Orders */}
               <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setOrderTypeTab('sell')}
+                  onClick={() => setOrderFilter('ALL')}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    orderTypeTab === 'sell'
-                      ? 'bg-emerald-600 text-white shadow-sm'
+                    orderFilter === 'ALL'
+                      ? 'bg-slate-800 text-white shadow-sm'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
-                  <TrendingUp size={14} />
-                  <span>Sell</span>
+                  <span>All</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                      orderTypeTab === 'sell' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
+                      orderFilter === 'ALL' ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'
                     }`}
                   >
                     {sellOrders.length}
@@ -712,29 +765,49 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
                 <button
                   type="button"
-                  onClick={() => setOrderTypeTab('buy')}
+                  onClick={() => setOrderFilter('PO')}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    orderTypeTab === 'buy'
-                      ? 'bg-blue-600 text-white shadow-sm'
+                    orderFilter === 'PO'
+                      ? 'bg-emerald-600 text-white shadow-sm'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
-                  <ShoppingCart size={14} />
-                  <span>Buy</span>
+                  <TrendingUp size={14} />
+                  <span>Purchase Orders (PO)</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                      orderTypeTab === 'buy' ? 'bg-blue-700 text-white' : 'bg-slate-200 text-slate-700'
+                      orderFilter === 'PO' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
                     }`}
                   >
-                    {buyOrders.length}
+                    {sellOrders.filter(o => o.type === 'PO').length}
                   </span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setOrderTypeTab('buy_process')}
+                  onClick={() => setOrderFilter('RO')}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    orderTypeTab === 'buy_process'
+                    orderFilter === 'RO'
+                      ? 'bg-teal-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <FileOutput size={14} />
+                  <span>Release Orders (RO)</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                      orderFilter === 'RO' ? 'bg-teal-700 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {sellOrders.filter(o => o.type === 'RO').length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter('BUY_PROCESS')}
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    orderFilter === 'BUY_PROCESS'
                       ? 'bg-amber-600 text-white shadow-sm'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
@@ -743,7 +816,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                   <span>Buy Process</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                      orderTypeTab === 'buy_process' ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
+                      orderFilter === 'BUY_PROCESS' ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
                     }`}
                   >
                     {buyProcessOrders.length}
@@ -762,7 +835,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                   <Search size={13} style={{ color: 'var(--theme-secondary)', flexShrink: 0 }} />
                   <input
                     type="text"
-                    placeholder={`Search ${orderTypeTab === 'sell' ? 'Sell' : orderTypeTab === 'buy' ? 'Buy' : 'Buy Process'} orders…`}
+                    placeholder="Search Sell orders (PO, RO, Party, Item)…"
                     value={orderSearchQuery}
                     onChange={(e) => setOrderSearchQuery(e.target.value)}
                     className="w-full bg-transparent focus:outline-none text-[11px] font-semibold placeholder:font-normal"
@@ -797,7 +870,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                   <p className="text-[11px] font-bold" style={{ color: 'var(--text-primary)', opacity: 0.35 }}>
                     {orderSearchQuery
                       ? 'No results match your search.'
-                      : `No ${orderTypeTab === 'sell' ? 'Sell' : orderTypeTab === 'buy' ? 'Buy' : 'Buy Process'} orders found.`}
+                      : 'No orders found.'}
                   </p>
                 </div>
               ) : (
@@ -845,25 +918,24 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
     <div className="overflow-x-auto w-full">
       <table
         className="w-full border-collapse"
-        style={{ minWidth: '1020px', tableLayout: 'fixed' }}
+        style={{ minWidth: '1000px', tableLayout: 'fixed' }}
       >
         <colgroup>
-          <col style={{ width: '30px' }} />    {/* S.N */}
-          <col style={{ width: '130px' }} />   {/* Order No */}
-          <col style={{ width: '72px' }} />    {/* Date */}
-          <col style={{ width: '76px' }} />    {/* Party */}
-          <col style={{ width: '100px' }} />   {/* Item Code */}
-          <col style={{ width: '200px' }} />   {/* Description */}
-          <col style={{ width: '80px' }} />    {/* Pending/Total */}
-          <col style={{ width: '72px' }} />    {/* Del. Date */}
-          <col style={{ width: '100px' }} />   {/* Vendor */}
-          <col style={{ width: '110px' }} />   {/* Status */}
-          <col style={{ width: '90px' }} />    {/* Rate */}
-          <col style={{ width: '70px' }} />    {/* Given Rate */}
+          <col style={{ width: '28px' }} />    {/* # */}
+          <col style={{ width: '105px' }} />   {/* Order No */}
+          <col style={{ width: '68px' }} />    {/* Date */}
+          <col style={{ width: '105px' }} />   {/* Party */}
+          <col style={{ width: '85px' }} />    {/* Item Code */}
+          <col style={{ width: '140px' }} />   {/* Description */}
+          <col style={{ width: '80px' }} />    {/* Pending / Total */}
+          <col style={{ width: '70px' }} />    {/* Delivery Date */}
+          <col style={{ width: '185px' }} />   {/* Linked Operator */}
+          <col style={{ width: '95px' }} />    {/* Status */}
+          <col style={{ width: '75px' }} />    {/* Rate */}
         </colgroup>
 
-        <thead>
-          <tr>
+        <thead className="border-b-2" style={{ borderColor: 'var(--border-color, #cbd5e1)' }}>
+          <tr style={{ backgroundColor: 'color-mix(in srgb, var(--text-primary, #0f172a) 8%, var(--bg-form, #ffffff))' }}>
             <TH align="center">#</TH>
             <TH>Order No</TH>
             <TH>Date</TH>
@@ -871,11 +943,10 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
             <TH>Item Code</TH>
             <TH>Description</TH>
             <TH align="right">Pending&nbsp;/&nbsp;Total</TH>
-            <TH>Del. Date</TH>
-            <TH>Vendor</TH>
-            <TH>Status</TH>
+            <TH>Delivery Date</TH>
+            <TH>Linked Operator</TH>
+            <TH align="center">Status</TH>
             <TH align="right">Rate</TH>
-            <TH align="right">Given Rate</TH>
           </tr>
         </thead>
 
@@ -883,6 +954,24 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
           {flatRows.map((row, idx) => {
             const isHovered   = hoveredGroup === row._groupKey;
             const pendingQty  = Math.max(0, (parseFloat(row.quantity)||0) - (parseFloat(row.delivered_qty)||0));
+            const rawStatus   = (row.status || '').trim();
+            const qty         = parseFloat(row.quantity) || 0;
+            const delQty      = parseFloat(row.delivered_qty) || 0;
+            const delPct      = qty > 0 ? Math.min(100, Math.round((delQty / qty) * 100)) : 0;
+
+            let sellStatus = rawStatus || 'Ordered';
+            if (rawStatus.toLowerCase() === 'cancelled') {
+              sellStatus = 'Cancelled';
+            } else if (delPct >= 100) {
+              sellStatus = 'Delivered 100%';
+            } else if (delPct > 0) {
+              sellStatus = `Delivery ${delPct}%`;
+            } else if (rawStatus.toLowerCase() === 'delivered') {
+              sellStatus = 'Delivered 100%';
+            } else if (!rawStatus) {
+              sellStatus = 'Ordered';
+            }
+
             const isEvenGroup = (() => {
               let g = 0, lastKey = null;
               for (let i = 0; i < flatRows.length; i++) {
@@ -935,14 +1024,8 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                             ? { color: '#0d9488', background: '#f0fdfa', border: '1px solid #99f6e4' }
                             : row._type === 'PO'
                             ? { color: '#059669', background: '#ecfdf5', border: '1px solid #a7f3d0' }
-                            : row._type === 'BUY PO' || row._type === 'BUY'
-                            ? { color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe' }
-                            : row._type === 'CONTRACT' || row._type === 'BUY RO'
-                            ? { color: '#4f46e5', background: '#eef2ff', border: '1px solid #c7d2fe' }
-                            : row._type === 'PPO'
-                            ? { color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a' }
-                            : row._type === 'PRO'
-                            ? { color: '#ea580c', background: '#fff7ed', border: '1px solid #ffedd5' }
+                            : row._type === 'PRO' || row._type === 'PPO'
+                            ? { color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a' }
                             : { color: 'var(--theme-secondary)', background: 'rgba(217,53,45,0.08)', border: '1px solid var(--theme-secondary)' }
                         }
                       >
@@ -964,10 +1047,22 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
 
                 <TD>
                   {row._isFirst ? (
-                    <span className="font-mono font-bold text-[10px] whitespace-nowrap overflow-hidden block" title={row._partyId}
-                      style={{ color: 'var(--text-primary)' }}>
-                      {row._partyId}
-                    </span>
+                    <div className="flex flex-col min-w-0" title={row._partyName ? `${row._partyName} (${row._partyId})` : row._partyId}>
+                      {row._partyName && row._partyName !== row._partyId && row._partyName !== '—' ? (
+                        <>
+                          <span className="font-bold text-[11px] leading-tight truncate block" style={{ color: 'var(--text-primary)' }}>
+                            {row._partyName}
+                          </span>
+                          <span className="font-mono text-[9px] text-slate-500 font-semibold truncate block">
+                            {row._partyId}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-mono font-bold text-[10px] whitespace-nowrap overflow-hidden block" style={{ color: 'var(--text-primary)' }}>
+                          {row._partyId}
+                        </span>
+                      )}
+                    </div>
                   ) : null}
                 </TD>
 
@@ -985,13 +1080,23 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                 </TD>
 
                 <TD>
-                  <span
-                    className="font-semibold text-[11px] leading-tight block truncate"
-                    style={{ color: 'var(--text-primary)' }}
-                    title={row.description || '—'}
-                  >
-                    {row.description || <span style={{ opacity: 0.25 }}>—</span>}
-                  </span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span
+                      className="font-semibold text-[11px] leading-tight block truncate flex-1"
+                      style={{ color: 'var(--text-primary)' }}
+                      title={row.description || '—'}
+                    >
+                      {row.description || <span style={{ opacity: 0.25 }}>—</span>}
+                    </span>
+                    {row.process_name && (
+                      <span
+                        className="text-[8px] font-bold text-amber-900 bg-amber-100/80 border border-amber-300 px-1 py-0.2 rounded shrink-0 whitespace-nowrap"
+                        title={`Process: ${row.process_name}`}
+                      >
+                        ⚙ {row.process_name}
+                      </span>
+                    )}
+                  </div>
                 </TD>
 
                 <TD align="right">
@@ -1009,16 +1114,99 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   </span>
                 </TD>
 
+                {/* Linked Operator (Trade Type, Trade ID, Status, Delivery %) */}
                 <TD>
-                  <span className="text-[11px] font-semibold" style={{ color: row.vendor ? 'var(--text-primary)' : 'var(--text-primary)', opacity: row.vendor ? 1 : 0.2 }}>
-                    {row.vendor || '—'}
-                  </span>
+                  {row.linked_operations && row.linked_operations.length > 0 ? (
+                    <div className="flex flex-col gap-1.5 py-1">
+                      {row.linked_operations.map((op, opIdx) => {
+                        const isTrade = op.operation_type === 'TRADE';
+                        const rawType = (op.trade_type || (isTrade ? 'Trade' : 'Manufacture')).toUpperCase();
+                        const isBuyProcess = rawType.includes('PROCESS');
+                        const tradeType = isBuyProcess ? 'Buy Process' : rawType.replace(/_/g, ' ');
+                        const opId = isTrade ? (op.trade_ref || `Trade #${op.trade_id}`) : (op.job_ref || `Job #${op.job_id}`);
+                        const procName = op.trade_process_name || (!isTrade ? op.job_ref : '');
+
+                        let typeBadgeClass = 'bg-amber-100/70 text-amber-900 border-amber-200';
+                        if (isBuyProcess) {
+                          typeBadgeClass = 'bg-amber-100 text-amber-900 border-amber-300';
+                        } else if (!isTrade) {
+                          typeBadgeClass = 'bg-indigo-100/70 text-indigo-900 border-indigo-200';
+                        }
+
+                        let statText = 'Pending';
+                        let statBadgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+
+                        if (isTrade) {
+                          const pct = parseFloat(op.trade_delivery_percentage) || 0;
+                          const rawStat = (op.trade_status || 'ordered').toLowerCase();
+                          if (pct >= 100 || rawStat === 'delivered' || rawStat === 'completed') {
+                            statText = 'Delivered 100%';
+                            statBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-300';
+                          } else if (pct > 0 || rawStat.includes('partial')) {
+                            statText = `Delivery ${pct}%`;
+                            statBadgeColor = 'bg-amber-50 text-amber-800 border-amber-300';
+                          } else {
+                            statText = op.trade_status || 'Ordered';
+                            statBadgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
+                          }
+                        } else {
+                          const rawStat = (op.job_status || 'pending').toLowerCase();
+                          const formattedStat = (op.job_status || 'Pending').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                          statText = formattedStat;
+                          if (rawStat === 'completed' || rawStat === 'done') {
+                            statBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-300';
+                          } else if (rawStat.includes('progress')) {
+                            statBadgeColor = 'bg-indigo-50 text-indigo-700 border-indigo-300';
+                          } else {
+                            statBadgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+                          }
+                        }
+
+                        return (
+                          <div
+                            key={`dash-link-${op.id || opIdx}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isTrade) {
+                                const tradeCode = op.trade_ref || op.trade_id;
+                                if (tradeCode) navigate(`/trade/${encodeURIComponent(tradeCode)}`);
+                              } else {
+                                const jobQuery = op.job_ref || (op.job_id ? String(op.job_id) : '');
+                                navigate(`/manufactures?q=${encodeURIComponent(jobQuery)}`);
+                              }
+                            }}
+                            title={isTrade ? `Click to open Trade ${opId}${procName ? ` (${procName})` : ''}` : `Click to open Manufacture ${opId}`}
+                            className="flex items-center gap-1.5 p-1 rounded-md bg-white border border-slate-200 shadow-2xs hover:border-[var(--theme-color)] hover:bg-slate-50 transition-all cursor-pointer group/link"
+                          >
+                            <span className={`text-[7.5px] font-black uppercase px-1 py-0.2 rounded tracking-wider shrink-0 border ${typeBadgeClass}`}>
+                              {tradeType}
+                            </span>
+                            <span className="font-mono font-bold text-[9.5px] text-slate-800 truncate group-hover/link:text-[var(--theme-color)] group-hover/link:underline" title={opId}>
+                              {opId}
+                            </span>
+                            {procName && procName !== opId && (
+                              <span className="text-[7.5px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1 py-0.2 rounded truncate max-w-[75px] shrink-0" title={`Process: ${procName}`}>
+                                ⚙ {procName}
+                              </span>
+                            )}
+                            <span className={`ml-auto text-[8.5px] font-bold px-1.5 py-0.2 rounded-full border whitespace-nowrap shrink-0 ${statBadgeColor}`}>
+                              {statText}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 italic">No linked operator</span>
+                  )}
                 </TD>
 
-                <TD>
-                  {row.status ? <StatusBadge status={row.status} /> : <span style={{ opacity: 0.2, fontSize: '10px' }}>—</span>}
+                {/* Status (Sell Order Status / Delivery %) */}
+                <TD align="center">
+                  <StatusBadge status={sellStatus} />
                 </TD>
 
+                {/* Rate */}
                 <TD align="right">
                   {hasPermission(currentUser, 'view_pricing') ? (
                     <span className="font-mono font-bold text-[11px]" style={{ color: 'var(--text-primary)' }}>
@@ -1027,10 +1215,6 @@ function OrderTable({ flatRows, fmtDate, fmtAmt, fmtQty, currentUser, navigate, 
                   ) : (
                     <span style={{ opacity: 0.25, fontSize: '10px' }}>***</span>
                   )}
-                </TD>
-
-                <TD align="right">
-                  <span style={{ opacity: 0.2, fontSize: '10px' }}>—</span>
                 </TD>
               </tr>
             );

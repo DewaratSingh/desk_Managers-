@@ -4,7 +4,7 @@ const { pool } = require('../db');
 const { requirePermission, sanitizePrices } = require('../middleware/auth');
 
 // GET inventory items (joined from trace and inventory)
-router.get('/', requirePermission('manage_inventory'), async (req, res) => {
+router.get('/', requirePermission(['inventory:read', 'manage_inventory']), async (req, res) => {
   const { q } = req.query || {};
   const limit = req.query.limit ? parseInt(req.query.limit) : null;
   const offset = req.query.offset ? parseInt(req.query.offset) : 0;
@@ -206,7 +206,7 @@ router.get('/item/:item_code/availability', async (req, res) => {
 });
 
 // POST Create inventory entry
-router.post('/', async (req, res) => {
+router.post('/', requirePermission(['inventory:create', 'manage_inventory']), async (req, res) => {
   const {
     item_code,
     qty,
@@ -282,7 +282,7 @@ router.post('/', async (req, res) => {
 });
 
 // GET single trace entry with full joined info and history
-router.get('/trace/:id', async (req, res) => {
+router.get('/trace/:id', requirePermission(['inventory:trace_history', 'manage_inventory']), async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
@@ -309,7 +309,7 @@ router.get('/trace/:id', async (req, res) => {
 });
 
 // PUT Update inventory (updates trace row, might move to new inventory bin)
-router.put('/:id', async (req, res) => {
+router.put('/:id', requirePermission(['inventory:update', 'manage_inventory']), async (req, res) => {
   const { id } = req.params; // Trace ID
   const {
     item_code,
@@ -393,7 +393,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE trace entry
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePermission(['inventory:delete', 'manage_inventory']), async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query('DELETE FROM trace WHERE id = $1 AND company_id = $2 RETURNING id', [id, req.user.company_id]);

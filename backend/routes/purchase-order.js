@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool, appendDocToTrade } = require('../db');
+const { requirePermission, sanitizePrices } = require('../middleware/auth');
 
 // Update a single PO item's status and vendor (inline edit)
 router.put('/:po_no/items/:item_code', async (req, res) => {
@@ -53,7 +54,37 @@ router.put('/:po_no/items/:item_code', async (req, res) => {
                   SELECT id FROM delivery_notes WHERE po_id = poi.po_id AND company_id = poi.company_id
                 )
                 AND (SELECT item_code FROM items WHERE id = poi.item_id) = elem->>'item_code' AND g.company_id = poi.company_id
-              ), 0) as delivered_qty
+              ), 0) as delivered_qty,
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                  'id', lo.id,
+                  'operation_type', lo.operation_type,
+                  'trade_id', lo.trade_id,
+                  'trade_ref', COALESCE(t.trade_id, lo.trade_ref),
+                  'trade_status', t.status,
+                  'trade_type', t.trade_type,
+                  'trade_delivery_percentage', COALESCE(t.delivery_percentage, 0),
+                  'trade_process_name', COALESCE(
+                    (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                    (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                    (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
+                  ),
+                  'job_id', lo.job_id,
+                  'job_ref', COALESCE(j.process_name, lo.job_ref),
+                  'job_status', COALESCE(m.status, 'pending'),
+                  'job_delivery_pct', (
+                    CASE
+                      WHEN LOWER(COALESCE(m.status, '')) = 'completed' THEN 100
+                      ELSE 0
+                    END
+                  )
+                ) ORDER BY lo.id)
+                FROM link_operations lo
+                LEFT JOIN trades t ON (lo.trade_id = t.id OR lo.trade_ref = t.trade_id) AND t.company_id = poi.company_id
+                LEFT JOIN job j ON lo.job_id = j.id AND j.company_id = poi.company_id
+                LEFT JOIN manufacture m ON m.job_id = j.id AND m.company_id = poi.company_id
+                WHERE lo.po_item_id = poi.id AND lo.company_id = poi.company_id
+              ), '[]'::json) as linked_operations
        FROM purchase_order_items poi
        LEFT JOIN items i ON poi.item_id = i.id
        WHERE poi.po_id = $1 AND poi.company_id = $2
@@ -68,7 +99,7 @@ router.put('/:po_no/items/:item_code', async (req, res) => {
 });
 
 // List all POs
-router.get('/', async (req, res) => {
+router.get('/', requirePermission(['orders:read', 'sell_po:read', 'manage_orders']), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -82,8 +113,15 @@ router.get('/', async (req, res) => {
           (SELECT c.customer_code FROM received_quotations rq JOIN customers c ON rq.customer_id = c.id WHERE rq.trade_id = po.trade_id AND rq.company_id = po.company_id LIMIT 1),
           '—'
         ) AS party_id,
+        COALESCE(
+          (SELECT c.name FROM rfqs r JOIN customers c ON r.customer_id = c.id WHERE r.trade_id = po.trade_id AND r.company_id = po.company_id LIMIT 1),
+          (SELECT c.name FROM received_quotations rq JOIN customers c ON rq.customer_id = c.id WHERE rq.trade_id = po.trade_id AND rq.company_id = po.company_id LIMIT 1),
+          ''
+        ) AS party_name,
         (
           SELECT COALESCE(json_agg(json_build_object(
+            'id', poi.id,
+            'item_id', poi.item_id,
             'item_code', i.item_code,
             'description', i.description,
             'quantity', poi.quantity,
@@ -107,7 +145,37 @@ router.get('/', async (req, res) => {
                 SELECT id FROM delivery_notes WHERE po_id = po.id AND company_id = po.company_id
               )
               AND i.item_code = elem->>'item_code' AND g.company_id = po.company_id
-            ), 0)
+            ), 0),
+            'linked_operations', COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', lo.id,
+                'operation_type', lo.operation_type,
+                'trade_id', lo.trade_id,
+                'trade_ref', COALESCE(t.trade_id, lo.trade_ref),
+                'trade_status', t.status,
+                'trade_type', t.trade_type,
+                'trade_delivery_percentage', COALESCE(t.delivery_percentage, 0),
+                'trade_process_name', COALESCE(
+                  (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
+                ),
+                'job_id', lo.job_id,
+                'job_ref', COALESCE(j.process_name, lo.job_ref),
+                'job_status', COALESCE(m.status, 'pending'),
+                'job_delivery_pct', (
+                  CASE
+                    WHEN LOWER(COALESCE(m.status, '')) = 'completed' THEN 100
+                    ELSE 0
+                  END
+                )
+              ) ORDER BY lo.id)
+              FROM link_operations lo
+              LEFT JOIN trades t ON (lo.trade_id = t.id OR lo.trade_ref = t.trade_id) AND t.company_id = poi.company_id
+              LEFT JOIN job j ON lo.job_id = j.id AND j.company_id = poi.company_id
+              LEFT JOIN manufacture m ON m.job_id = j.id AND m.company_id = poi.company_id
+              WHERE lo.po_item_id = poi.id AND lo.company_id = poi.company_id
+            ), '[]'::json)
           )), '[]')
           FROM purchase_order_items poi
           JOIN items i ON poi.item_id = i.id
@@ -120,7 +188,7 @@ router.get('/', async (req, res) => {
       WHERE po.company_id = $1
       ORDER BY po.created_at DESC
     `, [req.user.company_id]);
-    res.json(result.rows);
+    res.json(sanitizePrices(result.rows, req.user));
   } catch (err) {
     console.error('Error listing POs:', err.message);
     res.status(500).json({ error: 'Failed to list purchase orders' });
@@ -151,6 +219,8 @@ router.get('/:po_no', async (req, res) => {
         po.delivery_date, t.trade_id,
         (
           SELECT COALESCE(json_agg(json_build_object(
+            'id', poi.id,
+            'item_id', poi.item_id,
             'item_code', i.item_code,
             'quantity', poi.quantity,
             'unit_price', poi.unit_price,
@@ -176,7 +246,37 @@ router.get('/:po_no', async (req, res) => {
                 SELECT id FROM delivery_notes WHERE po_id = po.id AND company_id = po.company_id
               )
               AND i.item_code = elem->>'item_code' AND g.company_id = po.company_id
-            ), 0)
+            ), 0),
+            'linked_operations', COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', lo.id,
+                'operation_type', lo.operation_type,
+                'trade_id', lo.trade_id,
+                'trade_ref', COALESCE(t.trade_id, lo.trade_ref),
+                'trade_status', t.status,
+                'trade_type', t.trade_type,
+                'trade_delivery_percentage', COALESCE(t.delivery_percentage, 0),
+                'trade_process_name', COALESCE(
+                  (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
+                ),
+                'job_id', lo.job_id,
+                'job_ref', COALESCE(j.process_name, lo.job_ref),
+                'job_status', COALESCE(m.status, 'pending'),
+                'job_delivery_pct', (
+                  CASE
+                    WHEN LOWER(COALESCE(m.status, '')) = 'completed' THEN 100
+                    ELSE 0
+                  END
+                )
+              ) ORDER BY lo.id)
+              FROM link_operations lo
+              LEFT JOIN trades t ON (lo.trade_id = t.id OR lo.trade_ref = t.trade_id) AND t.company_id = poi.company_id
+              LEFT JOIN job j ON lo.job_id = j.id AND j.company_id = poi.company_id
+              LEFT JOIN manufacture m ON m.job_id = j.id AND m.company_id = poi.company_id
+              WHERE lo.po_item_id = poi.id AND lo.company_id = poi.company_id
+            ), '[]'::json)
           ) ORDER BY poi.id), '[]')
           FROM purchase_order_items poi
           LEFT JOIN items i ON poi.item_id = i.id
@@ -200,7 +300,7 @@ router.get('/:po_no', async (req, res) => {
 });
 
 // Create a PO
-router.post('/', async (req, res) => {
+router.post('/', requirePermission(['orders:create', 'sell_po:create', 'manage_orders']), async (req, res) => {
   const {
     po_no, quotation_no, po_date,
     transport, other, basic_value, packing_forward,

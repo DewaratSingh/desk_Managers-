@@ -1,0 +1,8 @@
+# DeskManager Network Scanner & Chrome Opener
+#
+# Runtime Dependencies:
+# Pure Python 3.8+ Standard Library (socket, subprocess, threading, urllib, webbrowser, tkinter)
+# No external pip dependencies are required to run this application!
+#
+# Optional Build Dependencies (for building standalone Windows .exe):
+pyinstaller>=6.0.0

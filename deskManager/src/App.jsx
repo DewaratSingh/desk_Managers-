@@ -1,4 +1,4 @@
-import { NavLink, Routes, Route } from 'react-router-dom'
+import { NavLink, Routes, Route, Navigate } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import HomeView from './pages/Home'
@@ -42,7 +42,8 @@ import SellStockForm from './form/Sell/SellStockForm'
 import InvoiceForm from './form/InvoiceForm'
 import PurchaseOrderView from './pages/PurchaseOrderView'
 import ReleaseOrderView from './pages/ReleaseOrderView'
-import ProtectedRoute from './components/ProtectedRoute'
+import ProtectedRoute, { isTokenValid } from './components/ProtectedRoute'
+import PublicRoute from './components/PublicRoute'
 import TraceHistory from './pages/TraceHistory'
 import DeliveryHistory from './pages/DeliveryHistory'
 import Layout from './layout/Layout'
@@ -59,19 +60,53 @@ import Monitor from './pages/Monitor'
 import Settings from './pages/Settings'
 import UnderConstruction from './pages/UnderConstruction'
 
+function NotFoundRoute() {
+  const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+  const userStr = sessionStorage.getItem('user');
+
+  if (!token || !userStr || !isTokenValid(token)) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <main className="min-h-[calc(100vh-72px)] p-6 text-slate-100">
+      <div className="mx-auto max-w-4xl rounded-3xl border border-slate-700 bg-slate-900/80 p-8 shadow-xl shadow-slate-950/20">
+        <h1 className="text-4xl font-semibold text-white">Page not found</h1>
+        <p className="mt-4 text-slate-300">
+          The page you are looking for does not exist. Use the navigation above to return to a valid route.
+        </p>
+      </div>
+    </main>
+  );
+}
+
 function App() {
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] transition-colors duration-300">
       
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<LoginView />} />
-        <Route path="/login" element={<LoginView />} />
-        <Route path="/signup" element={<SignupView />} />
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <LoginView />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            <PublicRoute>
+              <SignupView />
+            </PublicRoute>
+          }
+        />
         
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/addPurchaseOrder" element={<CreatePurchaseOrderForm />} />
             <Route path="/updatePurchaseOrder/:id" element={<UpdatePurchaseOrderForm />} />
@@ -140,16 +175,7 @@ function App() {
 
         <Route
           path="*"
-          element={
-            <main className="min-h-[calc(100vh-72px)] p-6 text-slate-100">
-              <div className="mx-auto max-w-4xl rounded-3xl border border-slate-700 bg-slate-900/80 p-8 shadow-xl shadow-slate-950/20">
-                <h1 className="text-4xl font-semibold text-white">Page not found</h1>
-                <p className="mt-4 text-slate-300">
-                  The page you are looking for does not exist. Use the navigation above to return to a valid route.
-                </p>
-              </div>
-            </main>
-          }
+          element={<NotFoundRoute />}
         />
       </Routes>
       <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover theme="colored" />

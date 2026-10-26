@@ -18,6 +18,8 @@ router.get('/', async (req, res) => {
         ro.ro_type,
         (
           SELECT COALESCE(json_agg(json_build_object(
+            'id', roi.id,
+            'item_id', roi.item_id,
             'item_code', COALESCE(roi.item_code, i.item_code),
             'description', COALESCE(roi.description, i.description),
             'drawing_number', COALESCE(roi.drawing_number, i.drawing_number),
@@ -44,7 +46,37 @@ router.get('/', async (req, res) => {
                 SELECT id FROM delivery_notes WHERE ro_id = ro.id AND company_id = ro.company_id
               )
               AND COALESCE(roi.item_code, i.item_code) = elem->>'item_code' AND g.company_id = ro.company_id
-            ), 0)
+            ), 0),
+            'linked_operations', COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', lo.id,
+                'operation_type', lo.operation_type,
+                'trade_id', lo.trade_id,
+                'trade_ref', COALESCE(t.trade_id, lo.trade_ref),
+                'trade_status', t.status,
+                'trade_type', t.trade_type,
+                'trade_delivery_percentage', COALESCE(t.delivery_percentage, 0),
+                'trade_process_name', COALESCE(
+                  (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
+                ),
+                'job_id', lo.job_id,
+                'job_ref', COALESCE(j.process_name, lo.job_ref),
+                'job_status', COALESCE(m.status, 'pending'),
+                'job_delivery_pct', (
+                  CASE
+                    WHEN LOWER(COALESCE(m.status, '')) = 'completed' THEN 100
+                    ELSE 0
+                  END
+                )
+              ) ORDER BY lo.id)
+              FROM link_operations lo
+              LEFT JOIN trades t ON (lo.trade_id = t.id OR lo.trade_ref = t.trade_id) AND t.company_id = roi.company_id
+              LEFT JOIN job j ON lo.job_id = j.id AND j.company_id = roi.company_id
+              LEFT JOIN manufacture m ON m.job_id = j.id AND m.company_id = roi.company_id
+              WHERE lo.ro_item_id = roi.id AND lo.company_id = roi.company_id
+            ), '[]'::json)
           )), '[]')
           FROM release_order_items roi
           LEFT JOIN items i ON roi.item_id = i.id
@@ -96,6 +128,8 @@ router.get('/*ro_no', async (req, res) => {
         ct.company_name as contract_company_name,
         (
           SELECT COALESCE(json_agg(json_build_object(
+            'id', roi.id,
+            'item_id', roi.item_id,
             'item_code', COALESCE(roi.item_code, i.item_code),
             'quantity', roi.quantity,
             'unit_price', roi.unit_price,
@@ -122,7 +156,37 @@ router.get('/*ro_no', async (req, res) => {
                 SELECT id FROM delivery_notes WHERE ro_id = ro.id AND company_id = ro.company_id
               )
               AND COALESCE(roi.item_code, i.item_code) = elem->>'item_code' AND g.company_id = ro.company_id
-            ), 0)
+            ), 0),
+            'linked_operations', COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', lo.id,
+                'operation_type', lo.operation_type,
+                'trade_id', lo.trade_id,
+                'trade_ref', COALESCE(t.trade_id, lo.trade_ref),
+                'trade_status', t.status,
+                'trade_type', t.trade_type,
+                'trade_delivery_percentage', COALESCE(t.delivery_percentage, 0),
+                'trade_process_name', COALESCE(
+                  (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
+                ),
+                'job_id', lo.job_id,
+                'job_ref', COALESCE(j.process_name, lo.job_ref),
+                'job_status', COALESCE(m.status, 'pending'),
+                'job_delivery_pct', (
+                  CASE
+                    WHEN LOWER(COALESCE(m.status, '')) = 'completed' THEN 100
+                    ELSE 0
+                  END
+                )
+              ) ORDER BY lo.id)
+              FROM link_operations lo
+              LEFT JOIN trades t ON (lo.trade_id = t.id OR lo.trade_ref = t.trade_id) AND t.company_id = roi.company_id
+              LEFT JOIN job j ON lo.job_id = j.id AND j.company_id = roi.company_id
+              LEFT JOIN manufacture m ON m.job_id = j.id AND m.company_id = roi.company_id
+              WHERE lo.ro_item_id = roi.id AND lo.company_id = roi.company_id
+            ), '[]'::json)
           ) ORDER BY roi.id), '[]')
           FROM release_order_items roi
           LEFT JOIN items i ON roi.item_id = i.id
@@ -456,7 +520,37 @@ router.put('/*ro_no/items/:item_code', async (req, res) => {
                   SELECT id FROM delivery_notes WHERE ro_id = roi.ro_id AND company_id = roi.company_id
                 )
                 AND (SELECT item_code FROM items WHERE id = roi.item_id) = elem->>'item_code' AND g.company_id = roi.company_id
-              ), 0) as delivered_qty
+              ), 0) as delivered_qty,
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                  'id', lo.id,
+                  'operation_type', lo.operation_type,
+                  'trade_id', lo.trade_id,
+                  'trade_ref', COALESCE(t.trade_id, lo.trade_ref),
+                  'trade_status', t.status,
+                  'trade_type', t.trade_type,
+                  'trade_delivery_percentage', COALESCE(t.delivery_percentage, 0),
+                  'trade_process_name', COALESCE(
+                    (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                    (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                    (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
+                  ),
+                  'job_id', lo.job_id,
+                  'job_ref', COALESCE(j.process_name, lo.job_ref),
+                  'job_status', COALESCE(m.status, 'pending'),
+                  'job_delivery_pct', (
+                    CASE
+                      WHEN LOWER(COALESCE(m.status, '')) = 'completed' THEN 100
+                      ELSE 0
+                    END
+                  )
+                ) ORDER BY lo.id)
+                FROM link_operations lo
+                LEFT JOIN trades t ON (lo.trade_id = t.id OR lo.trade_ref = t.trade_id) AND t.company_id = roi.company_id
+                LEFT JOIN job j ON lo.job_id = j.id AND j.company_id = roi.company_id
+                LEFT JOIN manufacture m ON m.job_id = j.id AND m.company_id = roi.company_id
+                WHERE lo.ro_item_id = roi.id AND lo.company_id = roi.company_id
+              ), '[]'::json) as linked_operations
        FROM release_order_items roi
        LEFT JOIN items i ON roi.item_id = i.id
        WHERE roi.ro_id = $1 AND roi.company_id = $2

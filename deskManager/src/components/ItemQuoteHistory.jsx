@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { History, X, RefreshCw, Package } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { hasPermission } from '../utils/permissions';
 
 const tradeTypeStyle = (type) => {
   const t = (type || '').toUpperCase();
@@ -27,6 +28,10 @@ const statusStyle = (s) => {
 
 export default function ItemQuoteHistory({ code, excludeRfq, onClose }) {
   const navigate = useNavigate();
+  const userStr = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const canViewQuoteHistory = hasPermission(currentUser, 'items:quote_history');
+
   const [historyData, setHistoryData] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -34,7 +39,7 @@ export default function ItemQuoteHistory({ code, excludeRfq, onClose }) {
   const [inventoryLoading, setInventoryLoading] = useState(false);
 
   useEffect(() => {
-    if (!code) return;
+    if (!code || !canViewQuoteHistory) return;
     
     const fetchHistory = async () => {
       setHistoryLoading(true);
@@ -81,7 +86,7 @@ export default function ItemQuoteHistory({ code, excludeRfq, onClose }) {
     fetchInventory();
   }, [code, excludeRfq]);
 
-  if (!code) return null;
+  if (!code || !canViewQuoteHistory) return null;
 
   return (
     <div className="space-y-4">

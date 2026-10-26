@@ -30,6 +30,8 @@ window.fetch = async function (url, options = {}) {
   // If unauthorized, clear session and force login redirection
   if (response.status === 401 && urlStr.startsWith('/api/') && !urlStr.startsWith('/api/auth/login') && !urlStr.startsWith('/api/auth/signup')) {
     sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    localStorage.removeItem('token');
     window.location.href = '/login';
   }
 

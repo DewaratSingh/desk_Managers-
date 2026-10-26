@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { pool } = require('../db');
+const { requirePermission } = require('../middleware/auth');
 const { runBackup, getBackupDirectory } = require('../backup/backup');
 const {
   testGoogleDriveConnection,
@@ -86,7 +87,7 @@ router.get('/keys', async (req, res) => {
  * POST /api/backup/keys
  * Saves or updates Google Drive credentials in keys table
  */
-router.post('/keys', async (req, res) => {
+router.post('/keys', requirePermission(['backup:manage', 'manage_backup']), async (req, res) => {
   try {
     const companyId = req.user?.company_id || null;
     const {
@@ -177,7 +178,7 @@ router.post('/keys', async (req, res) => {
  * POST /api/backup/alert-threshold
  * Updates the user's selected backup overdue alert interval (e.g. 20s, 60s, 1d, 3d, etc.)
  */
-router.post('/alert-threshold', async (req, res) => {
+router.post('/alert-threshold', requirePermission(['backup:manage', 'manage_backup']), async (req, res) => {
   try {
     const companyId = req.user?.company_id || null;
     const { alert_interval_seconds, alert_interval_days } = req.body;
@@ -224,7 +225,7 @@ router.post('/alert-threshold', async (req, res) => {
  * GET /api/backup/auth-url
  * Returns Google OAuth 2.0 authorization URL for client computer browser
  */
-router.get('/auth-url', async (req, res) => {
+router.get('/auth-url', requirePermission(['backup:manage', 'manage_backup']), async (req, res) => {
   try {
     const companyId = req.user?.company_id || null;
     const record = await getKeyRecord(companyId);
@@ -435,7 +436,7 @@ router.post('/test', async (req, res) => {
  * POST /api/backup/take-backup
  * Takes a PostgreSQL backup on the server machine, and uploads it to Google Drive
  */
-router.post('/take-backup', async (req, res) => {
+router.post('/take-backup', requirePermission(['backup:manage', 'manage_backup']), async (req, res) => {
   try {
     const companyId = req.user?.company_id || null;
     console.log('[Backup API] User triggered manual backup from web UI');
@@ -505,7 +506,7 @@ router.post('/take-backup', async (req, res) => {
  * GET /api/backup/files
  * Returns list of local backup files stored on the server computer
  */
-router.get('/files', async (req, res) => {
+router.get('/files', requirePermission(['backup:manage', 'backup:read', 'manage_backup']), async (req, res) => {
   try {
     const backupDir = getBackupDirectory();
 
@@ -551,7 +552,7 @@ router.get('/files', async (req, res) => {
  * POST /api/backup/upload-local
  * Uploads an existing local server backup to Google Drive
  */
-router.post('/upload-local', async (req, res) => {
+router.post('/upload-local', requirePermission(['backup:manage', 'manage_backup']), async (req, res) => {
   try {
     const companyId = req.user?.company_id || null;
     const { filename } = req.body;

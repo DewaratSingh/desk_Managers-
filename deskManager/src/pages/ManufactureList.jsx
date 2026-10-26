@@ -80,8 +80,16 @@ export default function ManufactureList() {
 
   const [manufactureList, setManufactureList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const qParam = new URLSearchParams(location.search).get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(qParam);
   const [searchFocused, setSearchFocused] = useState(false);
+
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get('q');
+    if (q !== null && q !== undefined) {
+      setSearchQuery(q);
+    }
+  }, [location.search]);
 
   // New Manufacture Job Form State
   const [showCreateModal, setShowCreateModal] = useState(false);

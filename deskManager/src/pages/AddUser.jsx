@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Fragment } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
@@ -25,27 +25,24 @@ import {
 import { toast } from 'react-toastify';
 import {
   PERMISSION_MATRIX_ROWS,
-  PERMISSION_MATRIX_COLS
+  PERMISSION_MATRIX_COLS,
+  SPECIAL_CAPABILITIES,
+  ROLE_PRESETS
 } from '../utils/permissions';
 
 const EMPTY_FORM = {
   username: '',
+  role: 'operator',
   permissions: []
 };
 
-// Additional general system privileges that live outside the 8-row operations matrix
-const ADDITIONAL_SYSTEM_PERMISSIONS = [
-  { value: 'view_dashboard', label: 'View Main Dashboard & Trades', description: 'Access to system overview and trades listing' },
-  { value: 'manage_inventory', label: 'Manage Inventory Stock', description: 'Stock tracking, adjustments, and inventory views' },
-  { value: 'manage_items', label: 'Manage Catalog Items', description: 'Catalog items, specifications, and SKU definitions' },
-  { value: 'manage_parties', label: 'Manage Parties (Customers)', description: 'Customer directories and company parties' },
-  { value: 'manage_contacts', label: 'Manage Contacts (Buyers)', description: 'Buyer records and contact individuals' },
-  { value: 'manage_arc', label: 'Manage ARC Contracts', description: 'Annual rate contracts and agreements' },
-  { value: 'manage_gst', label: 'Manage GST Categories', description: 'Tax categories and GST configuration' },
-  { value: 'view_history', label: 'View Item Quote & Stock History', description: 'Price and quotation audit trail' },
-  { value: 'view_pricing', label: 'View Pricing & Financial Details', description: 'Financial values, rates, and unit pricing' },
-  { value: 'manage_users', label: 'Manage Users & System Settings', description: 'Operator management and tenant preferences' }
-];
+const CATEGORY_GROUPS = {
+  trade: 'Trade & Workflow Forms',
+  inventory: 'Inventory Operations',
+  manufacture: 'Manufacture & Production',
+  masters: 'Master Catalog & Directories',
+  system: 'System, Administration & HR'
+};
 
 // Modern iOS-style toggle switch component
 function ToggleSwitch({ checked, onChange, disabled, label, title }) {
@@ -90,8 +87,121 @@ export default function AddUserView() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
+  // Multi-role selection: array of active role keys, e.g. ['stock_manager', 'data_feeder', 'manufacture_manager']
+  const [selectedRoles, setSelectedRoles] = useState([]);
+
   // Additional privileges collapsible section toggle
-  const [showAdditionalPrivileges, setShowAdditionalPrivileges] = useState(false);
+  const [showAdditionalPrivileges, setShowAdditionalPrivileges] = useState(true);
+
+  // Extract all assigned role keys from permissions or role
+  const detectAssignedRoles = (perms, role) => {
+    const r = (role || '').toLowerCase();
+    const list = Array.isArray(perms) ? perms : [];
+
+    if (r === 'admin' || r === 'owner' || list.includes('*') || list.includes('role:boss')) {
+      return ['boss'];
+    }
+
+    const assigned = [];
+    Object.keys(ROLE_PRESETS).forEach((roleKey) => {
+      if (roleKey === 'boss') return;
+      if (list.includes(`role:${roleKey}`)) {
+        assigned.push(roleKey);
+      } else {
+        const preset = ROLE_PRESETS[roleKey];
+        if (preset && preset.permissions.length > 0 && preset.permissions.every((p) => list.includes(p))) {
+          assigned.push(roleKey);
+        }
+      }
+    });
+
+    return assigned;
+  };
+
+  // Toggle a role ON or OFF (Multi-role composition)
+  const toggleRole = (roleKey) => {
+    let nextRoles = [...selectedRoles];
+    const isCurrentlyActive = nextRoles.includes(roleKey);
+
+    if (roleKey === 'boss') {
+      if (isCurrentlyActive) {
+        setFormData((prev) => ({
+          ...prev,
+          role: 'operator',
+          permissions: []
+        }));
+        setSelectedRoles([]);
+        toast.info('Removed Boss / Admin role');
+        return;
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          role: 'admin',
+          permissions: ['*', 'role:boss']
+        }));
+        setSelectedRoles(['boss']);
+        toast.success('Granted Boss / Administrator (Full Access)');
+        return;
+      }
+    }
+
+    if (nextRoles.includes('boss')) {
+      nextRoles = nextRoles.filter((r) => r !== 'boss');
+    }
+
+    if (isCurrentlyActive) {
+      nextRoles = nextRoles.filter((r) => r !== roleKey);
+    } else {
+      nextRoles.push(roleKey);
+    }
+
+    setSelectedRoles(nextRoles);
+
+    const rolesPermSet = new Set();
+    nextRoles.forEach((r) => {
+      rolesPermSet.add(`role:${r}`);
+      const preset = ROLE_PRESETS[r];
+      if (preset) {
+        preset.permissions.forEach((p) => rolesPermSet.add(p));
+      }
+    });
+
+    const nonRolePerms = formData.permissions.filter(
+      (p) => !p.startsWith('role:') && p !== '*'
+    );
+
+    if (isCurrentlyActive) {
+      const removedPreset = ROLE_PRESETS[roleKey];
+      const otherActivePerms = new Set();
+      nextRoles.forEach((r) => {
+        const pset = ROLE_PRESETS[r];
+        if (pset) pset.permissions.forEach((p) => otherActivePerms.add(p));
+      });
+
+      const updatedManualPerms = nonRolePerms.filter((p) => {
+        if (removedPreset && removedPreset.permissions.includes(p) && !otherActivePerms.has(p)) {
+          return false;
+        }
+        return true;
+      });
+
+      const finalPerms = Array.from(new Set([...rolesPermSet, ...updatedManualPerms]));
+      setFormData((prev) => ({
+        ...prev,
+        role: nextRoles.includes('boss') ? 'admin' : 'operator',
+        permissions: finalPerms
+      }));
+      toast.info(`Removed '${ROLE_PRESETS[roleKey]?.label}' role`);
+    } else {
+      const finalPerms = Array.from(new Set([...rolesPermSet, ...nonRolePerms]));
+      setFormData((prev) => ({
+        ...prev,
+        role: nextRoles.includes('boss') ? 'admin' : 'operator',
+        permissions: finalPerms
+      }));
+      toast.success(`Added '${ROLE_PRESETS[roleKey]?.label}' role`);
+    }
+  };
 
   // Real-time user database availability state for Add mode
   const [availabilityState, setAvailabilityState] = useState({
@@ -124,13 +234,17 @@ export default function AddUserView() {
       setViewMode('form');
       if (location.state?.editingUser) {
         const u = location.state.editingUser;
+        const uPerms = Array.isArray(u.permissions) ? u.permissions : [];
         setEditingId(u.username);
+        setSelectedRoles(detectAssignedRoles(uPerms, u.role));
         setFormData({
           username: u.username || '',
-          permissions: Array.isArray(u.permissions) ? u.permissions : []
+          role: u.role || 'operator',
+          permissions: uPerms
         });
       } else {
         setEditingId(null);
+        setSelectedRoles([]);
         setFormData(EMPTY_FORM);
       }
     } else {
@@ -283,7 +397,8 @@ export default function AddUserView() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            permissions: formData.permissions
+            permissions: formData.permissions,
+            role: selectedRoles.includes('boss') ? 'admin' : (formData.role || 'operator')
           })
         });
         if (res.ok) {
@@ -300,6 +415,7 @@ export default function AddUserView() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             username: formData.username.trim(),
+            role: selectedRoles.includes('boss') ? 'admin' : (formData.role || 'operator'),
             permissions: formData.permissions
           })
         });
@@ -351,6 +467,7 @@ export default function AddUserView() {
 
   // Matrix cell toggle
   const toggleMatrixCell = (rowKey, colKey) => {
+    setSelectedPreset('custom');
     const permKey = `${rowKey}:${colKey}`;
     const currentList = [...formData.permissions];
     const index = currentList.indexOf(permKey);
@@ -364,6 +481,7 @@ export default function AddUserView() {
 
   // Row toggle (all columns for a row)
   const toggleRow = (rowKey) => {
+    setSelectedPreset('custom');
     const rowPerms = PERMISSION_MATRIX_COLS.map(c => `${rowKey}:${c.key}`);
     const allEnabled = rowPerms.every(p => formData.permissions.includes(p));
 
@@ -380,6 +498,7 @@ export default function AddUserView() {
 
   // Column toggle (all rows for a column)
   const toggleColumn = (colKey) => {
+    setSelectedPreset('custom');
     const colPerms = PERMISSION_MATRIX_ROWS.map(r => `${r.key}:${colKey}`);
     const allEnabled = colPerms.every(p => formData.permissions.includes(p));
 
@@ -396,6 +515,7 @@ export default function AddUserView() {
 
   // Quick matrix bulk actions
   const enableAllMatrix = () => {
+    setSelectedPreset('custom');
     const allMatrixPerms = [];
     PERMISSION_MATRIX_ROWS.forEach(r => {
       PERMISSION_MATRIX_COLS.forEach(c => {
@@ -407,6 +527,7 @@ export default function AddUserView() {
   };
 
   const disableAllMatrix = () => {
+    setSelectedPreset('custom');
     const allMatrixPerms = new Set();
     PERMISSION_MATRIX_ROWS.forEach(r => {
       PERMISSION_MATRIX_COLS.forEach(c => {
@@ -418,25 +539,28 @@ export default function AddUserView() {
   };
 
   const enableReadOnlyMatrix = () => {
+    setSelectedPreset('custom');
     const readPerms = PERMISSION_MATRIX_ROWS.map(r => `${r.key}:read`);
     const writePerms = new Set();
     PERMISSION_MATRIX_ROWS.forEach(r => {
-      writePerms.add(`${r.key}:create`);
-      writePerms.add(`${r.key}:update`);
+      PERMISSION_MATRIX_COLS.forEach(c => {
+        if (c.key !== 'read') writePerms.add(`${r.key}:${c.key}`);
+      });
     });
     const filtered = formData.permissions.filter(p => !writePerms.has(p));
     const merged = Array.from(new Set([...filtered, ...readPerms]));
     setFormData({ ...formData, permissions: merged });
   };
 
-  // Additional system permissions toggle
-  const toggleAdditionalPermission = (permValue) => {
+  // Special capability toggle
+  const toggleSpecialCapability = (capKey) => {
+    setSelectedPreset('custom');
     const currentList = [...formData.permissions];
-    const index = currentList.indexOf(permValue);
+    const index = currentList.indexOf(capKey);
     if (index > -1) {
       currentList.splice(index, 1);
     } else {
-      currentList.push(permValue);
+      currentList.push(capKey);
     }
     setFormData({ ...formData, permissions: currentList });
   };
@@ -458,63 +582,43 @@ export default function AddUserView() {
   // Format permission badges for list view
   const renderPermissionsBadge = (u) => {
     const r = (u.role || '').toLowerCase();
-    if (r === 'admin' || r === 'owner' || !u.permissions || u.permissions.length === 0) {
+    const perms = Array.isArray(u.permissions) ? u.permissions : [];
+
+    if (r === 'admin' || r === 'owner' || perms.includes('*') || perms.includes('role:boss')) {
       return (
-        <span className="px-2.5 py-0.5 text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-full inline-flex items-center gap-1 shadow-sm">
+        <span className="px-2.5 py-0.5 text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-full inline-flex items-center gap-1 shadow-xs">
           <ShieldAlert size={10} className="text-emerald-600" />
-          Full Permissions (Owner / Admin)
+          Boss / Admin (Full Access)
         </span>
       );
     }
 
-    const perms = Array.isArray(u.permissions) ? u.permissions : [];
-
-    // Group matrix permissions
-    const matrixBadges = [];
-    PERMISSION_MATRIX_ROWS.forEach(row => {
-      const grantedActions = [];
-      if (perms.includes(`${row.key}:create`)) grantedActions.push('C');
-      if (perms.includes(`${row.key}:read`)) grantedActions.push('R');
-      if (perms.includes(`${row.key}:update`)) grantedActions.push('U');
-
-      if (grantedActions.length > 0) {
-        matrixBadges.push({
-          label: row.label,
-          actions: grantedActions.join(',')
-        });
-      }
-    });
-
-    // Additional permissions
-    const extraBadges = perms
-      .filter(p => !p.includes(':'))
-      .map(p => {
-        const found = ADDITIONAL_SYSTEM_PERMISSIONS.find(item => item.value === p);
-        return found ? found.label : p;
-      });
+    const assigned = detectAssignedRoles(perms, u.role);
+    if (assigned.length > 0) {
+      return (
+        <div className="flex flex-wrap gap-1 max-w-sm">
+          {assigned.map((roleKey) => {
+            const preset = ROLE_PRESETS[roleKey];
+            if (!preset) return null;
+            return (
+              <span
+                key={roleKey}
+                className={`px-2 py-0.5 text-[9.5px] font-black rounded-full border inline-flex items-center gap-1 shadow-xs ${preset.badgeClass}`}
+              >
+                <Sparkles size={9} />
+                {preset.label}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
 
     return (
-      <div className="flex flex-wrap gap-1 max-w-md">
-        {matrixBadges.map(item => (
-          <span
-            key={item.label}
-            className="px-2 py-0.5 text-[9px] font-bold text-slate-700 bg-emerald-50 border border-emerald-200 rounded-md inline-flex items-center gap-1"
-          >
-            <span className="font-semibold text-slate-800">{item.label}</span>
-            <span className="bg-emerald-600 text-white px-1 py-0.2 rounded text-[8px] font-mono">
-              {item.actions}
-            </span>
-          </span>
-        ))}
-        {extraBadges.map(label => (
-          <span
-            key={label}
-            className="px-2 py-0.5 text-[9px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded-md"
-          >
-            {label}
-          </span>
-        ))}
-      </div>
+      <span className="px-2.5 py-0.5 text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-full inline-flex items-center gap-1">
+        <Sliders size={10} className="text-slate-500" />
+        Custom Operator ({perms.length} privileges)
+      </span>
     );
   };
 
@@ -763,10 +867,89 @@ export default function AddUserView() {
               </div>
 
               {/* ================================================================
-                  PERMISSION MATRIX TABLE
-                  Rows: Sell RFQ, Sell Quotation, Sell PO, RO, Buy RQ,
-                        Buy Contract Order, Process RQ, Process Order
-                  Columns: Create, Read, Update
+                  ASSIGNED ROLES (MULTI-ROLE SELECTION)
+                 ================================================================ */}
+              <div className="p-4 bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Sparkles size={16} className="text-indigo-600" />
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                      Assigned Positions & Roles (Multi-Select)
+                    </span>
+                    {selectedRoles.length > 0 && (
+                      <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                        {selectedRoles.length} {selectedRoles.length === 1 ? 'Role' : 'Roles'} Active
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    Select multiple positions (e.g. Stock Manager + Data Feeder)
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {Object.entries(ROLE_PRESETS).map(([presetKey, preset]) => {
+                    const isSelected = selectedRoles.includes(presetKey);
+                    return (
+                      <button
+                        key={presetKey}
+                        type="button"
+                        onClick={() => toggleRole(presetKey)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-2 shadow-xs ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900 ring-2 ring-indigo-400 scale-[1.02]'
+                            : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/50'
+                        }`}
+                      >
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-black transition-colors ${
+                          isSelected ? 'bg-indigo-500 text-white' : 'border border-slate-400 text-transparent'
+                        }`}>
+                          ✓
+                        </span>
+                        <span>{preset.label}</span>
+                      </button>
+                    );
+                  })}
+
+                  {selectedRoles.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRoles([]);
+                        setFormData((prev) => ({
+                          ...prev,
+                          role: 'operator',
+                          permissions: []
+                        }));
+                        toast.info('Cleared all assigned roles');
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-300 text-slate-500 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors cursor-pointer"
+                    >
+                      Clear Roles
+                    </button>
+                  )}
+                </div>
+
+                {selectedRoles.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {selectedRoles.map((rk) => {
+                      const p = ROLE_PRESETS[rk];
+                      if (!p) return null;
+                      return (
+                        <div key={rk} className="text-[11px] text-slate-600 bg-white/90 border border-slate-200 rounded-lg px-2.5 py-1 font-medium flex items-center gap-1.5">
+                          <span className="font-bold text-slate-800">{p.label}:</span>
+                          <span className="text-slate-500">{p.description}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* ================================================================
+                  OPERATION-BASED PERMISSION MATRIX TABLE
+                  Rows categorized: Trade, Inventory, Manufacture, Masters, System
+                  Columns: Create / Fill, Read / View, Update / Edit, Delete / Void
                  ================================================================ */}
               <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -780,7 +963,7 @@ export default function AddUserView() {
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                      Toggle specific permissions for Create, Read, and Update operations.
+                      Toggle specific operations (Create, Read, Update, Delete) per module.
                     </p>
                   </div>
 
@@ -811,15 +994,15 @@ export default function AddUserView() {
                 </div>
 
                 {/* The Matrix Table */}
-                <div className="border border-slate-300 rounded-xl overflow-hidden  bg-[white] shadow-xs">
+                <div className="border border-slate-300 rounded-xl overflow-hidden bg-white shadow-xs">
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-left">
                       <thead>
                         <tr className="bg-slate-100/90 border-b border-slate-300 text-slate-700 font-bold text-xs uppercase tracking-wider">
-                          <th className="px-4 py-3 min-w-[200px]">
+                          <th className="px-4 py-3 min-w-[220px]">
                             <span className="flex items-center gap-1.5">
                               <Layers size={14} style={{ color: 'var(--theme-color)' }} />
-                              Operations / Module
+                              Resource / Module
                             </span>
                           </th>
                           {PERMISSION_MATRIX_COLS.map((col) => (
@@ -842,76 +1025,86 @@ export default function AddUserView() {
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200  bg-[white] text-xs">
-                        {PERMISSION_MATRIX_ROWS.map((row) => {
-                          const rowPerms = PERMISSION_MATRIX_COLS.map(c => `${row.key}:${c.key}`);
-                          const allRowEnabled = rowPerms.every(p => formData.permissions.includes(p));
-                          const anyRowEnabled = rowPerms.some(p => formData.permissions.includes(p));
+                      <tbody className="divide-y divide-slate-200 bg-white text-xs">
+                        {Object.entries(CATEGORY_GROUPS).map(([catKey, catLabel]) => {
+                          const catRows = PERMISSION_MATRIX_ROWS.filter(r => r.category === catKey);
+                          if (catRows.length === 0) return null;
 
                           return (
-                            <tr
-                              key={row.key}
-                              className={`transition-colors hover:bg-slate-50/80 ${
-                                anyRowEnabled ? 'bg-slate-50/40' : ''
-                              }`}
-                            >
-                              {/* Row Module Label */}
-                              <td className="px-4 py-3.5">
-                                <div className="flex items-center gap-2">
-                                  <span className={`w-2 h-2 rounded-full shrink-0 ${
-                                    allRowEnabled
-                                      ? 'bg-emerald-500 ring-2 ring-emerald-200'
-                                      : anyRowEnabled
-                                        ? 'bg-blue-400'
-                                        : 'bg-slate-300'
-                                  }`} />
-                                  <div>
-                                    <p className="font-bold text-slate-900 text-xs">{row.label}</p>
-                                    <p className="text-[10px] text-slate-400 font-mono">
-                                      id: {row.key}
-                                    </p>
-                                  </div>
-                                </div>
-                              </td>
-
-                              {/* Matrix Cells: Create, Read, Update */}
-                              {PERMISSION_MATRIX_COLS.map((col) => {
-                                const permKey = `${row.key}:${col.key}`;
-                                const isAllowed = formData.permissions.includes(permKey);
+                            <React.Fragment key={catKey}>
+                              <tr className="bg-slate-100/80 border-y border-slate-200">
+                                <td colSpan={PERMISSION_MATRIX_COLS.length + 2} className="px-4 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-700">
+                                  {catLabel}
+                                </td>
+                              </tr>
+                              {catRows.map((row) => {
+                                const rowPerms = PERMISSION_MATRIX_COLS.map(c => `${row.key}:${c.key}`);
+                                const allRowEnabled = rowPerms.every(p => formData.permissions.includes(p));
+                                const anyRowEnabled = rowPerms.some(p => formData.permissions.includes(p));
 
                                 return (
-                                  <td
-                                    key={col.key}
-                                    className="px-4 py-3 text-center align-middle"
+                                  <tr
+                                    key={row.key}
+                                    className={`transition-colors hover:bg-slate-50/80 ${
+                                      anyRowEnabled ? 'bg-slate-50/40' : ''
+                                    }`}
                                   >
-                                    <div className="flex justify-center items-center">
-                                      <ToggleSwitch
-                                        checked={isAllowed}
-                                        onChange={() => toggleMatrixCell(row.key, col.key)}
-                                        label={`${row.label} ${col.label}`}
-                                        title={`${isAllowed ? 'Revoke' : 'Grant'} ${col.label} for ${row.label}`}
-                                      />
-                                    </div>
-                                  </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                          allRowEnabled
+                                            ? 'bg-emerald-500 ring-2 ring-emerald-200'
+                                            : anyRowEnabled
+                                              ? 'bg-blue-400'
+                                              : 'bg-slate-300'
+                                        }`} />
+                                        <div>
+                                          <p className="font-bold text-slate-900 text-xs">{row.label}</p>
+                                          <p className="text-[10px] text-slate-400 font-mono">
+                                            {row.key}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </td>
+
+                                    {PERMISSION_MATRIX_COLS.map((col) => {
+                                      const permKey = `${row.key}:${col.key}`;
+                                      const isAllowed = formData.permissions.includes(permKey);
+
+                                      return (
+                                        <td
+                                          key={col.key}
+                                          className="px-4 py-3 text-center align-middle"
+                                        >
+                                          <div className="flex justify-center items-center">
+                                            <ToggleSwitch
+                                              checked={isAllowed}
+                                              onChange={() => toggleMatrixCell(row.key, col.key)}
+                                              label={`${row.label} ${col.label}`}
+                                              title={`${isAllowed ? 'Revoke' : 'Grant'} ${col.label} for ${row.label}`}
+                                            />
+                                          </div>
+                                        </td>
+                                      );
+                                    })}
+
+                                    <td className="px-3 py-3 text-right align-middle">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleRow(row.key)}
+                                        className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors cursor-pointer ${
+                                          allRowEnabled
+                                            ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                        }`}
+                                      >
+                                        {allRowEnabled ? 'Clear Row' : 'Allow Row'}
+                                      </button>
+                                    </td>
+                                  </tr>
                                 );
                               })}
-
-                              {/* Row Quick Toggle */}
-                              <td className="px-3 py-3 text-right align-middle">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleRow(row.key)}
-                                  className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors cursor-pointer ${
-                                    allRowEnabled
-                                      ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-                                      : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                  }`}
-                                  title={`Toggle all actions for ${row.label}`}
-                                >
-                                  {allRowEnabled ? 'Clear Row' : 'Allow Row'}
-                                </button>
-                              </td>
-                            </tr>
+                            </React.Fragment>
                           );
                         })}
                       </tbody>
@@ -921,8 +1114,8 @@ export default function AddUserView() {
               </div>
 
               {/* ================================================================
-                  COLLAPSIBLE ADDITIONAL SYSTEM PRIVILEGES
-                  Inventory, Catalog Items, Parties, Contacts, ARC, GST, Pricing
+                  SPECIAL CAPABILITIES & PRIVACY CONTROLS
+                  Trace History, Quote History, Trade Search, Pricing, Dashboard
                  ================================================================ */}
               <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/60">
                 <button
@@ -932,40 +1125,41 @@ export default function AddUserView() {
                 >
                   <div className="flex items-center gap-2">
                     <Sliders size={14} className="text-slate-500" />
-                    <span>Additional System Privileges (Inventory, Catalog, Parties, Settings)</span>
+                    <span>Special Capabilities & Privacy Controls (Trace, Item Quote History, Trade Search, Pricing)</span>
                     <span className="text-[10px] font-normal text-slate-400">
-                      ({ADDITIONAL_SYSTEM_PERMISSIONS.filter(p => formData.permissions.includes(p.value)).length} active)
+                      ({SPECIAL_CAPABILITIES.filter(p => formData.permissions.includes(p.key)).length} active)
                     </span>
                   </div>
                   {showAdditionalPrivileges ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
 
                 {showAdditionalPrivileges && (
-                  <div className="p-4 border-t border-slate-200  bg-[white] space-y-2.5">
+                  <div className="p-4 border-t border-slate-200 bg-white space-y-2.5">
                     <p className="text-[11px] text-slate-500 mb-2">
-                      Enable general administrative and view access to catalog records, pricing details, and auxiliary features:
+                      Control sensitive audit trails, lifecycle histories, price visibility, and search capabilities:
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {ADDITIONAL_SYSTEM_PERMISSIONS.map((perm) => {
-                        const isAllowed = formData.permissions.includes(perm.value);
+                      {SPECIAL_CAPABILITIES.map((cap) => {
+                        const isAllowed = formData.permissions.includes(cap.key);
                         return (
                           <div
-                            key={perm.value}
-                            className={`flex items-center justify-between p-2.5 rounded-lg border transition-all ${
+                            key={cap.key}
+                            className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
                               isAllowed
-                                ? 'bg-emerald-50/50 border-emerald-300'
-                                : ' bg-[white] border-slate-200 hover:border-slate-300'
+                                ? 'bg-indigo-50/40 border-indigo-300'
+                                : 'bg-white border-slate-200 hover:border-slate-300'
                             }`}
                           >
                             <div className="pr-2">
-                              <p className="text-xs font-bold text-slate-800">{perm.label}</p>
-                              <p className="text-[10px] text-slate-400 leading-tight">{perm.description}</p>
+                              <p className="text-xs font-bold text-slate-800">{cap.label}</p>
+                              <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{cap.description}</p>
+                              <p className="text-[9px] font-mono text-slate-400 mt-0.5">{cap.key}</p>
                             </div>
                             <ToggleSwitch
                               checked={isAllowed}
-                              onChange={() => toggleAdditionalPermission(perm.value)}
-                              label={perm.label}
-                              title={`Toggle ${perm.label}`}
+                              onChange={() => toggleSpecialCapability(cap.key)}
+                              label={cap.label}
+                              title={`Toggle ${cap.label}`}
                             />
                           </div>
                         );

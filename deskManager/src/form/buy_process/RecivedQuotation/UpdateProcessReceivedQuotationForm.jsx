@@ -41,7 +41,12 @@ const COMMON_PROCESSES = [
   'Quality Inspection'
 ];
 
+import { hasPermission } from '../../../utils/permissions';
 export default function UpdateProcessReceivedQuotationForm() {
+  const userStr = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const canViewQuoteHistory = hasPermission(currentUser, 'items:quote_history');
+
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -665,7 +670,7 @@ export default function UpdateProcessReceivedQuotationForm() {
                           </div>
 
                           {/* Mobile inline history panel */}
-                          {historyItem === item.item_code && (
+                          {canViewQuoteHistory && historyItem === item.item_code && (
                             <div className="block lg:hidden mt-3 p-4 bg-slate-50 border border-slate-300 rounded-lg space-y-4 animate-fade-in w-full">
                               <ItemQuoteHistory
                                 code={historyItem}
@@ -785,7 +790,7 @@ export default function UpdateProcessReceivedQuotationForm() {
         </div>
 
         {/* Right side history panel */}
-        {historyItem && (
+        {canViewQuoteHistory && historyItem && (
           <div className="hidden lg:block lg:col-span-2  bg-[white] border border-slate-300 rounded-lg p-5 shadow-sm space-y-4 animate-fade-in self-start lg:sticky lg:top-5 w-full">
             <ItemQuoteHistory
               code={historyItem}

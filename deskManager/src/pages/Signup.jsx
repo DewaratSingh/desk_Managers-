@@ -344,15 +344,6 @@ export default function SignupView({ onLogin = () => {} }) {
                 Sign In
               </Link>
             </div>
-            
-            <div className="text-center mt-1">
-              <Link
-                to="/"
-                className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-              >
-                Back to Home Page
-              </Link>
-            </div>
           </form>
         </div>
       </div>

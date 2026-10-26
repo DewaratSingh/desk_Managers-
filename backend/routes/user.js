@@ -201,7 +201,7 @@ router.put('/:username', requirePermission('manage_users'), async (req, res) => 
     return res.status(400).json({ error: 'Company ID not found in session.' });
   }
 
-  const { permissions, theme } = req.body || {};
+  const { permissions, theme, role } = req.body || {};
 
   try {
     // Verify target user is in the same company
@@ -213,14 +213,11 @@ router.put('/:username', requirePermission('manage_users'), async (req, res) => 
     let updateQuery;
     let updateParams;
 
-    if (permissions !== undefined && theme !== undefined) {
-      updateQuery = `UPDATE users SET permissions = $1::jsonb, theme = $2::jsonb WHERE username = $3 AND company_id = $4 RETURNING username, role, name, email, phone, permissions, company_id, company_name, theme, created_at`;
-      updateParams = [JSON.stringify(permissions || []), JSON.stringify(theme), targetUsername, companyId];
-    } else if (theme !== undefined) {
-      updateQuery = `UPDATE users SET theme = $1::jsonb WHERE username = $2 AND company_id = $3 RETURNING username, role, name, email, phone, permissions, company_id, company_name, theme, created_at`;
-      updateParams = [JSON.stringify(theme), targetUsername, companyId];
+    const userPerms = Array.isArray(permissions) ? JSON.stringify(permissions) : '[]';
+    if (role !== undefined) {
+      updateQuery = `UPDATE users SET permissions = $1::jsonb, role = $2 WHERE username = $3 AND company_id = $4 RETURNING username, role, name, email, phone, permissions, company_id, company_name, theme, created_at`;
+      updateParams = [userPerms, role, targetUsername, companyId];
     } else {
-      const userPerms = Array.isArray(permissions) ? JSON.stringify(permissions) : '[]';
       updateQuery = `UPDATE users SET permissions = $1::jsonb WHERE username = $2 AND company_id = $3 RETURNING username, role, name, email, phone, permissions, company_id, company_name, theme, created_at`;
       updateParams = [userPerms, targetUsername, companyId];
     }

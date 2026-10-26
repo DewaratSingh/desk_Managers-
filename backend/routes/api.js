@@ -25,6 +25,7 @@ const paymentRouter = require('./payment');
 const pItemRouter = require('./p-item');
 const manufactureRouter = require('./manufacture');
 const processJobRouter = require('./process-job');
+const linkOperationsRouter = require('./link-operations');
 
 const rqProcessRouter = require('./rq-process');
 const processPORouter = require('./process-po');
@@ -75,6 +76,7 @@ router.use('/trace-items', pItemRouter);
 router.use('/manufacture', manufactureRouter);
 router.use('/process-jobs', processJobRouter);
 router.use('/process-job', processJobRouter);
+router.use('/link-operations', linkOperationsRouter);
 
 router.use('/rq-process', rqProcessRouter);
 router.use('/process-po', processPORouter);

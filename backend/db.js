@@ -1073,6 +1073,27 @@ const initializeDatabase = async () => {
       ALTER TABLE keys ADD COLUMN IF NOT EXISTS alert_interval_seconds INTEGER DEFAULT 259200;
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS link_operations (
+        id SERIAL PRIMARY KEY,
+        po_item_id INTEGER REFERENCES purchase_order_items(id) ON DELETE CASCADE,
+        ro_item_id INTEGER REFERENCES release_order_items(id) ON DELETE CASCADE,
+        po_id INTEGER REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        ro_id INTEGER REFERENCES release_orders(id) ON DELETE CASCADE,
+        operation_type VARCHAR(50) NOT NULL, -- 'TRADE' or 'MANUFACTURE'
+        trade_id INTEGER REFERENCES trades(id) ON DELETE SET NULL,
+        trade_ref VARCHAR(100),
+        job_id INTEGER REFERENCES job(id) ON DELETE SET NULL,
+        job_ref VARCHAR(255),
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_link_operations_po_item ON link_operations(po_item_id);
+      CREATE INDEX IF NOT EXISTS idx_link_operations_ro_item ON link_operations(ro_item_id);
+      CREATE INDEX IF NOT EXISTS idx_link_operations_company ON link_operations(company_id);
+    `);
+
     console.log('Database initialized successfully.');
   } catch (error) {
     console.error('Error during PostgreSQL database initialization:', error.message);

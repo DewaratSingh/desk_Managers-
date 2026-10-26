@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const { requirePermission, sanitizePrices } = require('../middleware/auth');
 
 // ─────────────────────────────────────────────
 //  JOB routes  /api/manufacture/jobs
@@ -60,7 +61,7 @@ async function enrichJobsWithPrices(jobs, companyId) {
 }
 
 // GET all jobs
-router.get('/jobs', async (req, res) => {
+router.get('/jobs', requirePermission(['manufacture:read', 'manage_manufacture']), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT j.*,
@@ -93,7 +94,7 @@ router.get('/jobs', async (req, res) => {
 });
 
 // GET single job by id
-router.get('/jobs/:id', async (req, res) => {
+router.get('/jobs/:id', requirePermission(['manufacture:read', 'manage_manufacture']), async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -129,7 +130,7 @@ router.get('/jobs/:id', async (req, res) => {
 //         target_items: [{itemcode, Qty}],
 //         loss_qty: [{itemCode, Qty}],
 //         status }
-router.post('/jobs', async (req, res) => {
+router.post('/jobs', requirePermission(['manufacture:create', 'manage_manufacture']), async (req, res) => {
   const {
     process_name, date_of_start, date_of_end, message,
     source_items, target_items, loss_qty, status
@@ -207,7 +208,7 @@ router.post('/jobs', async (req, res) => {
 });
 
 // PUT update a job and its manufacture/source/target items
-router.put('/jobs/:id', async (req, res) => {
+router.put('/jobs/:id', requirePermission(['manufacture:update', 'manage_manufacture']), async (req, res) => {
   const { id } = req.params;
   const {
     process_name, date_of_start, date_of_end, message,
@@ -305,7 +306,7 @@ router.put('/jobs/:id', async (req, res) => {
 });
 
 // PUT complete production for a job
-router.put('/jobs/:id/complete-production', async (req, res) => {
+router.put('/jobs/:id/complete-production', requirePermission(['manufacture:update', 'manage_manufacture']), async (req, res) => {
   const { id } = req.params;
   const { target_items, remarks } = req.body || {};
   const companyId = req.user.company_id;
@@ -467,7 +468,7 @@ router.put('/jobs/:id/complete-production', async (req, res) => {
 });
 
 // DELETE a job (cascades to manufacture, source_item, target_item)
-router.delete('/jobs/:id', async (req, res) => {
+router.delete('/jobs/:id', requirePermission(['manufacture:delete', 'manage_manufacture']), async (req, res) => {
   const { id } = req.params;
   const companyId = req.user.company_id;
   const client = await pool.connect();
@@ -514,7 +515,7 @@ router.delete('/jobs/:id', async (req, res) => {
 //  MANUFACTURE status update
 //  PATCH /api/manufacture/:manufacture_id/status
 // ─────────────────────────────────────────────
-router.patch('/:manufacture_id/status', async (req, res) => {
+router.patch('/:manufacture_id/status', requirePermission(['manufacture:update', 'manage_manufacture']), async (req, res) => {
   const { manufacture_id } = req.params;
   const { status, loss_qty } = req.body || {};
 
@@ -545,7 +546,7 @@ router.patch('/:manufacture_id/status', async (req, res) => {
 // ─────────────────────────────────────────────
 //  GET all manufacture records (list view)
 // ─────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', requirePermission(['manufacture:read', 'manage_manufacture']), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT m.*,
