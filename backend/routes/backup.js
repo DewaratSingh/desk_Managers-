@@ -11,8 +11,55 @@ const {
   uploadToGoogleDrive,
 } = require('../backup/gdrive');
 
+// Helper to ensure the keys table exists with all required columns
+let keysTableEnsured = false;
+async function ensureKeysTable() {
+  if (keysTableEnsured) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS keys (
+        id SERIAL PRIMARY KEY,
+        service_name VARCHAR(100) NOT NULL DEFAULT 'google_drive',
+        client_id TEXT,
+        client_secret TEXT,
+        access_token TEXT,
+        refresh_token TEXT,
+        folder_id TEXT,
+        cookies TEXT,
+        auth_mode VARCHAR(50) DEFAULT 'oauth',
+        account_email VARCHAR(255),
+        last_backup_date TIMESTAMP WITH TIME ZONE,
+        alert_interval_days INTEGER DEFAULT 3,
+        alert_interval_seconds INTEGER DEFAULT 259200,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await pool.query(`
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS service_name VARCHAR(100) NOT NULL DEFAULT 'google_drive';
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS client_id TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS client_secret TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS access_token TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS refresh_token TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS folder_id TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS cookies TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS auth_mode VARCHAR(50) DEFAULT 'oauth';
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS account_email VARCHAR(255);
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS last_backup_date TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS alert_interval_days INTEGER DEFAULT 3;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS alert_interval_seconds INTEGER DEFAULT 259200;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS company_id INTEGER;
+    `);
+    keysTableEnsured = true;
+  } catch (err) {
+    console.error('[Backup Module] Error ensuring keys table:', err.message);
+  }
+}
+
 // Helper to retrieve keys row for the company / default
 async function getKeyRecord(companyId = null) {
+  await ensureKeysTable();
   let query = 'SELECT * FROM keys WHERE service_name = $1';
   let params = ['google_drive'];
 
@@ -23,8 +70,23 @@ async function getKeyRecord(companyId = null) {
     query += ' ORDER BY id DESC LIMIT 1';
   }
 
-  const res = await pool.query(query, params);
-  return res.rows[0] || null;
+  try {
+    const res = await pool.query(query, params);
+    return res.rows[0] || null;
+  } catch (err) {
+    if (
+      err.message &&
+      (err.message.includes('relation "keys" does not exist') ||
+        err.message.includes('relation "key" does not exist') ||
+        err.code === '42P01')
+    ) {
+      keysTableEnsured = false;
+      await ensureKeysTable();
+      const retryRes = await pool.query(query, params);
+      return retryRes.rows[0] || null;
+    }
+    throw err;
+  }
 }
 
 /**

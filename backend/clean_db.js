@@ -5,7 +5,7 @@ const { Pool } = require('pg');
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_DATABASE || 'postgres',
+  database: process.env.DB_DATABASE || 'deskmanager',
   password: process.env.DB_PASSWORD || 'postgres',
   port: parseInt(process.env.DB_PORT || '5432'),
 });
@@ -22,7 +22,8 @@ const PRESERVED_TABLES = new Set([
   'items',
   'gst_rates',
   'units',
-  'status'
+  'status',
+  'keys'
 ]);
 
 async function cleanDatabase() {

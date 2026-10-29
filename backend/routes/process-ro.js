@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const { requirePermission } = require('../middleware/auth');
 
 // Ensure status column exists in process_ro on module load
 pool.query("ALTER TABLE process_ro ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'RO'").catch(() => {});
 pool.query("ALTER TABLE process_ro_source_item ADD COLUMN IF NOT EXISTS history JSONB").catch(() => {});
 
 // GET next auto-generated Process RO No
-router.get('/next-no', async (req, res) => {
+router.get('/next-no', requirePermission(['process_order:create', 'process_order:read', 'manage_orders', 'manage_manufacture']), async (req, res) => {
   try {
     const countRes = await pool.query('SELECT COUNT(*) FROM process_ro WHERE company_id = $1', [req.user.company_id]);
     const count = parseInt(countRes.rows[0].count) || 0;
@@ -20,7 +21,7 @@ router.get('/next-no', async (req, res) => {
 });
 
 // GET all Process RO records (optional trade_id filter)
-router.get('/', async (req, res) => {
+router.get('/', requirePermission(['process_order:read', 'manage_orders', 'manage_manufacture']), async (req, res) => {
   const { trade_id } = req.query || {};
   let whereClause = 'pro.company_id = $1';
   const params = [req.user.company_id];
@@ -96,7 +97,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET a single Process RO by ID or RO Number or Trade ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePermission(['process_order:read', 'manage_orders', 'manage_manufacture']), async (req, res) => {
   const { id } = req.params;
   const isNum = /^\d+$/.test(id);
   const whereClause = isNum
@@ -182,7 +183,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST Create a new Process RO, push trade, and insert items
-router.post('/', async (req, res) => {
+router.post('/', requirePermission(['process_order:create', 'manage_orders', 'manage_manufacture']), async (req, res) => {
   let {
     ro_no,
     contract_id,
@@ -451,7 +452,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT Update Process RO (Contract Order)
-router.put('/:id', async (req, res) => {
+router.put('/:id', requirePermission(['process_order:update', 'manage_orders', 'manage_manufacture']), async (req, res) => {
   const { id } = req.params;
   const {
     date_of_start,
@@ -639,7 +640,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE Process RO and restore raw material inventory
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePermission(['process_order:delete', 'manage_orders', 'manage_manufacture']), async (req, res) => {
   const { id } = req.params;
   const companyId = req.user.company_id;
   const client = await pool.connect();

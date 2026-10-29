@@ -1,12 +1,17 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true }); // needed to access :contractId from parent
 const { pool } = require('../db');
+const { requirePermission } = require('../middleware/auth');
 
 // GET all process items for a contract (with optional search query q)
-router.get('/', async (req, res) => {
+router.get('/', requirePermission(['arc:read', 'manage_arc']), async (req, res) => {
   const { contractId } = req.params;
   const { q } = req.query || {};
-  const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+  const limit = req.query.limit !== undefined
+    ? (req.query.limit === 'all' || req.query.limit === '-1' ? null : parseInt(req.query.limit, 10))
+    : 20;
+  const offset = req.query.offset ? Math.max(0, parseInt(req.query.offset, 10)) : 0;
+
   try {
     let query = `
       SELECT cip.*, i.item_code, i.description, i.drawing_number, i.long_description
@@ -15,13 +20,20 @@ router.get('/', async (req, res) => {
       WHERE cip.contract_id = $1 AND cip.company_id = $2
     `;
     const params = [contractId, req.user.company_id];
-    if (q) {
-      query += ` AND (i.item_code ILIKE $3 OR i.description ILIKE $3 OR cip.processname ILIKE $3 OR i.drawing_number ILIKE $3)`;
-      params.push(`%${q}%`);
+    if (q && q.trim()) {
+      const qIdx = params.length + 1;
+      query += ` AND (i.item_code ILIKE $${qIdx} OR i.description ILIKE $${qIdx} OR cip.processname ILIKE $${qIdx} OR i.drawing_number ILIKE $${qIdx})`;
+      params.push(`%${q.trim()}%`);
     }
-    const limitIdx = params.length + 1;
-    query += ` ORDER BY cip.created_at DESC LIMIT $${limitIdx}`;
-    params.push(limit);
+    query += ` ORDER BY cip.created_at DESC`;
+
+    if (limit !== null) {
+      const limitIdx = params.length + 1;
+      const offsetIdx = params.length + 2;
+      query += ` LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+      params.push(limit, offset);
+    }
+
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
@@ -31,7 +43,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST — add a process item to a contract
-router.post('/', async (req, res) => {
+router.post('/', requirePermission(['arc:create', 'arc:update', 'manage_arc']), async (req, res) => {
   const { contractId } = req.params;
   const { item_code, processname, price, date, expiry_date } = req.body || {};
 
@@ -74,7 +86,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT — update a process item (price, date, expiry_date, processname)
-router.put('/:itemId', async (req, res) => {
+router.put('/:itemId', requirePermission(['arc:update', 'manage_arc']), async (req, res) => {
   const { contractId, itemId } = req.params;
   const { processname, price, date, expiry_date } = req.body || {};
 
@@ -150,7 +162,7 @@ router.put('/:itemId', async (req, res) => {
 });
 
 // DELETE a process item
-router.delete('/:itemId', async (req, res) => {
+router.delete('/:itemId', requirePermission(['arc:delete']), async (req, res) => {
   const { contractId, itemId } = req.params;
   try {
     const result = await pool.query(

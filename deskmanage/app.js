@@ -1,4 +1,4 @@
-let selectedBackup = null;
+﻿let selectedBackup = null;
 let currentBackupPath = "";
 let currentLocalFiles = [];
 let currentAuthMode = "oauth";
@@ -329,13 +329,13 @@ function renderBackupTable(files) {
   }
 
   let html = "";
-  files.forEach((file) => {
+  files.forEach((file, index) => {
     html += `
-      <tr onclick="selectRow(this, '${escapeJs(file.filename)}', '${escapeJs(file.size)}', '${escapeJs(file.mod_time)}', '${escapeJs(file.path)}')">
-        <td><strong>${file.filename}</strong></td>
-        <td class="text-center">${file.size}</td>
-        <td class="text-center">${file.mod_time}</td>
-        <td><code>${file.path}</code></td>
+      <tr data-index="${index}" onclick="selectRowByIndex(${index})">
+        <td><strong>${escapeHtml(file.filename)}</strong></td>
+        <td class="text-center">${escapeHtml(file.size)}</td>
+        <td class="text-center">${escapeHtml(file.mod_time)}</td>
+        <td><code>${escapeHtml(file.path)}</code></td>
       </tr>
     `;
   });
@@ -344,25 +344,47 @@ function renderBackupTable(files) {
   updateStatus(`Loaded ${files.length} backup file(s) from ${currentBackupPath}`, "success");
 }
 
-function populateUploadDropdown(files) {
+function selectRowByIndex(index) {
+  const file = currentLocalFiles[index];
+  if (!file) return;
+
+  document.querySelectorAll("#backupTableBody tr").forEach(tr => tr.classList.remove("selected"));
+  const rowEl = document.querySelector(`#backupTableBody tr[data-index="${index}"]`);
+  if (rowEl) rowEl.classList.add("selected");
+
+  selectedBackup = {
+    filename: file.filename,
+    size: file.size,
+    mod_time: file.mod_time,
+    path: file.path
+  };
+  updateStatus(`Selected: ${file.filename}`, "info");
+
   const select = document.getElementById("selectBackupToUpload");
-  select.innerHTML = `<option value="">-- Select a backup file to upload --</option>`;
-  if (files) {
-    files.forEach(f => {
-      select.innerHTML += `<option value="${escapeJs(f.filename)}">${f.filename} (${f.size})</option>`;
-    });
+  if (select) {
+    select.value = file.filename;
   }
 }
 
 function selectRow(rowEl, filename, size, mod_time, path) {
   document.querySelectorAll("#backupTableBody tr").forEach(tr => tr.classList.remove("selected"));
-  rowEl.classList.add("selected");
+  if (rowEl) rowEl.classList.add("selected");
   selectedBackup = { filename, size, mod_time, path };
   updateStatus(`Selected: ${filename}`, "info");
 
   const select = document.getElementById("selectBackupToUpload");
   if (select) {
     select.value = filename;
+  }
+}
+
+function populateUploadDropdown(files) {
+  const select = document.getElementById("selectBackupToUpload");
+  select.innerHTML = `<option value="">-- Select a backup file to upload --</option>`;
+  if (files) {
+    files.forEach(f => {
+      select.innerHTML += `<option value="${escapeHtml(f.filename)}">${escapeHtml(f.filename)} (${escapeHtml(f.size)})</option>`;
+    });
   }
 }
 
@@ -513,44 +535,73 @@ async function takeBackup() {
   }
 }
 
-function triggerRestore() {
-  if (!selectedBackup) {
-    showToast("Please select a backup file from the list first.", "warning");
-    return;
-  }
+let pendingRestoreFile = null;
 
+function openRestoreModalWithFile(fileObj) {
+  pendingRestoreFile = fileObj;
   const detailsBox = document.getElementById("restoreDetailsBox");
   detailsBox.innerHTML = `
-    <strong>File Name:</strong> ${selectedBackup.filename}<br>
-    <strong>File Size:</strong> ${selectedBackup.size}<br>
-    <strong>Created Date:</strong> ${selectedBackup.mod_time}<br>
-    <strong>Full Path:</strong> ${selectedBackup.path}
+    <strong>File Name:</strong> ${fileObj.filename}<br>
+    <strong>File Size:</strong> ${fileObj.size}<br>
+    <strong>Created / Modified:</strong> ${fileObj.mod_time}<br>
+    <strong>Full Path:</strong> ${fileObj.path}
   `;
 
   document.getElementById("restoreModal").classList.add("show");
 }
 
+async function triggerRestoreFromOtherLocation() {
+  try {
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.select_backup_file_dialog) {
+      const res = await window.pywebview.api.select_backup_file_dialog();
+      if (res && res.success && res.file) {
+        openRestoreModalWithFile(res.file);
+      } else if (res && !res.cancelled) {
+        showToast(res.error || "No backup file selected.", "warning");
+      }
+    } else {
+      showToast("File selection dialog is not available.", "warning");
+    }
+  } catch (err) {
+    showToast(`Error opening file dialog: ${err}`, "danger");
+  }
+}
+
+function triggerRestore() {
+  triggerRestoreFromOtherLocation();
+}
+
 function closeRestoreModal() {
   document.getElementById("restoreModal").classList.remove("show");
+  pendingRestoreFile = null;
 }
 
 async function submitRestore() {
+  const fileToRestore = pendingRestoreFile;
   closeRestoreModal();
-  if (!selectedBackup) return;
+  if (!fileToRestore) return;
 
-  showToast(`Restoring database from ${selectedBackup.filename}...`, "info");
+  showToast(`Restoring database from ${fileToRestore.filename}...`, "info");
+  updateStatus(`Restoring database from ${fileToRestore.filename}...`, "warning");
+
   try {
     if (window.pywebview && window.pywebview.api) {
-      const res = await window.pywebview.api.use_backup_in_database(selectedBackup.filename);
+      const restoreTarget = fileToRestore.path || fileToRestore.filename;
+      const res = await window.pywebview.api.use_backup_in_database(restoreTarget);
       if (res && res.success) {
-        showToast(`Database successfully restored with backup: ${selectedBackup.filename}`, "success");
-        updateStatus(`Database restored using ${selectedBackup.filename}`, "success");
+        showToast(res.message || `Database successfully restored with backup: ${fileToRestore.filename}`, "success");
+        updateStatus(`Database restored using ${fileToRestore.filename}`, "success");
+        if (typeof loadBackupFiles === "function") {
+          await loadBackupFiles();
+        }
       } else {
         showToast(res.error || "Failed to restore database", "danger");
+        updateStatus("Database restore failed", "danger");
       }
     }
   } catch (err) {
     showToast(`Restore failed: ${err}`, "danger");
+    updateStatus("Database restore error", "danger");
   }
 }
 

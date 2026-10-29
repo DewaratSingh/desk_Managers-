@@ -107,7 +107,7 @@ function rotateBackups(backupDir, dbName) {
 async function runBackup({ force = false } = {}) {
   console.log('--- Starting Database Backup ---');
 
-  const dbName = process.env.DB_DATABASE || 'postgres';
+  const dbName = process.env.DB_DATABASE || 'deskmanager';
   const backupDir = getBackupDirectory();
 
   // Check if today's backup is already available

@@ -18,50 +18,115 @@ function getJobStatusInfo(job) {
 router.get('/available', async (req, res) => {
   try {
     const companyId = req.user.company_id;
+    const type = (req.query.type || 'ALL').toUpperCase(); // 'TRADE', 'MANUFACTURE', or 'ALL'
+    const limit = Math.max(1, parseInt(req.query.limit, 10) || 5);
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const q = (req.query.q || '').trim();
+
+    let trades = [];
+    let jobs = [];
+    let hasMoreTrades = false;
+    let hasMoreJobs = false;
+    let totalTrades = 0;
+    let totalJobs = 0;
 
     // Fetch active/recent trades
-    const tradesRes = await pool.query(`
-      SELECT id, trade_id, status, COALESCE(delivery_percentage, 0) AS delivery_percentage, trade_type, created_at,
-        COALESCE(
-          (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = trades.id OR pro.trade_id::text = trades.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
-          (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = trades.id OR ppo.trade_id::text = trades.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
-          (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = trades.id OR prfq.trade_id::text = trades.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
-        ) AS process_name
-      FROM trades
-      WHERE company_id = $1
-      ORDER BY created_at DESC
-      LIMIT 100
-    `, [companyId]);
+    if (type === 'TRADE' || type === 'ALL') {
+      const tradesParams = [companyId];
+      let tradesWhere = '';
+      if (q) {
+        tradesParams.push(`%${q}%`);
+        tradesWhere = `WHERE trade_id ILIKE $2 OR trade_type ILIKE $2 OR status ILIKE $2 OR COALESCE(process_name, '') ILIKE $2`;
+      }
+      tradesParams.push(limit);
+      const limitIdx = tradesParams.length;
+      tradesParams.push(offset);
+      const offsetIdx = tradesParams.length;
+
+      const tradesQuery = `
+        WITH trade_records AS (
+          SELECT id, trade_id, status, COALESCE(delivery_percentage, 0) AS delivery_percentage, trade_type, created_at,
+            COALESCE(
+              (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = trades.id OR pro.trade_id::text = trades.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+              (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = trades.id OR ppo.trade_id::text = trades.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+              (SELECT poi.process_name FROM process_po_item poi JOIN process_po ppo ON poi.process_po_id = ppo.id WHERE (ppo.trade_id = trades.id OR ppo.trade_id::text = trades.trade_id) AND poi.process_name IS NOT NULL AND poi.process_name != '' LIMIT 1),
+              (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = trades.id OR prfq.trade_id::text = trades.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
+            ) AS process_name
+          FROM trades
+          WHERE company_id = $1
+        )
+        SELECT *, COUNT(*) OVER() AS full_count FROM trade_records
+        ${tradesWhere}
+        ORDER BY created_at DESC
+        LIMIT $${limitIdx} OFFSET $${offsetIdx}
+      `;
+
+      const tradesRes = await pool.query(tradesQuery, tradesParams);
+      if (tradesRes.rows.length > 0) {
+        totalTrades = parseInt(tradesRes.rows[0].full_count, 10) || 0;
+      }
+      trades = tradesRes.rows.map(row => {
+        const { full_count, ...trade } = row;
+        return trade;
+      });
+      hasMoreTrades = (offset + trades.length) < totalTrades;
+    }
 
     // Fetch active/recent manufacture jobs
-    const jobsRes = await pool.query(`
-      SELECT j.id, j.process_name, j.date_of_start, j.date_of_end, j.message,
-             COALESCE(m.status, 'pending') AS status,
-             COALESCE(
-               (SELECT ti.items FROM target_item ti WHERE ti.job_id = j.id AND ti.company_id = j.company_id LIMIT 1),
-               '[]'::jsonb
-             ) AS target_items
-      FROM job j
-      LEFT JOIN manufacture m ON m.job_id = j.id AND m.company_id = j.company_id
-      WHERE j.company_id = $1
-      ORDER BY j.created_at DESC
-      LIMIT 100
-    `, [companyId]);
+    if (type === 'MANUFACTURE' || type === 'ALL') {
+      const jobsParams = [companyId];
+      let jobsWhere = '';
+      if (q) {
+        jobsParams.push(`%${q}%`);
+        jobsWhere = `WHERE process_name ILIKE $2 OR id::text ILIKE $2 OR status ILIKE $2 OR COALESCE(message, '') ILIKE $2 OR target_items::text ILIKE $2`;
+      }
+      jobsParams.push(limit);
+      const jLimitIdx = jobsParams.length;
+      jobsParams.push(offset);
+      const jOffsetIdx = jobsParams.length;
 
-    const jobs = jobsRes.rows.map(job => {
-      const jInfo = getJobStatusInfo(job);
-      return {
-        id: job.id,
-        process_name: job.process_name || `Job #${job.id}`,
-        status: jInfo.status,
-        date_of_start: job.date_of_start,
-        delivery_pct: jInfo.pct
-      };
-    });
+      const jobsQuery = `
+        WITH job_records AS (
+          SELECT j.id, j.process_name, j.date_of_start, j.date_of_end, j.message, j.created_at,
+                 COALESCE(m.status, 'pending') AS status,
+                 COALESCE(
+                   (SELECT ti.items FROM target_item ti WHERE ti.job_id = j.id AND ti.company_id = j.company_id LIMIT 1),
+                   '[]'::jsonb
+                 ) AS target_items
+          FROM job j
+          LEFT JOIN manufacture m ON m.job_id = j.id AND m.company_id = j.company_id
+          WHERE j.company_id = $1
+        )
+        SELECT *, COUNT(*) OVER() AS full_count FROM job_records
+        ${jobsWhere}
+        ORDER BY created_at DESC
+        LIMIT $${jLimitIdx} OFFSET $${jOffsetIdx}
+      `;
+
+      const jobsRes = await pool.query(jobsQuery, jobsParams);
+      if (jobsRes.rows.length > 0) {
+        totalJobs = parseInt(jobsRes.rows[0].full_count, 10) || 0;
+      }
+      jobs = jobsRes.rows.map(job => {
+        const jInfo = getJobStatusInfo(job);
+        return {
+          id: job.id,
+          process_name: job.process_name || `Job #${job.id}`,
+          status: jInfo.status,
+          date_of_start: job.date_of_start,
+          delivery_pct: jInfo.pct
+        };
+      });
+      hasMoreJobs = (offset + jobs.length) < totalJobs;
+    }
 
     res.json({
-      trades: tradesRes.rows,
-      jobs
+      trades,
+      jobs,
+      hasMoreTrades,
+      hasMoreJobs,
+      totalTrades,
+      totalJobs
     });
   } catch (err) {
     console.error('Error fetching available operations:', err.message);
@@ -81,6 +146,7 @@ async function queryItemLinks(itemType, itemId, companyId) {
            COALESCE(
              (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
              (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+             (SELECT poi.process_name FROM process_po_item poi JOIN process_po ppo ON poi.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND poi.process_name IS NOT NULL AND poi.process_name != '' LIMIT 1),
              (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
            ) AS trade_process_name,
            j.process_name AS job_name,

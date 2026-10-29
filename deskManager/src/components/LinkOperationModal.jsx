@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Layers, Search, Plus, Trash2, X, RefreshCw, CheckCircle2, Factory, ArrowRightLeft } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -19,13 +19,106 @@ export default function LinkOperationModal({
 
   const [availableTrades, setAvailableTrades] = useState([]);
   const [availableJobs, setAvailableJobs] = useState([]);
+  const [hasMoreTrades, setHasMoreTrades] = useState(false);
+  const [hasMoreJobs, setHasMoreJobs] = useState(false);
+  const [loadingMoreTrades, setLoadingMoreTrades] = useState(false);
+  const [loadingMoreJobs, setLoadingMoreJobs] = useState(false);
+  const [totalTrades, setTotalTrades] = useState(0);
+  const [totalJobs, setTotalJobs] = useState(0);
 
   // Selected linked operations (list of objects: { operation_type, trade_id, trade_ref, job_id, job_ref, display_ref, live_status, progress_pct })
   const [selectedLinks, setSelectedLinks] = useState([]);
 
+  const isInitialSearch = useRef(true);
+
+  // Fetch Trades (initial, server search, or show more)
+  const fetchTrades = async (isLoadMore = false, query = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMoreTrades(true);
+    } else {
+      setLoadingAvailable(true);
+    }
+    try {
+      const currentOffset = isLoadMore ? availableTrades.length : 0;
+      const res = await fetch(`/api/link-operations/available?type=TRADE&limit=5&offset=${currentOffset}&q=${encodeURIComponent((query || '').trim())}`);
+      if (res.ok) {
+        const data = await res.json();
+        const incoming = Array.isArray(data.trades) ? data.trades : [];
+        if (isLoadMore) {
+          setAvailableTrades(prev => [...prev, ...incoming]);
+        } else {
+          setAvailableTrades(incoming);
+        }
+        setHasMoreTrades(Boolean(data.hasMoreTrades));
+        if (data.totalTrades !== undefined) setTotalTrades(data.totalTrades);
+      } else {
+        toast.error('Failed to load trades');
+      }
+    } catch (err) {
+      console.error('Failed to load trades:', err);
+      toast.error('Failed to load trades');
+    } finally {
+      setLoadingAvailable(false);
+      setLoadingMoreTrades(false);
+    }
+  };
+
+  // Fetch Manufacture Jobs (initial, server search, or show more)
+  const fetchJobs = async (isLoadMore = false, query = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMoreJobs(true);
+    } else {
+      setLoadingAvailable(true);
+    }
+    try {
+      const currentOffset = isLoadMore ? availableJobs.length : 0;
+      const res = await fetch(`/api/link-operations/available?type=MANUFACTURE&limit=5&offset=${currentOffset}&q=${encodeURIComponent((query || '').trim())}`);
+      if (res.ok) {
+        const data = await res.json();
+        const incoming = Array.isArray(data.jobs) ? data.jobs : [];
+        if (isLoadMore) {
+          setAvailableJobs(prev => [...prev, ...incoming]);
+        } else {
+          setAvailableJobs(incoming);
+        }
+        setHasMoreJobs(Boolean(data.hasMoreJobs));
+        if (data.totalJobs !== undefined) setTotalJobs(data.totalJobs);
+      } else {
+        toast.error('Failed to load manufacture jobs');
+      }
+    } catch (err) {
+      console.error('Failed to load manufacture jobs:', err);
+      toast.error('Failed to load manufacture jobs');
+    } finally {
+      setLoadingAvailable(false);
+      setLoadingMoreJobs(false);
+    }
+  };
+
+  // Switch tabs cleanly
+  const handleTabChange = (newTab) => {
+    if (activeTab === newTab) return;
+    setActiveTab(newTab);
+    if (searchQuery !== '') {
+      setSearchQuery('');
+    } else {
+      if (newTab === 'TRADE') {
+        fetchTrades(false, '');
+      } else {
+        fetchJobs(false, '');
+      }
+    }
+  };
+
   // Fetch available trades and jobs when modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      isInitialSearch.current = true;
+      return;
+    }
+
+    setSearchQuery('');
+    isInitialSearch.current = true;
 
     // Initialize selected links from props or normalize
     const initial = (initialLinks || []).map(link => ({
@@ -53,13 +146,17 @@ export default function LinkOperationModal({
         .catch(() => {});
     }
 
-    // Fetch available
+    // Fetch initial 5 available trades & jobs from server
     setLoadingAvailable(true);
-    fetch('/api/link-operations/available')
+    fetch('/api/link-operations/available?limit=5&offset=0')
       .then(res => res.ok ? res.json() : { trades: [], jobs: [] })
       .then(data => {
         setAvailableTrades(data.trades || []);
         setAvailableJobs(data.jobs || []);
+        setHasMoreTrades(Boolean(data.hasMoreTrades));
+        setHasMoreJobs(Boolean(data.hasMoreJobs));
+        setTotalTrades(data.totalTrades || (data.trades || []).length);
+        setTotalJobs(data.totalJobs || (data.jobs || []).length);
       })
       .catch(err => {
         console.error('Failed to load available operations:', err);
@@ -69,6 +166,28 @@ export default function LinkOperationModal({
         setLoadingAvailable(false);
       });
   }, [isOpen, itemId, itemType]);
+
+  // Debounced server search for Trade or Manufacture Job
+  useEffect(() => {
+    if (!isOpen) {
+      isInitialSearch.current = true;
+      return;
+    }
+    if (isInitialSearch.current) {
+      isInitialSearch.current = false;
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      if (activeTab === 'TRADE') {
+        fetchTrades(false, searchQuery);
+      } else {
+        fetchJobs(false, searchQuery);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   if (!isOpen) return null;
 
@@ -229,25 +348,6 @@ export default function LinkOperationModal({
     }
   };
 
-  // Filtered lists capped to top 6 results
-  const filteredTrades = availableTrades.filter(t => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (t.trade_id && t.trade_id.toLowerCase().includes(q)) ||
-           (t.trade_type && t.trade_type.toLowerCase().includes(q)) ||
-           (t.process_name && t.process_name.toLowerCase().includes(q)) ||
-           (t.status && t.status.toLowerCase().includes(q));
-  });
-  const displayedTrades = filteredTrades.slice(0, 6);
-
-  const filteredJobs = availableJobs.filter(j => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (j.process_name && j.process_name.toLowerCase().includes(q)) ||
-           (j.status && j.status.toLowerCase().includes(q));
-  });
-  const displayedJobs = filteredJobs.slice(0, 6);
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl flex flex-col max-h-[90vh] overflow-hidden">
@@ -347,7 +447,7 @@ export default function LinkOperationModal({
             <div className="flex border-b border-slate-200 mb-3">
               <button
                 type="button"
-                onClick={() => { setActiveTab('TRADE'); setSearchQuery(''); }}
+                onClick={() => handleTabChange('TRADE')}
                 className={`flex items-center gap-2 pb-2.5 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer ${
                   activeTab === 'TRADE'
                     ? 'border-[var(--theme-color)] text-[var(--theme-color)]'
@@ -355,11 +455,11 @@ export default function LinkOperationModal({
                 }`}
               >
                 <ArrowRightLeft size={14} />
-                Trades ({availableTrades.length})
+                Trades ({totalTrades > 0 ? totalTrades : availableTrades.length})
               </button>
               <button
                 type="button"
-                onClick={() => { setActiveTab('MANUFACTURE'); setSearchQuery(''); }}
+                onClick={() => handleTabChange('MANUFACTURE')}
                 className={`flex items-center gap-2 pb-2.5 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer ${
                   activeTab === 'MANUFACTURE'
                     ? 'border-[var(--theme-color)] text-[var(--theme-color)]'
@@ -367,7 +467,7 @@ export default function LinkOperationModal({
                 }`}
               >
                 <Factory size={14} />
-                Manufacture Jobs ({availableJobs.length})
+                Manufacture Jobs ({totalJobs > 0 ? totalJobs : availableJobs.length})
               </button>
             </div>
 
@@ -406,21 +506,21 @@ export default function LinkOperationModal({
               </button>
             </form>
 
-            {/* List of Available Items (Limited to top 6 results) */}
-            <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto bg-slate-50/40">
+            {/* List of Available Items (Server paginated: limit 5 with Show More) */}
+            <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto bg-slate-50/40">
               {loadingAvailable ? (
                 <div className="p-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
                   <RefreshCw size={14} className="animate-spin" /> Loading available operations...
                 </div>
               ) : activeTab === 'TRADE' ? (
-                displayedTrades.length === 0 ? (
+                availableTrades.length === 0 ? (
                   <div className="p-6 text-center text-xs text-slate-400">
                     No matching trades found
                   </div>
                 ) : (
                   <div>
                     <div className="divide-y divide-slate-100">
-                      {displayedTrades.map((trade) => {
+                      {availableTrades.map((trade) => {
                         const linked = isTradeLinked(trade);
                         const stat = formatTradeStatus(trade);
                         return (
@@ -466,22 +566,44 @@ export default function LinkOperationModal({
                         );
                       })}
                     </div>
-                    {filteredTrades.length > 6 && (
-                      <div className="p-2 text-center text-[10px] text-slate-500 bg-slate-50 border-t border-slate-100 font-semibold">
-                        Showing 6 of {filteredTrades.length} results. Use search above to narrow down.
+                    {/* Show More Button for Trades */}
+                    {hasMoreTrades && (
+                      <div className="p-2.5 border-t border-slate-200 flex justify-center bg-slate-50/60">
+                        <button
+                          type="button"
+                          onClick={() => fetchTrades(true, searchQuery)}
+                          disabled={loadingMoreTrades || loadingAvailable}
+                          className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {loadingMoreTrades ? (
+                            <>
+                              <RefreshCw size={13} className="animate-spin text-slate-400" />
+                              <span>Loading more...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Show More</span>
+                              {totalTrades > 0 && (
+                                <span className="text-[10px] text-slate-400 font-normal">
+                                  ({availableTrades.length} of {totalTrades})
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>
                 )
               ) : (
-                displayedJobs.length === 0 ? (
+                availableJobs.length === 0 ? (
                   <div className="p-6 text-center text-xs text-slate-400">
                     No matching manufacture jobs found
                   </div>
                 ) : (
                   <div>
                     <div className="divide-y divide-slate-100">
-                      {displayedJobs.map((job) => {
+                      {availableJobs.map((job) => {
                         const linked = isJobLinked(job);
                         const stat = formatJobStatus(job);
                         return (
@@ -519,9 +641,31 @@ export default function LinkOperationModal({
                         );
                       })}
                     </div>
-                    {filteredJobs.length > 6 && (
-                      <div className="p-2 text-center text-[10px] text-slate-500 bg-slate-50 border-t border-slate-100 font-semibold">
-                        Showing 6 of {filteredJobs.length} results. Use search above to narrow down.
+                    {/* Show More Button for Manufacture Jobs */}
+                    {hasMoreJobs && (
+                      <div className="p-2.5 border-t border-slate-200 flex justify-center bg-slate-50/60">
+                        <button
+                          type="button"
+                          onClick={() => fetchJobs(true, searchQuery)}
+                          disabled={loadingMoreJobs || loadingAvailable}
+                          className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {loadingMoreJobs ? (
+                            <>
+                              <RefreshCw size={13} className="animate-spin text-slate-400" />
+                              <span>Loading more...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Show More</span>
+                              {totalJobs > 0 && (
+                                <span className="text-[10px] text-slate-400 font-normal">
+                                  ({availableJobs.length} of {totalJobs})
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>

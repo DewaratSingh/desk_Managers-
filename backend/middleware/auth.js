@@ -5,17 +5,17 @@ const JWT_SECRET = process.env.JWT_SECRET || 'deskmanager_secret_key_2026';
 
 const ALL_MENU_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: "LayoutDashboard", path: "/dashboard", permission: "view_dashboard" },
-  { id: "purchase-order", label: "Order", icon: "ClipboardList", path: "/order", permission: "manage_orders" },
-  { id: "add-customer", label: "Party", icon: "Building2", path: "/party", permission: "manage_parties" },
-  { id: "add-buyer", label: "Contact", icon: "UserPlus", path: "/buyer", permission: "manage_contacts" },
-  { id: "add-item", label: "Item", icon: "Package", path: "/item", permission: "manage_items" },
-  { id: "inventory", label: "Inventory", icon: "Warehouse", path: "/inventory", permission: "manage_inventory" },
-  { id: "manufacture", label: "Manufacture", icon: "Factory", path: "/manufactures", permission: "manage_manufacture" },
-  { id: "arc", label: "ARC", icon: "FileSignature", path: "/arc", permission: "manage_arc" },
-  { id: "gst-category", label: "GST Categories", icon: "Percent", path: "/gst-category", permission: "manage_gst" },
-  { id: "users", label: "Users", icon: "Users", path: "/users", permission: "manage_users" },
-  { id: "backup", label: "Backup", icon: "CloudUpload", path: "/backup", permission: "manage_backup" },
-  { id: "monitor", label: "Monitor", icon: "Activity", path: "/monitor", permission: "manage_monitor" },
+  { id: "purchase-order", label: "Order", icon: "ClipboardList", path: "/order", permission: "orders:view_page" },
+  { id: "add-customer", label: "Party", icon: "Building2", path: "/party", permission: "parties:read" },
+  { id: "add-buyer", label: "Contact", icon: "UserPlus", path: "/buyer", permission: "contacts:read" },
+  { id: "add-item", label: "Item", icon: "Package", path: "/item", permission: "items:read" },
+  { id: "inventory", label: "Inventory", icon: "Warehouse", path: "/inventory", permission: "inventory:read" },
+  { id: "manufacture", label: "Manufacture", icon: "Factory", path: "/manufactures", permission: "manufacture:read" },
+  { id: "arc", label: "ARC", icon: "FileSignature", path: "/arc", permission: "arc:read" },
+  { id: "gst-category", label: "GST Categories", icon: "Percent", path: "/gst-category", permission: "gst:read" },
+  { id: "users", label: "Users", icon: "Users", path: "/users", permission: "users:read" },
+  { id: "backup", label: "Backup", icon: "CloudUpload", path: "/backup", permission: "backup:read" },
+  { id: "monitor", label: "Monitor", icon: "Activity", path: "/monitor", permission: "monitor:view" },
   { id: "settings", label: "Settings", icon: "Settings", path: "/settings" },
 ];
 
@@ -69,6 +69,12 @@ function hasUserPermission(user, permissionKey) {
     }
 
     // Aliases
+    if (key === 'view_dashboard' && (perms.includes('view_dashboard') || perms.includes('trades:view_all') || perms.includes('trades:search') || perms.includes('role:view_trade') || perms.some(p => typeof p === 'string' && p.endsWith(':create')))) return true;
+    if (key === 'arc:page_access' && (perms.includes('arc:page_access') || (perms.includes('arc:read') && perms.includes('arc:create')) || perms.includes('*'))) return true;
+    if ((key === 'arc:read' || key === 'arc:create') && (perms.includes('arc:page_access') || perms.includes('*'))) return true;
+    if (key === 'orders:view_page' && (perms.includes('manage_orders') || perms.includes('*'))) return true;
+    if (key === 'trades:view_all' && perms.includes('*')) return true;
+    if (key === 'trades:search' && perms.includes('*')) return true;
     if (key === 'items:quote_history' && perms.includes('view_history')) return true;
     if (key === 'pricing:view' && perms.includes('view_pricing')) return true;
     if (key === 'view_pricing' && perms.includes('pricing:view')) return true;

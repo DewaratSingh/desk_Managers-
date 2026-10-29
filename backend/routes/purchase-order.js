@@ -67,6 +67,7 @@ router.put('/:po_no/items/:item_code', async (req, res) => {
                   'trade_process_name', COALESCE(
                     (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
                     (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                    (SELECT poi.process_name FROM process_po_item poi JOIN process_po ppo ON poi.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND poi.process_name IS NOT NULL AND poi.process_name != '' LIMIT 1),
                     (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
                   ),
                   'job_id', lo.job_id,
@@ -99,7 +100,7 @@ router.put('/:po_no/items/:item_code', async (req, res) => {
 });
 
 // List all POs
-router.get('/', requirePermission(['orders:read', 'sell_po:read', 'manage_orders']), async (req, res) => {
+router.get('/', requirePermission(['orders:view_page', 'orders:read', 'sell_po:read', 'manage_orders']), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -158,6 +159,7 @@ router.get('/', requirePermission(['orders:read', 'sell_po:read', 'manage_orders
                 'trade_process_name', COALESCE(
                   (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
                   (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT poi.process_name FROM process_po_item poi JOIN process_po ppo ON poi.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND poi.process_name IS NOT NULL AND poi.process_name != '' LIMIT 1),
                   (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
                 ),
                 'job_id', lo.job_id,
@@ -259,6 +261,7 @@ router.get('/:po_no', async (req, res) => {
                 'trade_process_name', COALESCE(
                   (SELECT pti.process_name FROM process_ro_target_item pti JOIN process_ro pro ON pti.process_ro_id = pro.id WHERE (pro.trade_id = t.id OR pro.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
                   (SELECT pti.process_name FROM process_po_target_item pti JOIN process_po ppo ON pti.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND pti.process_name IS NOT NULL AND pti.process_name != '' LIMIT 1),
+                  (SELECT poi.process_name FROM process_po_item poi JOIN process_po ppo ON poi.process_po_id = ppo.id WHERE (ppo.trade_id = t.id OR ppo.trade_id::text = t.trade_id) AND poi.process_name IS NOT NULL AND poi.process_name != '' LIMIT 1),
                   (SELECT prfq.process_name FROM process_received_rfqs prfq WHERE (prfq.trade_id = t.id OR prfq.trade_id::text = t.trade_id) AND prfq.process_name IS NOT NULL AND prfq.process_name != '' LIMIT 1)
                 ),
                 'job_id', lo.job_id,

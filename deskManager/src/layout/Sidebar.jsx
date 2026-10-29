@@ -258,8 +258,8 @@ export default function Sidebar({ user, onLogout }) {
   };
 
   const defaultMenuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard", permission: "view_dashboard" },
-    { id: "purchase-order", label: "Order", icon: ClipboardList, path: "/order", permission: "orders:read" },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/dashboard", permission: ["view_dashboard", "trades:view_all", "trades:search"] },
+    { id: "purchase-order", label: "Order", icon: ClipboardList, path: "/order", permission: "orders:view_page" },
     { id: "add-customer", label: "Party", icon: Building2, path: "/party", permission: "parties:read" },
     { id: "add-buyer", label: "Contact", icon: UserPlus, path: "/buyer", permission: "contacts:read" },
     { id: "add-item", label: "Item", icon: Package, path: "/item", permission: "items:read" },

@@ -14,12 +14,20 @@ import {
   Package,
   X
 } from 'lucide-react';
+import { hasPermission } from '../utils/permissions';
 
 export default function ArcView() {
   const navigate = useNavigate();
   const location = useLocation();
   const isFormRoute = location.pathname.endsWith('/form');
   
+  const userStr = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const canCreateContract = hasPermission(currentUser, ['arc:create', 'manage_arc']);
+  const canUpdateContract = hasPermission(currentUser, ['arc:update', 'manage_arc']);
+  const canDeleteContract = hasPermission(currentUser, 'arc:delete');
+  const canEditItems = hasPermission(currentUser, ['arc:create', 'arc:update', 'manage_arc']);
+
   // State for view management
   const [viewMode, setViewMode] = useState('list'); // 'list', 'form', 'detail'
   
@@ -27,6 +35,8 @@ export default function ArcView() {
   const [contracts, setContracts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMoreContracts, setLoadingMoreContracts] = useState(false);
+  const [hasMoreContracts, setHasMoreContracts] = useState(false);
   const [error, setError] = useState(null);
   
   // Contract Form State
@@ -55,6 +65,8 @@ export default function ArcView() {
   // Contract Detail State (Items)
   const [selectedContract, setSelectedContract] = useState(null);
   const [contractItems, setContractItems] = useState([]);
+  const [loadingMoreItems, setLoadingMoreItems] = useState(false);
+  const [hasMoreItems, setHasMoreItems] = useState(false);
   const [showItemForm, setShowItemForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [itemInput, setItemInput] = useState('');
@@ -174,14 +186,35 @@ export default function ArcView() {
     return () => clearTimeout(delayDebounceFn);
   }, [partyInput]);
 
-  const fetchContracts = async (searchVal = searchQuery) => {
-    setIsLoading(true);
+  // Debounced API-based search for contracts (limit 20)
+  useEffect(() => {
+    if (viewMode === 'list' && !isFormRoute && !selectedContract) {
+      const delayDebounceFn = setTimeout(() => {
+        fetchContracts(false, searchQuery);
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery, viewMode, isFormRoute, selectedContract]);
+
+  const fetchContracts = async (isLoadMore = false, searchVal = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMoreContracts(true);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
     try {
-      const res = await fetch(`/api/contracts?q=${encodeURIComponent(searchVal || '')}`);
+      const currentOffset = isLoadMore ? contracts.length : 0;
+      const res = await fetch(`/api/contracts?limit=20&offset=${currentOffset}&q=${encodeURIComponent(searchVal || '')}`);
       if (res.ok) {
         const data = await res.json();
-        setContracts(data);
+        const incoming = Array.isArray(data) ? data : [];
+        if (isLoadMore) {
+          setContracts(prev => [...prev, ...incoming]);
+        } else {
+          setContracts(incoming);
+        }
+        setHasMoreContracts(incoming.length === 20);
       } else {
         setError('Failed to load contracts');
       }
@@ -189,33 +222,58 @@ export default function ArcView() {
       setError('Connection error');
     } finally {
       setIsLoading(false);
+      setLoadingMoreContracts(false);
+    }
+  };
+
+  const fetchContractItems = async (isLoadMore = false, contract = selectedContract) => {
+    if (!contract || !contract.id) return;
+    if (isLoadMore) {
+      setLoadingMoreItems(true);
+    } else {
+      setIsLoading(true);
+    }
+    try {
+      const useProcess = isProcessType(contract);
+      const currentOffset = isLoadMore ? contractItems.length : 0;
+      const endpoint = useProcess
+        ? `/api/contracts/${contract.id}/process-items?limit=20&offset=${currentOffset}`
+        : `/api/contracts/${contract.id}/items?limit=20&offset=${currentOffset}`;
+
+      const res = await fetch(endpoint);
+      if (res.ok) {
+        const data = await res.json();
+        const incoming = Array.isArray(data) ? data : [];
+        if (isLoadMore) {
+          setContractItems(prev => [...prev, ...incoming]);
+        } else {
+          setContractItems(incoming);
+        }
+        setHasMoreItems(incoming.length === 20);
+      } else {
+        if (!isLoadMore) setContractItems([]);
+        setHasMoreItems(false);
+      }
+    } catch (err) {
+      console.error('Error fetching contract items:', err);
+    } finally {
+      setIsLoading(false);
+      setLoadingMoreItems(false);
     }
   };
 
   const fetchContractDetails = async (contract) => {
     const id = contract.id;
-    const useProcess = isProcessType(contract);
     setIsLoading(true);
     setError(null);
     try {
       // Always fetch the contract metadata
-      const res = await fetch(`/api/contracts/${id}`);
+      const res = await fetch(`/api/contracts/${id}?limit=20`);
       if (!res.ok) { setError('Failed to load contract details'); return; }
       const data = await res.json();
-
-      // Fetch items from the correct table
-      if (useProcess) {
-        const pRes = await fetch(`/api/contracts/${id}/process-items`);
-        if (pRes.ok) {
-          const pData = await pRes.json();
-          setContractItems(pData);
-        } else {
-          setContractItems([]);
-        }
-      } else {
-        setContractItems(data.items || []);
-      }
       setSelectedContract(data);
+      // Fetch paginated contract items (limit 20)
+      await fetchContractItems(false, data);
     } catch (err) {
       setError('Connection error');
     } finally {
@@ -503,27 +561,40 @@ export default function ArcView() {
                 Manage rate contracts and their associated items.
               </p>
             </div>
-            <button
-              onClick={() => navigate('/arc/form')}
-              className="px-4 py-2 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700"
-            >
-              <Plus size={16} />
-              New Contract
-            </button>
+            {canCreateContract && (
+              <button
+                onClick={() => navigate('/arc/form')}
+                className="px-4 py-2 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus size={16} />
+                New Contract
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2.5 border border-slate-300 rounded-lg px-3 py-2  bg-[white] shadow-sm">
-            <Search size={18} className="text-slate-400 shrink-0" />
+            {isLoading && !loadingMoreContracts ? (
+              <RefreshCw size={18} className="text-slate-400 shrink-0 animate-spin" />
+            ) : (
+              <Search size={18} className="text-slate-400 shrink-0" />
+            )}
             <input
               type="text"
               placeholder="Search contracts..."
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                fetchContracts(e.target.value);
-              }}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-transparent focus:outline-none text-sm text-slate-900 placeholder:text-slate-400 font-medium"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-xs text-slate-400 hover:text-slate-600 font-bold px-1"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -546,21 +617,27 @@ export default function ArcView() {
                       <FileText size={20} />
                     </div>
                     <div className="flex gap-1">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate('/arc/form', { state: { editingContract: contract } });
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 rounded bg-slate-50 hover:bg-blue-50 transition-colors"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button 
-                        onClick={(e) => handleDeleteContract(contract.id, e)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-slate-50 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {canUpdateContract && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/arc/form', { state: { editingContract: contract } });
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 rounded bg-slate-50 hover:bg-blue-50 transition-colors"
+                          title="Edit Contract"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                      )}
+                      {canDeleteContract && (
+                        <button 
+                          onClick={(e) => handleDeleteContract(contract.id, e)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-slate-50 hover:bg-red-50 transition-colors"
+                          title="Delete Contract"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                   <h3 className="font-bold text-lg text-slate-900 mb-1">{contract.company_name}</h3>
@@ -594,6 +671,27 @@ export default function ArcView() {
               ))
             )}
           </div>
+
+          {/* SHOW MORE CONTRACTS BUTTON */}
+          {hasMoreContracts && (
+            <div className="flex justify-center mt-6">
+              <button
+                type="button"
+                onClick={() => fetchContracts(true, searchQuery)}
+                disabled={loadingMoreContracts || isLoading}
+                className="flex items-center gap-1.5 px-6 py-2.5 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingMoreContracts ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin text-slate-400" />
+                    <span>Loading more contracts...</span>
+                  </>
+                ) : (
+                  <span>Show More Contracts</span>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -859,13 +957,15 @@ export default function ArcView() {
                 </div>
               )}
             </div>
-            <button
-              onClick={() => setShowItemForm(true)}
-              className="px-4 py-2 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700"
-            >
-              <Plus size={16} />
-              Add Item
-            </button>
+            {canEditItems && (
+              <button
+                onClick={() => setShowItemForm(true)}
+                className="px-4 py-2 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus size={16} />
+                Add Item
+              </button>
+            )}
           </div>
 
           {/* Item Form Modal/Inline */}
@@ -1035,32 +1135,57 @@ export default function ArcView() {
                                 View
                               </button>
                             )}
-                            <button
-                              onClick={() => {
-                                setEditingItem(item);
-                                setItemInput(item.item_code);
-                                setItemPrice(item.price);
-                                setItemDate(item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0]);
-                                setItemExpiryDate(item.expiry_date ? item.expiry_date.split('T')[0] : '');
-                                setProcessName(item.processname || '');
-                                setShowItemForm(true);
-                              }}
-                              className="px-2 py-1 text-[11px] font-bold text-blue-600 border border-blue-200 rounded hover:bg-blue-600 hover:text-white transition-colors"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteContractItem(item.id)}
-                              className="px-2 py-1 text-[11px] font-bold text-red-600 border border-red-200 rounded hover:bg-red-600 hover:text-white transition-colors"
-                            >
-                              Delete
-                            </button>
+                            {canEditItems && (
+                              <button
+                                onClick={() => {
+                                  setEditingItem(item);
+                                  setItemInput(item.item_code);
+                                  setItemPrice(item.price);
+                                  setItemDate(item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+                                  setItemExpiryDate(item.expiry_date ? item.expiry_date.split('T')[0] : '');
+                                  setProcessName(item.processname || '');
+                                  setShowItemForm(true);
+                                }}
+                                className="px-2 py-1 text-[11px] font-bold text-blue-600 border border-blue-200 rounded hover:bg-blue-600 hover:text-white transition-colors"
+                              >
+                                Edit
+                              </button>
+                            )}
+                            {canDeleteContract && (
+                              <button
+                                onClick={() => handleDeleteContractItem(item.id)}
+                                className="px-2 py-1 text-[11px] font-bold text-red-600 border border-red-200 rounded hover:bg-red-600 hover:text-white transition-colors"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* SHOW MORE CONTRACT ITEMS BUTTON */}
+            {hasMoreItems && (
+              <div className="p-4 border-t border-slate-200 flex justify-center bg-slate-50/50">
+                <button
+                  type="button"
+                  onClick={() => fetchContractItems(true, selectedContract)}
+                  disabled={loadingMoreItems || isLoading}
+                  className="flex items-center gap-1.5 px-6 py-2.5 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMoreItems ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin text-slate-400" />
+                      <span>Loading more items...</span>
+                    </>
+                  ) : (
+                    <span>Show More Items</span>
+                  )}
+                </button>
               </div>
             )}
           </div>

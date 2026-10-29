@@ -80,6 +80,8 @@ export default function ManufactureList() {
 
   const [manufactureList, setManufactureList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const qParam = new URLSearchParams(location.search).get('q') || '';
   const [searchQuery, setSearchQuery] = useState(qParam);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -90,6 +92,14 @@ export default function ManufactureList() {
       setSearchQuery(q);
     }
   }, [location.search]);
+
+  // Debounced API-based search for manufacture jobs (limit 20)
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchManufactures(false, searchQuery);
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   // New Manufacture Job Form State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -113,9 +123,35 @@ export default function ManufactureList() {
   const [targetCompletionItems, setTargetCompletionItems] = useState([]);
   const [isProcessingComplete, setIsProcessingComplete] = useState(false);
 
-  useEffect(() => {
-    fetchManufactures();
-  }, []);
+  const fetchManufactures = async (isLoadMore = false, query = searchQuery) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
+    try {
+      const currentOffset = isLoadMore ? manufactureList.length : 0;
+      const res = await fetch(`/api/manufacture/jobs?limit=20&offset=${currentOffset}&q=${encodeURIComponent(query || '')}`);
+      if (res.ok) {
+        const data = await res.json();
+        const incoming = Array.isArray(data) ? data : [];
+        if (isLoadMore) {
+          setManufactureList(prev => [...prev, ...incoming]);
+        } else {
+          setManufactureList(incoming);
+        }
+        setHasMore(incoming.length === 20);
+      } else {
+        toast.error('Failed to load manufacture records');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error fetching manufacture data');
+    } finally {
+      setIsLoading(false);
+      setLoadingMore(false);
+    }
+  };
 
   // Handle return state from /inventory/form after warehouse location selection
   useEffect(() => {
@@ -174,11 +210,13 @@ export default function ManufactureList() {
       if (manufactureList.length > 0) {
         updateJobAndItems(manufactureList);
       } else {
-        fetch('/api/manufacture/jobs')
+        fetch(`/api/manufacture/jobs/${jobId}`)
           .then(res => res.json())
-          .then(data => {
-            setManufactureList(data);
-            updateJobAndItems(data);
+          .then(job => {
+            if (job && job.id) {
+              setManufactureList([job]);
+              updateJobAndItems([job]);
+            }
           })
           .catch(err => console.error(err));
       }
@@ -186,24 +224,6 @@ export default function ManufactureList() {
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.state, manufactureList]);
-
-  const fetchManufactures = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch('/api/manufacture/jobs');
-      if (res.ok) {
-        const data = await res.json();
-        setManufactureList(data);
-      } else {
-        toast.error('Failed to load manufacture records');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Error fetching manufacture data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Handlers for Source Items Selection (InventoryTraceSelectorModal)
   const handleApplySourceSelections = (selectionsArray) => {
@@ -512,23 +532,7 @@ export default function ManufactureList() {
     }
   };
 
-  const filteredList = manufactureList.filter(item => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    const srcList = item.source_items || [];
-    const tgtList = item.target_items || [];
-    const hasSrcMatch = srcList.some(s => s.item_code && s.item_code.toLowerCase().includes(q));
-    const hasTgtMatch = tgtList.some(t => t.item_code && t.item_code.toLowerCase().includes(q));
-    const statusInfo = getJobDeliveryStatus(item);
-    return (
-      (item.process_name && item.process_name.toLowerCase().includes(q)) ||
-      (item.message && item.message.toLowerCase().includes(q)) ||
-      (String(item.id).includes(q)) ||
-      (statusInfo.status && statusInfo.status.toLowerCase().includes(q)) ||
-      hasSrcMatch ||
-      hasTgtMatch
-    );
-  });
+  const filteredList = manufactureList;
 
   const viewingJobStatus = viewingJob ? getJobDeliveryStatus(viewingJob) : null;
 
@@ -554,8 +558,8 @@ export default function ManufactureList() {
 
           <div className="flex items-center gap-2.5">
             <button
-              onClick={fetchManufactures}
-              disabled={isLoading}
+              onClick={() => fetchManufactures(false, searchQuery)}
+              disabled={isLoading || loadingMore}
               className="p-2  bg-[white] border border-slate-300 hover:border-slate-400 rounded-xl text-slate-700 hover:bg-slate-50 transition-all shadow-xs cursor-pointer disabled:opacity-50"
               title="Refresh Records"
             >
@@ -579,7 +583,11 @@ export default function ManufactureList() {
           className="flex items-center gap-2.5 border border-slate-300 rounded-xl px-3.5 py-2.5  bg-[white] shadow-xs transition-all"
           style={{ borderColor: searchFocused ? 'var(--theme-color)' : 'rgb(203, 213, 225)' }}
         >
-          <Search size={18} className="text-slate-400 shrink-0" />
+          {isLoading && !loadingMore ? (
+            <RefreshCw size={18} className="text-slate-400 shrink-0 animate-spin" />
+          ) : (
+            <Search size={18} className="text-slate-400 shrink-0" />
+          )}
           <input
             type="text"
             placeholder="Search by job ID, process name, source items, target items, remarks..."
@@ -589,6 +597,16 @@ export default function ManufactureList() {
             onBlur={() => setSearchFocused(false)}
             className="w-full bg-transparent focus:outline-none text-xs text-slate-900 placeholder:text-slate-400 font-semibold"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="text-xs text-slate-400 hover:text-slate-600 font-bold px-1"
+              title="Clear search"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         {/* MANUFACTURE DIRECTORY LIST TABLE */}
@@ -766,6 +784,27 @@ export default function ManufactureList() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* SHOW MORE PAGINATION BUTTON */}
+          {hasMore && (
+            <div className="p-4 border-t border-slate-200 flex justify-center bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => fetchManufactures(true, searchQuery)}
+                disabled={loadingMore || isLoading}
+                className="flex items-center gap-1.5 px-6 py-2.5 bg-white border border-slate-300 hover:border-slate-400 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingMore ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin text-slate-400" />
+                    <span>Loading more...</span>
+                  </>
+                ) : (
+                  <span>Show More</span>
+                )}
+              </button>
             </div>
           )}
         </div>

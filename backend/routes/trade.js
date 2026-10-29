@@ -8,8 +8,8 @@ router.get('/', async (req, res) => {
   const { q, status, trade_type } = req.query || {};
 
   // Require read access to trades
-  if (!hasUserPermission(req.user, ['trades:read', 'trades:search', 'view_dashboard'])) {
-    return res.status(403).json({ error: "Access Denied: Permission 'trades:read' or 'view_dashboard' required." });
+  if (!hasUserPermission(req.user, ['trades:view_all', 'trades:read', 'trades:search', 'view_dashboard'])) {
+    return res.status(403).json({ error: "Access Denied: Permission 'trades:view_all', 'trades:read' or 'view_dashboard' required." });
   }
 
   // If search query is used, explicitly require trades:search
@@ -42,7 +42,7 @@ router.get('/', async (req, res) => {
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name) FROM "processRFQ" prfq JOIN customers c ON prfq.customer_id = c.id WHERE prfq.trade_id = t.id AND prfq.company_id = t.company_id ORDER BY prfq.id LIMIT 1),
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name) FROM release_orders ro JOIN customers c ON ro.customer_id = c.id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id ORDER BY ro.id LIMIT 1),
           (SELECT NULLIF(pro.party, '') FROM process_ro pro WHERE pro.trade_id = t.id AND pro.company_id = t.company_id ORDER BY pro.id LIMIT 1),
-          (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name, NULLIF(pr.party, '')) FROM rq_process pr LEFT JOIN customers c ON pr.customer_id = c.id WHERE pr.trade_id = t.id AND pr.company_id = t.company_id ORDER BY pr.id LIMIT 1),
+          (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name) FROM rq_process pr LEFT JOIN customers c ON pr.customer_id = c.id WHERE pr.trade_id = t.id AND pr.company_id = t.company_id ORDER BY pr.id LIMIT 1),
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name, NULLIF(ppo.party, '')) FROM process_po ppo LEFT JOIN "processReceivedQuotation" prq ON ppo.received_q_id = prq.id LEFT JOIN customers c ON prq.customer_id = c.id WHERE ppo.trade_id = t.id AND ppo.company_id = t.company_id ORDER BY ppo.id LIMIT 1),
           (SELECT COALESCE(NULLIF(c.customer_code, ''), c.name) FROM purchase_orders po LEFT JOIN received_quotations rq ON po.received_quotation_id = rq.id LEFT JOIN customers c ON rq.customer_id = c.id WHERE po.trade_id = t.id AND po.company_id = t.company_id ORDER BY po.id LIMIT 1),
           '—'
@@ -54,7 +54,7 @@ router.get('/', async (req, res) => {
           (SELECT b.name FROM "processRFQ" prfq JOIN buyers b ON prfq.buyer_id = b.id WHERE prfq.trade_id = t.id AND prfq.company_id = t.company_id ORDER BY prfq.id LIMIT 1),
           (SELECT b.name FROM release_orders ro JOIN buyers b ON ro.buyer_id = b.id WHERE ro.trade_id = t.id AND ro.company_id = t.company_id ORDER BY ro.id LIMIT 1),
           (SELECT NULLIF(pro.seller, '') FROM process_ro pro WHERE pro.trade_id = t.id AND pro.company_id = t.company_id ORDER BY pro.id LIMIT 1),
-          (SELECT COALESCE(b.name, NULLIF(pr.seller, '')) FROM rq_process pr LEFT JOIN buyers b ON pr.party_id = b.id WHERE pr.trade_id = t.id AND pr.company_id = t.company_id ORDER BY pr.id LIMIT 1),
+          (SELECT b.name FROM rq_process pr LEFT JOIN buyers b ON pr.party_id = b.id WHERE pr.trade_id = t.id AND pr.company_id = t.company_id ORDER BY pr.id LIMIT 1),
           (SELECT COALESCE(b.name, NULLIF(ppo.seller, '')) FROM process_po ppo LEFT JOIN "processReceivedQuotation" prq ON ppo.received_q_id = prq.id LEFT JOIN buyers b ON prq.buyer_id = b.id WHERE ppo.trade_id = t.id AND ppo.company_id = t.company_id ORDER BY ppo.id LIMIT 1),
           (SELECT b.name FROM purchase_orders po LEFT JOIN received_quotations rq ON po.received_quotation_id = rq.id LEFT JOIN buyers b ON rq.buyer_id = b.id WHERE po.trade_id = t.id AND po.company_id = t.company_id ORDER BY po.id LIMIT 1),
           '—'

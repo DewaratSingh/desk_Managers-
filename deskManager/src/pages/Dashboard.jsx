@@ -25,7 +25,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
 
   const userStr = sessionStorage.getItem('user');
   const currentUser = userStr ? JSON.parse(userStr) : null;
-  const canSearchTrades = hasPermission(currentUser, 'trades:search') || hasPermission(currentUser, 'view_dashboard');
+  const canSeeAllTrades = hasPermission(currentUser, 'trades:view_all');
 
   const [trades, setTrades] = useState([]);
   const [tradesLoading, setTradesLoading] = useState(false);
@@ -93,13 +93,13 @@ export default function Dashboard({ activeTab: propActiveTab }) {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'dashboard' && canSearchTrades) {
+    if (activeTab === 'dashboard' && canSeeAllTrades) {
       const delayDebounceFn = setTimeout(() => {
         fetchTrades(false, tradeSearchQuery, selectedFilter);
       }, 300);
       return () => clearTimeout(delayDebounceFn);
     }
-  }, [tradeSearchQuery, selectedFilter, activeTab, canSearchTrades]);
+  }, [tradeSearchQuery, selectedFilter, activeTab, canSeeAllTrades]);
 
   const fetchTrades = async (isLoadMore = false, searchVal = tradeSearchQuery, filterObj = selectedFilter) => {
     if (isLoadMore) {
@@ -193,7 +193,7 @@ export default function Dashboard({ activeTab: propActiveTab }) {
             {/* <TradeComparisonChart trades={trades} /> */}
 
             {/* List all trade or Operation Desk */}
-            {!canSearchTrades ? (
+            {!canSeeAllTrades ? (
               <div className="space-y-6 pt-4 border-t border-slate-200">
                 <div className="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-2xl p-6 text-white shadow-md">
                   <div className="flex items-center gap-2 mb-2">
@@ -265,6 +265,15 @@ export default function Dashboard({ activeTab: propActiveTab }) {
                       <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Manufacture / Process</span>
                       <h4 className="text-sm font-bold text-slate-900 mt-2">Process Contract Order</h4>
                       <p className="text-xs text-slate-500 mt-1">Outsourced job work order</p>
+                    </div>
+                  )}
+
+                  {/* ARC Contract Management */}
+                  {hasPermission(currentUser, 'arc:create') && (
+                    <div onClick={() => navigate('/arc/form')} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-md cursor-pointer transition-all">
+                      <span className="text-[10px] font-black uppercase text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">Contract Management</span>
+                      <h4 className="text-sm font-bold text-slate-900 mt-2">New ARC Contract</h4>
+                      <p className="text-xs text-slate-500 mt-1">Create annual rate contract agreement</p>
                     </div>
                   )}
                 </div>

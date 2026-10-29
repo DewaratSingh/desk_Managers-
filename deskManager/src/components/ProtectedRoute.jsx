@@ -25,10 +25,11 @@ export function getFirstAllowedPath(user) {
   if (role === 'admin' || role === 'owner' || role === 'boss') return '/dashboard';
 
   // Specific role priorities
-  if (hasPermission(user, 'view_dashboard') || hasPermission(user, 'trades:search')) return '/dashboard';
+  if (hasPermission(user, 'view_dashboard') || hasPermission(user, 'trades:view_all') || hasPermission(user, 'trades:search')) return '/dashboard';
+  if (hasPermission(user, 'orders:view_page') || hasPermission(user, 'manage_orders')) return '/order';
   if (hasPermission(user, 'inventory:read') || hasPermission(user, 'manage_inventory')) return '/inventory';
-  if (hasPermission(user, 'orders:read') || hasPermission(user, 'manage_orders')) return '/order';
   if (hasPermission(user, 'manufacture:read') || hasPermission(user, 'manage_manufacture')) return '/manufactures';
+  if (hasPermission(user, 'arc:read') || hasPermission(user, 'arc:create') || hasPermission(user, 'manage_arc')) return '/arc';
 
   // Data feeder / forms priority
   if (hasPermission(user, 'sell_rfq:create')) return '/addRfq';
@@ -99,7 +100,7 @@ export default function ProtectedRoute() {
   if (path === '/' || path === '/dashboard' || path.startsWith('/dashboard')) {
     // Allowed if user has dashboard, trade search, or any trade create form (Operation Desk)
     const hasAnyForm = Array.isArray(user.permissions) && user.permissions.some(p => typeof p === 'string' && p.endsWith(':create'));
-    if (!hasPermission(user, 'view_dashboard') && !hasPermission(user, 'trades:search') && !hasAnyForm) {
+    if (!hasPermission(user, 'view_dashboard') && !hasPermission(user, 'trades:view_all') && !hasPermission(user, 'trades:search') && !hasAnyForm) {
       requiredPermission = 'view_dashboard';
     }
   } else if (path.startsWith('/inventory/trace-history')) {
@@ -140,8 +141,9 @@ export default function ProtectedRoute() {
     requiredPermission = 'process_order:create';
   } else if (path.startsWith('/updateProcessPurchaseOrder') || path.startsWith('/updateProcessContractOrder')) {
     requiredPermission = 'process_order:update';
+  } else if (path === '/order' || path.startsWith('/order')) {
+    requiredPermission = 'orders:view_page';
   } else if (
-    path.startsWith('/order') ||
     path.startsWith('/addReceivedPurchaseOrder') ||
     path.startsWith('/updateReceivedPurchaseOrder') ||
     path.startsWith('/release-order') ||
@@ -151,8 +153,10 @@ export default function ProtectedRoute() {
     path.startsWith('/updateInvoice')
   ) {
     requiredPermission = 'orders:read';
+  } else if (path.startsWith('/arc/form')) {
+    requiredPermission = ['arc:create', 'arc:update', 'manage_arc'];
   } else if (path.startsWith('/arc')) {
-    requiredPermission = 'manage_arc';
+    requiredPermission = ['arc:read', 'arc:create', 'manage_arc'];
   } else if (path.startsWith('/item')) {
     requiredPermission = 'items:read';
   } else if (

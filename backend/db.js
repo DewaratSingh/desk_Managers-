@@ -8,16 +8,73 @@ types.setTypeParser(1082, val => val);
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_DATABASE || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
+  database: process.env.DB_DATABASE || 'deskmanager',
+  password: process.env.DB_PASSWORD || '1209',
   port: parseInt(process.env.DB_PORT || '5432'),
 });
 
+// Helper to connect to a pool with retries
+const connectWithRetry = async (targetPool, maxRetries = 5, delayMs = 2000) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await targetPool.connect();
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      console.warn(`[DB Connection] Attempt ${attempt}/${maxRetries} failed (${err.message}). Retrying in ${delayMs / 1000}s...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+};
+
+// Ensures the target database exists; if not, connects to default 'postgres' database and creates it
+const ensureDatabaseExists = async () => {
+  const targetDb = process.env.DB_DATABASE || 'deskmanager';
+  if (targetDb === 'postgres') return;
+
+  const adminPool = new Pool({
+    user: process.env.DB_USER || 'postgres',
+    host: process.env.DB_HOST || 'localhost',
+    database: 'postgres',
+    password: process.env.DB_PASSWORD || '1209',
+    port: parseInt(process.env.DB_PORT || '5432'),
+  });
+
+  try {
+    const adminClient = await connectWithRetry(adminPool, 3, 2000);
+    try {
+      const checkRes = await adminClient.query(
+        'SELECT 1 FROM pg_database WHERE datname = $1',
+        [targetDb]
+      );
+      if (checkRes.rows.length === 0) {
+        console.log(`Database "${targetDb}" does not exist. Creating it now...`);
+        await adminClient.query(`CREATE DATABASE "${targetDb}"`);
+        console.log(`Database "${targetDb}" created successfully.`);
+      }
+    } finally {
+      adminClient.release();
+    }
+  } catch (err) {
+    console.warn(`[DB Init Warning] Could not ensure database "${targetDb}" via maintenance db: ${err.message}`);
+  } finally {
+    await adminPool.end().catch(() => {});
+  }
+};
+
 // Automatically create tables if they do not exist
 const initializeDatabase = async () => {
-  const client = await pool.connect();
+  await ensureDatabaseExists();
+  const client = await connectWithRetry(pool, 5, 2000);
   try {
     console.log('Successfully connected to PostgreSQL. Initializing tables...');
+
+    const safeQuery = async (sql, desc) => {
+      try {
+        await client.query(sql);
+      } catch (err) {
+        console.warn(`[DB Init Warning] Skipped or failed step (${desc}): ${err.message}`);
+      }
+    };
 
 
 
@@ -57,30 +114,6 @@ const initializeDatabase = async () => {
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS theme JSONB DEFAULT NULL;
     `);
-
-    // Seed default company
-    let defaultCompanyId = null;
-    const compCheck = await client.query('SELECT id FROM companies WHERE name = $1', ['Shreeji Industries']);
-    if (compCheck.rows.length === 0) {
-      const res = await client.query(
-        "INSERT INTO companies (name, owner_name, phone, email) VALUES ('Shreeji Industries', 'Shreeji Owner', '0000000000', 'info@shreeji.com') RETURNING id"
-      );
-      defaultCompanyId = res.rows[0].id;
-    } else {
-      defaultCompanyId = compCheck.rows[0].id;
-    }
-
-    // Seed default admin accounts
-    const defaultAdminHash = crypto.createHash('sha256').update('admin').digest('hex');
-    await client.query(`
-      INSERT INTO users (username, password_hash, role, name, permissions, company_id)
-      VALUES 
-        ('admin', $1, 'admin', 'System Admin', '[]'::jsonb, $2),
-        ('admin1', $1, 'admin', 'System Admin 1', '[]'::jsonb, $2),
-        ('admin2', $1, 'admin', 'System Admin 2', '[]'::jsonb, $2),
-        ('admin3', $1, 'admin', 'System Admin 3', '[]'::jsonb, $2)
-      ON CONFLICT (username) DO NOTHING;
-    `, [defaultAdminHash, defaultCompanyId]);
 
     // 3. Customers Table
     await client.query(`
@@ -141,9 +174,54 @@ const initializeDatabase = async () => {
       );
     `);
 
-    await client.query(`
+    await safeQuery(`
       ALTER TABLE items ADD COLUMN IF NOT EXISTS margin NUMERIC(10, 2) DEFAULT 0.00;
-    `);
+    `, 'alter items table');
+
+    // 6b. Contracts and Contract Items (Defined before release_orders which references contracts)
+    await safeQuery(`
+      CREATE TABLE IF NOT EXISTS contracts (
+        id SERIAL PRIMARY KEY,
+        company_name VARCHAR(255),
+        buyer_id INTEGER REFERENCES buyers(id) ON DELETE CASCADE,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        type VARCHAR(50) DEFAULT 'buy',
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE contracts ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
+      ALTER TABLE contracts ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'buy';
+    `, 'create and alter contracts table');
+
+    await safeQuery(`
+      CREATE TABLE IF NOT EXISTS contract_items (
+        id SERIAL PRIMARY KEY,
+        contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE,
+        item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        price DECIMAL(12, 2) NOT NULL CHECK (price >= 0),
+        date DATE,
+        expiry_date DATE,
+        history JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (contract_id, item_id, company_id)
+      );
+    `, 'create contract_items table');
+
+    await safeQuery(`
+      CREATE TABLE IF NOT EXISTS contract_items_process (
+        id SERIAL PRIMARY KEY,
+        contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE,
+        item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        processname VARCHAR(255),
+        price DECIMAL(12, 2) NOT NULL CHECK (price >= 0),
+        date DATE,
+        expiry_date DATE,
+        history JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `, 'create contract_items_process table');
 
     // 7. RFQs Table
     await client.query(`
@@ -399,33 +477,6 @@ const initializeDatabase = async () => {
       );
     `);
 
-    await client.query(`
-      ALTER TABLE delivery_note_items ADD COLUMN IF NOT EXISTS next_activity JSONB;
-    `);
-
-    await client.query(`
-      ALTER TABLE delivery_note_items
-      ADD COLUMN IF NOT EXISTS process_target_trace_item_id INTEGER REFERENCES trace(id) ON DELETE SET NULL;
-    `);
-
-    // Ensure the foreign key constraint points to trace instead of trace_item
-    await client.query(`
-      ALTER TABLE delivery_note_items DROP CONSTRAINT IF EXISTS delivery_note_items_process_target_trace_item_id_fkey;
-      ALTER TABLE delivery_note_items ADD CONSTRAINT delivery_note_items_process_target_trace_item_id_fkey FOREIGN KEY (process_target_trace_item_id) REFERENCES trace(id) ON DELETE SET NULL;
-    `);
-
-    await client.query(`
-      ALTER TABLE delivery_note_items ADD COLUMN IF NOT EXISTS history_id INTEGER REFERENCES history(id) ON DELETE SET NULL;
-    `);
-
-    // Migrate CHECK constraint to allow quantity >= 0
-    await client.query(`
-      ALTER TABLE delivery_note_items DROP CONSTRAINT IF EXISTS delivery_note_items_quantity_check;
-    `);
-    await client.query(`
-      ALTER TABLE delivery_note_items ADD CONSTRAINT delivery_note_items_quantity_check CHECK (quantity >= 0);
-    `);
-
     // 20. Invoices Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
@@ -458,52 +509,6 @@ const initializeDatabase = async () => {
         company_id     INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (invoice_id, item_id)
-      );
-    `);
-
-    // 22. Contracts and Contract Items
-    await client.query(`
-      ALTER TABLE contracts ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
-      ALTER TABLE contracts ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'buy';
-    `);
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS contracts (
-        id SERIAL PRIMARY KEY,
-        company_name VARCHAR(255),
-        buyer_id INTEGER REFERENCES buyers(id) ON DELETE CASCADE,
-        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
-        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS contract_items (
-        id SERIAL PRIMARY KEY,
-        contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE,
-        item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        price DECIMAL(12, 2) NOT NULL CHECK (price >= 0),
-        date DATE,
-        expiry_date DATE,
-        history JSONB DEFAULT '[]'::jsonb,
-        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (contract_id, item_id, company_id)
-      );
-    `);
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS contract_items_process (
-        id SERIAL PRIMARY KEY,
-        contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE,
-        item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-        processname VARCHAR(255),
-        price DECIMAL(12, 2) NOT NULL CHECK (price >= 0),
-        date DATE,
-        expiry_date DATE,
-        history JSONB DEFAULT '[]'::jsonb,
-        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -595,6 +600,31 @@ const initializeDatabase = async () => {
         created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // 28b. Process Trace Items / P-Items (trace_item & p_item for process item tracking)
+    await safeQuery(`
+      CREATE TABLE IF NOT EXISTS trace_item (
+        id SERIAL PRIMARY KEY,
+        item_code INTEGER,
+        process INTEGER[] DEFAULT '{}'::INTEGER[],
+        message TEXT,
+        quantity INTEGER DEFAULT 0,
+        price NUMERIC(12, 2) DEFAULT 0.00,
+        company_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS p_item (
+        id SERIAL PRIMARY KEY,
+        item_code INTEGER,
+        process INTEGER[] DEFAULT '{}'::INTEGER[],
+        message TEXT,
+        quantity INTEGER DEFAULT 0,
+        price NUMERIC(12, 2) DEFAULT 0.00,
+        company_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `, 'create trace_item and p_item tables');
 
     // 29. Job Table
     await client.query(`
@@ -836,8 +866,20 @@ const initializeDatabase = async () => {
         delivery_date DATE,
         status VARCHAR(50) DEFAULT 'ordered',
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        process_name VARCHAR(255)
       );
+      ALTER TABLE process_po_target_item ADD COLUMN IF NOT EXISTS process_name VARCHAR(255);
+      UPDATE process_po_target_item pti
+      SET process_name = (
+        SELECT poi.process_name 
+        FROM process_po_item poi 
+        WHERE poi.process_po_id = pti.process_po_id 
+          AND poi.target_item_id = pti.item_code 
+          AND poi.company_id = pti.company_id
+        LIMIT 1
+      )
+      WHERE pti.process_name IS NULL;
     `);
 
     // 33c. Process PO Item Table (Legacy pair mapping)
@@ -872,6 +914,23 @@ const initializeDatabase = async () => {
       ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS delivered_price DECIMAL(12, 2) DEFAULT 0;
       ALTER TABLE process_po_item ADD COLUMN IF NOT EXISTS remaining_price DECIMAL(12, 2) DEFAULT 0;
     `);
+
+    // 33d. Legacy Process PO Items (po_process_item for backward compatibility in reports/GRN)
+    await safeQuery(`
+      CREATE TABLE IF NOT EXISTS po_process_item (
+        id SERIAL PRIMARY KEY,
+        process_po_id INTEGER,
+        source_item_id INTEGER,
+        source_item_quantity NUMERIC(15,3) DEFAULT 0 NOT NULL,
+        target_item_id INTEGER,
+        target_item_quantity NUMERIC(15,3) DEFAULT 0 NOT NULL,
+        price NUMERIC(12,2) DEFAULT 0.00,
+        source_item_traceid_array JSONB DEFAULT '[]'::jsonb,
+        target_item_traceid_array JSONB DEFAULT '[]'::jsonb,
+        company_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `, 'create po_process_item table');
 
     // 33b. Process Release Order (Buy Process ARC)
     await client.query(`
@@ -935,14 +994,8 @@ const initializeDatabase = async () => {
       ALTER TABLE delivery_notes ADD COLUMN IF NOT EXISTS process_ro_id INTEGER REFERENCES process_ro(id) ON DELETE SET NULL;
       ALTER TABLE process_ro ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'RO';
       ALTER TABLE process_ro_source_item ADD COLUMN IF NOT EXISTS history JSONB;
+      ALTER TABLE process_ro_target_item ADD COLUMN IF NOT EXISTS process_name VARCHAR(255);
     `);
-
-    const defaultUnits = ['Piece', 'Set', 'Kg', 'Meter', 'Box', 'Litre'];
-    for (const unit of defaultUnits) {
-      await client.query(`
-        INSERT INTO units (name, company_id) VALUES ($1, $2) ON CONFLICT (name, company_id) DO NOTHING;
-      `, [unit, defaultCompanyId]);
-    }
 
     // 34. Process RFQ (Sell Process)
     await client.query(`
@@ -982,6 +1035,24 @@ const initializeDatabase = async () => {
       CREATE OR REPLACE VIEW processrfq AS SELECT * FROM "processRFQ";
       CREATE OR REPLACE VIEW processrfq_item AS SELECT * FROM "processRFQ_item";
     `);
+
+    // 35b. Process Received RFQs (process_received_rfqs for link-operations & trade process names)
+    await safeQuery(`
+      CREATE TABLE IF NOT EXISTS process_received_rfqs (
+        id SERIAL PRIMARY KEY,
+        prrfq_no VARCHAR(100),
+        rfq_no VARCHAR(255),
+        rfq_date DATE,
+        source_item_id INTEGER,
+        target_item_id INTEGER,
+        process_name VARCHAR(255),
+        price_per_unit NUMERIC(12, 2),
+        quantity INTEGER DEFAULT 1,
+        trade_id INTEGER,
+        company_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `, 'create process_received_rfqs table');
 
     // 36. Process Received Quotation (Buy Process)
     await client.query(`
@@ -1045,11 +1116,22 @@ const initializeDatabase = async () => {
       ALTER TABLE history ADD COLUMN IF NOT EXISTS delivery_note_id INTEGER REFERENCES delivery_notes(id) ON DELETE CASCADE;
     `);
 
-    await client.query(`
+    await safeQuery(`
       CREATE OR REPLACE VIEW "History" AS SELECT * FROM history;
-    `);
+    `, 'create history view');
 
-    await client.query(`
+    // Delivery note items migrations (now safe to execute after trace and history tables exist)
+    await safeQuery(`
+      ALTER TABLE delivery_note_items ADD COLUMN IF NOT EXISTS next_activity JSONB;
+      ALTER TABLE delivery_note_items ADD COLUMN IF NOT EXISTS process_target_trace_item_id INTEGER REFERENCES trace(id) ON DELETE SET NULL;
+      ALTER TABLE delivery_note_items DROP CONSTRAINT IF EXISTS delivery_note_items_process_target_trace_item_id_fkey;
+      ALTER TABLE delivery_note_items ADD CONSTRAINT delivery_note_items_process_target_trace_item_id_fkey FOREIGN KEY (process_target_trace_item_id) REFERENCES trace(id) ON DELETE SET NULL;
+      ALTER TABLE delivery_note_items ADD COLUMN IF NOT EXISTS history_id INTEGER REFERENCES history(id) ON DELETE SET NULL;
+      ALTER TABLE delivery_note_items DROP CONSTRAINT IF EXISTS delivery_note_items_quantity_check;
+      ALTER TABLE delivery_note_items ADD CONSTRAINT delivery_note_items_quantity_check CHECK (quantity >= 0);
+    `, 'alter delivery_note_items with trace and history references');
+
+    await safeQuery(`
       CREATE TABLE IF NOT EXISTS keys (
         id SERIAL PRIMARY KEY,
         service_name VARCHAR(100) NOT NULL DEFAULT 'google_drive',
@@ -1063,15 +1145,26 @@ const initializeDatabase = async () => {
         account_email VARCHAR(255),
         last_backup_date TIMESTAMP WITH TIME ZONE,
         alert_interval_days INTEGER DEFAULT 3,
+        alert_interval_seconds INTEGER DEFAULT 259200,
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS service_name VARCHAR(100) NOT NULL DEFAULT 'google_drive';
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS client_id TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS client_secret TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS access_token TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS refresh_token TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS folder_id TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS cookies TEXT;
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS auth_mode VARCHAR(50) DEFAULT 'oauth';
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS account_email VARCHAR(255);
       ALTER TABLE keys ADD COLUMN IF NOT EXISTS last_backup_date TIMESTAMP WITH TIME ZONE;
       ALTER TABLE keys ADD COLUMN IF NOT EXISTS alert_interval_days INTEGER DEFAULT 3;
       ALTER TABLE keys ADD COLUMN IF NOT EXISTS alert_interval_seconds INTEGER DEFAULT 259200;
-    `);
+      ALTER TABLE keys ADD COLUMN IF NOT EXISTS company_id INTEGER;
+    `, 'create and alter keys table');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS link_operations (

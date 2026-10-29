@@ -25,5 +25,8 @@ build/
 # Backend built frontend assets
 backend/public/
 
+# Database dumps
+*.sql
+
 # Installer
 DeskmanagerInstaller/

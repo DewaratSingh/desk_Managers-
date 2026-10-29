@@ -1,13 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const { requirePermission } = require('../middleware/auth');
 
 // Get all contracts
-router.get('/', async (req, res) => {
+router.get('/', requirePermission(['arc:read', 'manage_arc']), async (req, res) => {
   try {
     const { q, type } = req.query || {};
-    const limit = req.query.limit ? parseInt(req.query.limit) : null;
-    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+    const limit = req.query.limit !== undefined
+      ? (req.query.limit === 'all' || req.query.limit === '-1' ? null : parseInt(req.query.limit, 10))
+      : 20;
+    const offset = req.query.offset ? Math.max(0, parseInt(req.query.offset, 10)) : 0;
     
     let query = `
       SELECT c.*, b.name as buyer_name, b.email, b.phone, cu.name as party_name, cu.customer_code as party_code, cu.address as party_address 
@@ -48,8 +51,13 @@ router.get('/', async (req, res) => {
 });
 
 // Get a specific contract with items
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePermission(['arc:read', 'manage_arc']), async (req, res) => {
   const { id } = req.params;
+  const limit = req.query.limit !== undefined
+    ? (req.query.limit === 'all' || req.query.limit === '-1' ? null : parseInt(req.query.limit, 10))
+    : 20;
+  const offset = req.query.offset ? Math.max(0, parseInt(req.query.offset, 10)) : 0;
+
   try {
     const contractRes = await pool.query(`
       SELECT c.*, b.name as buyer_name, b.email, b.phone, cu.name as party_name, cu.customer_code as party_code, cu.address as party_address 
@@ -63,13 +71,23 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
     
-    const itemsRes = await pool.query(`
+    let itemsQuery = `
       SELECT ci.*, i.item_code, i.description, i.drawing_number, i.long_description
       FROM contract_items ci
       JOIN items i ON ci.item_id = i.id
       WHERE ci.contract_id = $1 AND ci.company_id = $2
       ORDER BY ci.created_at DESC
-    `, [id, req.user.company_id]);
+    `;
+    const itemParams = [id, req.user.company_id];
+
+    if (limit !== null) {
+      const limitIdx = itemParams.length + 1;
+      const offsetIdx = itemParams.length + 2;
+      itemsQuery += ` LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+      itemParams.push(limit, offset);
+    }
+
+    const itemsRes = await pool.query(itemsQuery, itemParams);
     
     const contract = contractRes.rows[0];
     contract.items = itemsRes.rows;
@@ -82,7 +100,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create a new contract
-router.post('/', async (req, res) => {
+router.post('/', requirePermission(['arc:create', 'manage_arc']), async (req, res) => {
   const { company_name, buyer_id, type, customer_id } = req.body || {};
   if (!company_name) return res.status(400).json({ error: 'company_name required' });
   
@@ -102,7 +120,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update a contract
-router.put('/:id', async (req, res) => {
+router.put('/:id', requirePermission(['arc:update', 'manage_arc']), async (req, res) => {
   const { id } = req.params;
   const { company_name, buyer_id, type, customer_id } = req.body || {};
   
@@ -126,7 +144,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete a contract
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePermission(['arc:delete']), async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query('DELETE FROM contracts WHERE id = $1 AND company_id = $2 RETURNING id', [id, req.user.company_id]);
@@ -138,10 +156,15 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Search contract items
-router.get('/:id/items', async (req, res) => {
+// Search / list contract items
+router.get('/:id/items', requirePermission(['arc:read', 'manage_arc']), async (req, res) => {
   const { id } = req.params;
   const { q } = req.query || {};
+  const limit = req.query.limit !== undefined
+    ? (req.query.limit === 'all' || req.query.limit === '-1' ? null : parseInt(req.query.limit, 10))
+    : 20;
+  const offset = req.query.offset ? Math.max(0, parseInt(req.query.offset, 10)) : 0;
+
   try {
     let query = `
       SELECT ci.*, i.item_code, i.description, i.drawing_number, i.long_description
@@ -150,11 +173,20 @@ router.get('/:id/items', async (req, res) => {
       WHERE ci.contract_id = $1 AND ci.company_id = $2
     `;
     const params = [id, req.user.company_id];
-    if (q) {
-      query += ` AND (i.item_code ILIKE $3 OR i.description ILIKE $3 OR i.drawing_number ILIKE $3)`;
-      params.push(`%${q}%`);
+    if (q && q.trim()) {
+      const qIdx = params.length + 1;
+      query += ` AND (i.item_code ILIKE $${qIdx} OR i.description ILIKE $${qIdx} OR i.drawing_number ILIKE $${qIdx})`;
+      params.push(`%${q.trim()}%`);
     }
-    query += ` ORDER BY ci.created_at DESC LIMIT 15`;
+    query += ` ORDER BY ci.created_at DESC`;
+
+    if (limit !== null) {
+      const limitIdx = params.length + 1;
+      const offsetIdx = params.length + 2;
+      query += ` LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+      params.push(limit, offset);
+    }
+
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
@@ -164,7 +196,7 @@ router.get('/:id/items', async (req, res) => {
 });
 
 // Add item to contract
-router.post('/:id/items', async (req, res) => {
+router.post('/:id/items', requirePermission(['arc:create', 'arc:update', 'manage_arc']), async (req, res) => {
   const { id } = req.params;
   const { item_code, price, date, expiry_date } = req.body || {};
   
@@ -196,7 +228,7 @@ router.post('/:id/items', async (req, res) => {
 });
 
 // Update contract item
-router.put('/:contractId/items/:itemId', async (req, res) => {
+router.put('/:contractId/items/:itemId', requirePermission(['arc:update', 'manage_arc']), async (req, res) => {
   const { contractId, itemId } = req.params;
   const { price, date, expiry_date } = req.body || {};
   
@@ -254,7 +286,7 @@ router.put('/:contractId/items/:itemId', async (req, res) => {
 });
 
 // Delete contract item
-router.delete('/:contractId/items/:itemId', async (req, res) => {
+router.delete('/:contractId/items/:itemId', requirePermission(['arc:delete']), async (req, res) => {
   const { contractId, itemId } = req.params;
   try {
     const result = await pool.query('DELETE FROM contract_items WHERE id = $1 AND contract_id = $2 AND company_id = $3 RETURNING id', [itemId, contractId, req.user.company_id]);

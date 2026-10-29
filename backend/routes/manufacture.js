@@ -60,32 +60,77 @@ async function enrichJobsWithPrices(jobs, companyId) {
   return jobs;
 }
 
-// GET all jobs
+// GET all jobs with pagination and search
 router.get('/jobs', requirePermission(['manufacture:read', 'manage_manufacture']), async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT j.*,
-              COALESCE(
-                (SELECT row_to_json(m) FROM manufacture m
-                 WHERE m.job_id = j.id AND m.company_id = j.company_id LIMIT 1),
-                NULL
-              ) AS manufacture,
-              COALESCE(
-                (SELECT si.items FROM source_item si
-                 WHERE si.job_id = j.id AND si.company_id = j.company_id LIMIT 1),
-                '[]'::jsonb
-              ) AS source_items,
-              COALESCE(
-                (SELECT ti.items FROM target_item ti
-                 WHERE ti.job_id = j.id AND ti.company_id = j.company_id LIMIT 1),
-                '[]'::jsonb
-              ) AS target_items
-       FROM job j
-       WHERE j.company_id = $1
-       ORDER BY j.created_at DESC`,
-      [req.user.company_id]
-    );
-    const enriched = await enrichJobsWithPrices(result.rows, req.user.company_id);
+    const { q, limit = 20, offset = 0 } = req.query || {};
+    const companyId = req.user.company_id;
+
+    const conditions = ['j.company_id = $1'];
+    const params = [companyId];
+
+    if (q && q.trim()) {
+      const searchParam = `%${q.trim()}%`;
+      const idx = params.length + 1;
+      conditions.push(`(
+        j.id::text ILIKE $${idx}
+        OR j.process_name ILIKE $${idx}
+        OR j.message ILIKE $${idx}
+        OR EXISTS (
+          SELECT 1 FROM manufacture m
+          WHERE m.job_id = j.id AND m.company_id = j.company_id AND m.status ILIKE $${idx}
+        )
+        OR EXISTS (
+          SELECT 1 FROM source_item si
+          WHERE si.job_id = j.id AND si.company_id = j.company_id AND si.items::text ILIKE $${idx}
+        )
+        OR EXISTS (
+          SELECT 1 FROM target_item ti
+          WHERE ti.job_id = j.id AND ti.company_id = j.company_id AND ti.items::text ILIKE $${idx}
+        )
+      )`);
+      params.push(searchParam);
+    }
+
+    let paginationClause = '';
+    if (limit !== 'all' && limit !== '-1') {
+      const parsedLimit = Math.max(1, parseInt(limit, 10) || 20);
+      const parsedOffset = Math.max(0, parseInt(offset, 10) || 0);
+
+      const limitIdx = params.length + 1;
+      params.push(parsedLimit);
+      paginationClause += ` LIMIT $${limitIdx}`;
+
+      const offsetIdx = params.length + 1;
+      params.push(parsedOffset);
+      paginationClause += ` OFFSET $${offsetIdx}`;
+    }
+
+    const query = `
+      SELECT j.*,
+             COALESCE(
+               (SELECT row_to_json(m) FROM manufacture m
+                WHERE m.job_id = j.id AND m.company_id = j.company_id LIMIT 1),
+               NULL
+             ) AS manufacture,
+             COALESCE(
+               (SELECT si.items FROM source_item si
+                WHERE si.job_id = j.id AND si.company_id = j.company_id LIMIT 1),
+               '[]'::jsonb
+             ) AS source_items,
+             COALESCE(
+               (SELECT ti.items FROM target_item ti
+                WHERE ti.job_id = j.id AND ti.company_id = j.company_id LIMIT 1),
+               '[]'::jsonb
+             ) AS target_items
+      FROM job j
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY j.created_at DESC
+      ${paginationClause}
+    `;
+
+    const result = await pool.query(query, params);
+    const enriched = await enrichJobsWithPrices(result.rows, companyId);
     res.json(enriched);
   } catch (err) {
     console.error('GET /jobs error:', err.message);
